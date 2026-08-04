@@ -90,16 +90,21 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 ```text
 src/
 ├── app/
-│   ├── dashboard/                     # App Shell con Sidebar y TopNav maestros
+│   ├── dashboard/                     # App Shell con Sidebar, TopNav y Footer maestros
 │   │   ├── layout.tsx
-│   │   └── page.tsx                   # MainContent con resumen y card B2B
+│   │   ├── page.tsx                   # MainContent con resumen y card B2B
+│   │   ├── change-password/
+│   │   │   └── page.tsx               # Interfaz de modificación de contraseña B2B
+│   │   └── settings/
+│   │       └── page.tsx               # Configuración del sistema y banner de seguridad
 │   ├── login/
 │   │   └── page.tsx                   # Login exacto del diseño stitch_mts
 │   └── globals.css                    # Variables CSS B2B y Tailwind v4
 ├── components/
 │   └── layout/
 │       ├── Sidebar.tsx                # Menú lateral maestro inmutable
-│       └── TopNav.tsx                 # Barra superior maestra
+│       ├── TopNav.tsx                 # Barra superior maestra con buscador y desplegable
+│       └── Footer.tsx                 # Pie de página maestro (stitch_mts/pie-de-pagina)
 ├── lib/
 │   └── supabase/
 │       ├── client.ts                  # createBrowserClient (@supabase/ssr)
@@ -115,6 +120,9 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-04:** Maquetación e integración de la pantalla **Modificación de Contraseña** (`/dashboard/change-password`) con validación visual interactiva de requisitos de seguridad, medidor de fortaleza y toggles de visibilidad.
+- **2026-08-04:** Alineación exacta de la **Barra Superior** (`TopNav.tsx`) con la especificación `stitch_mts/barra-superior` (buscador central con atajo `⌘K`, botón de notificaciones con alerta, acceso a configuración y menú desplegable del perfil de usuario).
+- **2026-08-04:** Creación e integración global del **Pie de Página Maestro** (`Footer.tsx`) en el `DashboardLayout`, respetando la especificación exacta de `stitch_mts/pie-de-pagina`.
 - **2026-08-04:** Ajuste del estilo del `Sidebar` a la paleta oficial de `stitch_mts/menu-lateral` (fondo azul claro `#d7e2ff`, íconos e ítems `#4b5e84`, activo y CTA en `#1e5bb4`).
 - **2026-08-04:** Integración del logo oficial `/mts_logo.png` en la cabecera del `Sidebar` y en el formulario de `Login`.
 - **2026-08-04:** Maquetación exacta según los diseños de `stitch_mts` para las pantallas: **Dashboard Operativo** (`/dashboard`), **Centro de Reportes** (`/reports`), **Flujo de Caja** (`/cash-flow`), **Gestión de Clientes** (`/clients`), **Gestión de Facturación** (`/invoicing`), **Gestión de Locaciones** (`/locations`), **Gestión de Personal** (`/employees`) y **Tarifario Comercial** (`/rates`), con paneles *Slide-over* interactivos para altas/ediciones.

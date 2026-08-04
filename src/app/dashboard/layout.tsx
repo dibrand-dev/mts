@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopNav } from '@/components/layout/TopNav';
+import { Footer } from '@/components/layout/Footer';
 
 export default function DashboardLayout({
   children,
@@ -8,17 +9,20 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
-      {/* Sidebar Maestro (Prohibido alterar por IA) */}
+      {/* Sidebar Maestro */}
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* TopNav Maestro (Prohibido alterar por IA) */}
+        {/* TopNav Maestro */}
         <TopNav />
 
         {/* MainContent: Área Dinámica con Fondo #F8FAFC */}
         <main className="flex-1 p-4 sm:p-6 md:p-8 bg-[#F8FAFC] max-w-full overflow-x-hidden">
           {children}
         </main>
+
+        {/* Footer Maestro según stitch_mts/pie-de-pagina */}
+        <Footer />
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Building2, Code2, Save, Plus, Edit2, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Building2, Code2, Save, Plus, Edit2, Trash2, KeyRound, Shield } from 'lucide-react';
 
 export default function SystemSettingsPage() {
   return (
@@ -15,6 +16,28 @@ export default function SystemSettingsPage() {
           </p>
         </div>
       </header>
+
+      {/* Account Security Banner */}
+      <section className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-[#1E5BB4]/10 p-3 rounded-xl text-[#1E5BB4]">
+            <Shield className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">Seguridad y Acceso de la Cuenta</h2>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Modifica la clave de acceso corporativa y gestiona las credenciales de tu usuario.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/change-password"
+          className="w-full sm:w-auto bg-[#0F2547] hover:bg-[#1E5BB4] text-white font-semibold rounded-lg px-4 py-2.5 text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+        >
+          <KeyRound className="h-4 w-4 text-[#0EA5E9]" />
+          <span>Cambiar Contraseña</span>
+        </Link>
+      </section>
 
       {/* Section 1: Form Card (Company Info) */}
       <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
