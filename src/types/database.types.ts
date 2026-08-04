@@ -115,6 +115,18 @@ export interface Database {
           requires_vehicle_bonus: boolean
           created_at: string
         }
+        Insert: {
+          id?: string
+          name: string
+          requires_vehicle_bonus?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          requires_vehicle_bonus?: boolean
+          created_at?: string
+        }
       }
       employees: {
         Row: {
@@ -127,6 +139,28 @@ export interface Database {
           phone_number: string | null
           status: 'active' | 'inactive' | 'on_leave'
           created_at: string
+        }
+        Insert: {
+          id?: string
+          national_id: string
+          file_number?: string | null
+          tax_id?: string | null
+          full_name: string
+          default_position_id?: string | null
+          phone_number?: string | null
+          status?: 'active' | 'inactive' | 'on_leave'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          national_id?: string
+          file_number?: string | null
+          tax_id?: string | null
+          full_name?: string
+          default_position_id?: string | null
+          phone_number?: string | null
+          status?: 'active' | 'inactive' | 'on_leave'
+          created_at?: string
         }
       }
       daily_work_logs: {

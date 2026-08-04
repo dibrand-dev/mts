@@ -127,6 +127,8 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-04:** Implementación integral del CRUD de empleados en Supabase (`src/lib/services/employees.ts`) e integración completa en la vista interactiva `/employees` (lectura en tiempo real, búsqueda multidominio, filtrado por puesto y estado, panel *Slide-over* de creación/edición y diálogo modal de eliminación con confirmación).
+- **2026-08-04:** Ajuste de permisos RLS y privilegios de esquema en Supabase (`20260804010000_fix_employees_rls.sql`) y carga inicial de semillas para puestos de trabajo en `supabase/seed.sql`.
 - **2026-08-04:** Reestructuración de la arquitectura de rutas con Route Groups de Next.js App Router `src/app/(dashboard)`. La URL raíz `/` es ahora el **Tablero Principal / Dashboard Operativo**, y todas las vistas operativas conviven directamente bajo la raíz (`/daily-entry`, `/payroll`, `/invoicing`, `/rates`, `/cash-flow`, `/employees`, `/locations`, `/clients`, `/reports`, `/settings`, `/change-password`).
 - **2026-08-04:** Maquetación e integración de la pantalla **Modificación de Contraseña** (`/change-password`) con validación visual interactiva de requisitos de seguridad, medidor de fortaleza y toggles de visibilidad.
 - **2026-08-04:** Alineación exacta de la **Barra Superior** (`TopNav.tsx`) con la especificación `stitch_mts/barra-superior` (buscador central con atajo `⌘K`, botón de notificaciones con alerta, acceso a configuración y menú desplegable del perfil de usuario).
@@ -142,3 +144,4 @@ supabase/
 - **2026-08-01:** Integración del diseño visual `stitch_mts`: Login Split y App Shell Layout (`Sidebar`, `TopNav`, `MainContent` con tokens B2B).
 - **2026-08-01:** Actualización del esquema relacional con tablas de `locations`, `expenses`, `expense_categories`, campos para `is_export_day`, `payment_due_days` y desglose de horas/turnos.
 - **2026-08-01:** Creación del archivo `CONTEXT.md` para seguimiento continuo.
+
