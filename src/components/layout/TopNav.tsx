@@ -18,7 +18,40 @@ import { createClient } from '@/lib/supabase/client';
 export function TopNav() {
   const router = useRouter();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [userName, setUserName] = useState<string>('Usuario Admin');
+  const [userRole, setUserRole] = useState<string>('Admin');
+  const [initials, setInitials] = useState<string>('AD');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('full_name, role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const profile = data as { full_name: string; role: string } | null;
+        const name = profile?.full_name || user.email?.split('@')[0] || 'Usuario Admin';
+        const role = profile?.role === 'admin' ? 'Admin' : (profile?.role || 'Admin');
+        
+        setUserName(name);
+        setUserRole(role);
+
+        // Generate initials
+        const nameParts = name.trim().split(' ');
+        if (nameParts.length >= 2) {
+          setInitials((nameParts[0][0] + nameParts[1][0]).toUpperCase());
+        } else if (nameParts.length === 1 && nameParts[0].length > 0) {
+          setInitials(nameParts[0].substring(0, 2).toUpperCase());
+        }
+      }
+    }
+    loadUser();
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -90,13 +123,13 @@ export function TopNav() {
             aria-expanded={dropdownOpen}
           >
             <div className="text-right hidden sm:block">
-              <p className="font-semibold text-xs sm:text-sm text-[#0B1C30] leading-none">Jorge Caetano</p>
-              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">Admin</p>
+              <p className="font-semibold text-xs sm:text-sm text-[#0B1C30] leading-none">{userName}</p>
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">{userRole}</p>
             </div>
 
             {/* Avatar Circle */}
             <div className="h-9 w-9 rounded-full bg-[#1E5BB4] flex items-center justify-center text-white font-bold text-xs sm:text-sm ring-2 ring-transparent hover:ring-[#1E5BB4]/30 transition-all shrink-0">
-              JC
+              {initials}
             </div>
 
             <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180 text-[#1E5BB4]' : ''}`} />
