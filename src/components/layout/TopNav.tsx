@@ -72,7 +72,7 @@ export function TopNav() {
 
         {/* Settings Button */}
         <Link
-          href="/dashboard/settings"
+          href="/settings"
           className="p-2 rounded-full hover:bg-[#EFF4FF] text-[#424752] hover:text-[#0B1C30] transition-colors active:scale-95"
           title="Configuración del Sistema"
         >
@@ -112,7 +112,7 @@ export function TopNav() {
 
               <div className="py-1">
                 <Link
-                  href="/dashboard/change-password"
+                  href="/change-password"
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-[#0B1C30] hover:bg-[#EFF4FF] hover:text-[#1E5BB4] transition-colors font-medium"
                 >
@@ -121,7 +121,7 @@ export function TopNav() {
                 </Link>
 
                 <Link
-                  href="/dashboard/settings"
+                  href="/settings"
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-[#0B1C30] hover:bg-[#EFF4FF] hover:text-[#1E5BB4] transition-colors font-medium"
                 >

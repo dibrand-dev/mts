@@ -86,7 +86,7 @@ export default function ChangePasswordPage() {
         <div>
           <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500 mb-1">
             <Link 
-              href="/dashboard/settings" 
+              href="/settings" 
               className="hover:text-[#1E5BB4] flex items-center gap-1 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />

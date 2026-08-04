@@ -15,14 +15,14 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <Link
-            href="/dashboard/daily-entry"
+            href="/daily-entry"
             className="flex-1 sm:flex-none px-4 py-2 border border-slate-400 text-[#0B1C30] hover:bg-slate-100 font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <Plus className="h-4 w-4" />
             <span>Carga Diaria</span>
           </Link>
           <Link
-            href="/dashboard/cash-flow"
+            href="/cash-flow"
             className="flex-1 sm:flex-none px-4 py-2 bg-[#1E5BB4] text-white hover:bg-[#004392] font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap"
           >
             <Plus className="h-4 w-4" />

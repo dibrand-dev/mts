@@ -31,7 +31,7 @@ export default function SystemSettingsPage() {
           </div>
         </div>
         <Link
-          href="/dashboard/change-password"
+          href="/change-password"
           className="w-full sm:w-auto bg-[#0F2547] hover:bg-[#1E5BB4] text-white font-semibold rounded-lg px-4 py-2.5 text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
         >
           <KeyRound className="h-4 w-4 text-[#0EA5E9]" />

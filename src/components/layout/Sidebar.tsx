@@ -21,17 +21,17 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 const navItems = [
-  { name: 'Tablero Principal', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Carga Diaria de Horas', href: '/dashboard/daily-entry', icon: ClipboardEdit },
-  { name: 'Cálculo de Sueldos', href: '/dashboard/payroll', icon: ClipboardEdit },
-  { name: 'Gestión de Facturación', href: '/dashboard/invoicing', icon: FileSpreadsheet },
-  { name: 'Tarifario Comercial', href: '/dashboard/rates', icon: FileSpreadsheet },
-  { name: 'Flujo de Caja', href: '/dashboard/cash-flow', icon: Wallet },
-  { name: 'Gestión de Personal', href: '/dashboard/employees', icon: Users },
-  { name: 'Gestión de Locaciones', href: '/dashboard/locations', icon: MapPin },
-  { name: 'Gestión de Clientes', href: '/dashboard/clients', icon: Building2 },
-  { name: 'Centro de Reportes', href: '/dashboard/reports', icon: FileSpreadsheet },
-  { name: 'Configuración del Sistema', href: '/dashboard/settings', icon: Settings },
+  { name: 'Tablero Principal', href: '/', icon: LayoutDashboard },
+  { name: 'Carga Diaria de Horas', href: '/daily-entry', icon: ClipboardEdit },
+  { name: 'Cálculo de Sueldos', href: '/payroll', icon: ClipboardEdit },
+  { name: 'Gestión de Facturación', href: '/invoicing', icon: FileSpreadsheet },
+  { name: 'Tarifario Comercial', href: '/rates', icon: FileSpreadsheet },
+  { name: 'Flujo de Caja', href: '/cash-flow', icon: Wallet },
+  { name: 'Gestión de Personal', href: '/employees', icon: Users },
+  { name: 'Gestión de Locaciones', href: '/locations', icon: MapPin },
+  { name: 'Gestión de Clientes', href: '/clients', icon: Building2 },
+  { name: 'Centro de Reportes', href: '/reports', icon: FileSpreadsheet },
+  { name: 'Configuración del Sistema', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
@@ -83,7 +83,7 @@ export function Sidebar() {
         {/* Primary Action Button */}
         <div className="px-4 pt-4">
           <Link
-            href="/dashboard/daily-entry"
+            href="/daily-entry"
             onClick={() => setIsOpen(false)}
             className="w-full bg-[#1e5bb4] hover:bg-[#004392] text-white flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-sm transition-colors shadow-xs"
           >
@@ -95,7 +95,7 @@ export function Sidebar() {
         {/* Navigation Options */}
         <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+            const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link
