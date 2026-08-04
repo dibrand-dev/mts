@@ -127,6 +127,8 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-04:** Implementación completa del CRUD de locaciones en Supabase (`src/lib/services/locations.ts`) e integración en la vista `/locations` (lectura en tiempo real, filtrado por texto y estado, panel *Slide-over* de alta/edición y modal de eliminación con confirmación).
+- **2026-08-04:** Adición de políticas RLS para la tabla `locations` en Supabase (`20260804020000_add_locations_rls.sql`), habilitando permisos de inserción, actualización, lectura y eliminación para usuarios autenticados con rol `admin` y lectura para `accounting_auditor`.
 - **2026-08-04:** Implementación integral del CRUD de empleados en Supabase (`src/lib/services/employees.ts`) e integración completa en la vista interactiva `/employees` (lectura en tiempo real, búsqueda multidominio, filtrado por puesto y estado, panel *Slide-over* de creación/edición y diálogo modal de eliminación con confirmación).
 - **2026-08-04:** Ajuste de permisos RLS y privilegios de esquema en Supabase (`20260804010000_fix_employees_rls.sql`) y carga inicial de semillas para puestos de trabajo en `supabase/seed.sql`.
 - **2026-08-04:** Reestructuración de la arquitectura de rutas con Route Groups de Next.js App Router `src/app/(dashboard)`. La URL raíz `/` es ahora el **Tablero Principal / Dashboard Operativo**, y todas las vistas operativas conviven directamente bajo la raíz (`/daily-entry`, `/payroll`, `/invoicing`, `/rates`, `/cash-flow`, `/employees`, `/locations`, `/clients`, `/reports`, `/settings`, `/change-password`).
