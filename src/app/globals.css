@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary: #1E5BB4;
+    --primary-dark: #0F2547;
+    --bg-global: #F8FAFC;
+    --card-read: #FFFFFF;
+    --card-form: #0EA5E9;
+    --input-bg: #FFFFFF;
+    --input-border: #0F2547;
+  }
+
+  body {
+    background-color: var(--bg-global);
+    color: #0F2547;
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Data Entry Form Container (Alto Contraste B2B) */
+.form-card-b2b {
+  background-color: #0EA5E9;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+
+.form-card-b2b input,
+.form-card-b2b select,
+.form-card-b2b textarea {
+  background-color: #FFFFFF !important;
+  border: 1.5px solid #0F2547 !important;
+  color: #0F2547 !important;
+  border-radius: 0.375rem;
+}
+
+.form-card-b2b input:focus,
+.form-card-b2b select:focus,
+.form-card-b2b textarea:focus {
+  outline: 2px solid #1E5BB4;
+  outline-offset: 1px;
+}
