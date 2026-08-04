@@ -90,15 +90,22 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 ```text
 src/
 ├── app/
-│   ├── dashboard/                     # App Shell con Sidebar, TopNav y Footer maestros
-│   │   ├── layout.tsx
-│   │   ├── page.tsx                   # MainContent con resumen y card B2B
-│   │   ├── change-password/
-│   │   │   └── page.tsx               # Interfaz de modificación de contraseña B2B
-│   │   └── settings/
-│   │       └── page.tsx               # Configuración del sistema y banner de seguridad
+│   ├── (dashboard)/                   # Route Group con App Shell compartida (Sidebar, TopNav, Footer)
+│   │   ├── layout.tsx                 # Contenedor maestro del Dashboard
+│   │   ├── page.tsx                   # Ruta raíz (/): Tablero Principal / Dashboard Operativo
+│   │   ├── cash-flow/                 # /cash-flow
+│   │   ├── change-password/           # /change-password
+│   │   ├── clients/                   # /clients
+│   │   ├── daily-entry/               # /daily-entry
+│   │   ├── employees/                 # /employees
+│   │   ├── invoicing/                 # /invoicing
+│   │   ├── locations/                 # /locations
+│   │   ├── payroll/                   # /payroll
+│   │   ├── rates/                     # /rates
+│   │   ├── reports/                   # /reports
+│   │   └── settings/                  # /settings
 │   ├── login/
-│   │   └── page.tsx                   # Login exacto del diseño stitch_mts
+│   │   └── page.tsx                   # Ruta /login aislada del App Shell
 │   └── globals.css                    # Variables CSS B2B y Tailwind v4
 ├── components/
 │   └── layout/
@@ -120,12 +127,13 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
-- **2026-08-04:** Maquetación e integración de la pantalla **Modificación de Contraseña** (`/dashboard/change-password`) con validación visual interactiva de requisitos de seguridad, medidor de fortaleza y toggles de visibilidad.
+- **2026-08-04:** Reestructuración de la arquitectura de rutas con Route Groups de Next.js App Router `src/app/(dashboard)`. La URL raíz `/` es ahora el **Tablero Principal / Dashboard Operativo**, y todas las vistas operativas conviven directamente bajo la raíz (`/daily-entry`, `/payroll`, `/invoicing`, `/rates`, `/cash-flow`, `/employees`, `/locations`, `/clients`, `/reports`, `/settings`, `/change-password`).
+- **2026-08-04:** Maquetación e integración de la pantalla **Modificación de Contraseña** (`/change-password`) con validación visual interactiva de requisitos de seguridad, medidor de fortaleza y toggles de visibilidad.
 - **2026-08-04:** Alineación exacta de la **Barra Superior** (`TopNav.tsx`) con la especificación `stitch_mts/barra-superior` (buscador central con atajo `⌘K`, botón de notificaciones con alerta, acceso a configuración y menú desplegable del perfil de usuario).
 - **2026-08-04:** Creación e integración global del **Pie de Página Maestro** (`Footer.tsx`) en el `DashboardLayout`, respetando la especificación exacta de `stitch_mts/pie-de-pagina`.
 - **2026-08-04:** Ajuste del estilo del `Sidebar` a la paleta oficial de `stitch_mts/menu-lateral` (fondo azul claro `#d7e2ff`, íconos e ítems `#4b5e84`, activo y CTA en `#1e5bb4`).
 - **2026-08-04:** Integración del logo oficial `/mts_logo.png` en la cabecera del `Sidebar` y en el formulario de `Login`.
-- **2026-08-04:** Maquetación exacta según los diseños de `stitch_mts` para las pantallas: **Dashboard Operativo** (`/dashboard`), **Centro de Reportes** (`/reports`), **Flujo de Caja** (`/cash-flow`), **Gestión de Clientes** (`/clients`), **Gestión de Facturación** (`/invoicing`), **Gestión de Locaciones** (`/locations`), **Gestión de Personal** (`/employees`) y **Tarifario Comercial** (`/rates`), con paneles *Slide-over* interactivos para altas/ediciones.
+- **2026-08-04:** Maquetación exacta según los diseños de `stitch_mts` para las pantallas operativas con paneles *Slide-over* interactivos para altas/ediciones.
 - **2026-08-04:** Ampliación del esquema SQL en Supabase (`20260804000000_add_system_settings.sql`) agregando las tablas `company_settings` y `master_variables` (100% en inglés con RLS).
 - **2026-08-04:** Traducción de toda la interfaz visual y menú lateral a español manteniendo el código fuente y modelos DB en inglés.
 - **2026-08-04:** Implementación de diseño responsive-first con menú drawer deslizable en móviles/tablets y corrección de desborde/scroll horizontal.
