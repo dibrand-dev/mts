@@ -223,6 +223,56 @@ export interface Database {
           created_at: string
         }
       }
+      hour_types: {
+        Row: {
+          id: string
+          code: string
+          description: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          description: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          description?: string
+          created_at?: string
+        }
+      }
+      client_position_rates: {
+        Row: {
+          id: string
+          client_id: string
+          position_id: string
+          hour_type_id: string
+          hourly_rate: number
+          effective_from: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          position_id: string
+          hour_type_id: string
+          hourly_rate: number
+          effective_from?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          position_id?: string
+          hour_type_id?: string
+          hourly_rate?: number
+          effective_from?: string
+          created_at?: string
+        }
+      }
     }
   }
 }
+

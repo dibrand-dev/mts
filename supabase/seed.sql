@@ -79,3 +79,20 @@ VALUES
     ('Capataz', false)
 ON CONFLICT (name) DO NOTHING;
 
+-- Seed default Hour Types (Tipos de Hora)
+INSERT INTO public.hour_types (code, description)
+VALUES 
+    ('REGULAR', 'Hora Normal'),
+    ('OVERTIME_50', 'Hora Extra 50%'),
+    ('OVERTIME_100', 'Hora Extra 100%')
+ON CONFLICT (code) DO NOTHING;
+
+-- Seed default Clients (Clientes)
+INSERT INTO public.clients (company_name, tax_id, billing_email, phone_number, payment_due_days, is_active)
+VALUES 
+    ('Logística Sur S.A.', '30-71123456-8', 'facturacion@logisticasur.com', '+54 11 4321-8765', 30, true),
+    ('Naviera del Puerto', '30-68987654-2', 'administracion@navieradelpuerto.com', '+54 11 5678-1234', 60, true),
+    ('Distribuidora Central', '30-54321098-7', 'pagos@distribuidoracentral.com', '+54 11 8765-4321', 15, true)
+ON CONFLICT (tax_id) DO NOTHING;
+
+

@@ -127,7 +127,13 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-04:** Corrección del error en alta de tarifas comerciales mediante la migración `20260804050000_seed_hour_types.sql` y auto-sembrado inteligente de tipos de hora (`REGULAR`, `OVERTIME_50`, `OVERTIME_100`) en `src/lib/services/rates.ts`, garantizando la existencia de los códigos de hora requeridos.
+- **2026-08-04:** Implementación completa del CRUD de Gestión de Clientes (`src/lib/services/clients.ts`) e integración en la vista `/clients` (lectura en tiempo real, búsqueda multidominio por Razón Social / CUIT / Email, filtrado por estado Activo/Inactivo, panel *Slide-over* de alta y edición con campos de plazo de pago en días, y diálogo modal de eliminación con confirmación). Se añadieron políticas RLS adicionales en `20260804040000_add_clients_rls.sql`.
+
+- **2026-08-04:** Implementación completa del CRUD de Tarifario Comercial (`src/lib/services/rates.ts`) e integración en la vista `/rates` (agrupación y cálculo dinámico de horas Normales, 50% y 100%, búsqueda en tiempo real, filtro por plazo de pago, panel *Slide-over* de alta/edición y modal de eliminación con confirmación). Se añadieron políticas RLS en `20260804030000_add_rates_rls.sql` y datos semilla para `hour_types` y `clients` en `supabase/seed.sql`.
+
 - **2026-08-04:** Implementación completa del CRUD de locaciones en Supabase (`src/lib/services/locations.ts`) e integración en la vista `/locations` (lectura en tiempo real, filtrado por texto y estado, panel *Slide-over* de alta/edición y modal de eliminación con confirmación).
+
 - **2026-08-04:** Adición de políticas RLS para la tabla `locations` en Supabase (`20260804020000_add_locations_rls.sql`), habilitando permisos de inserción, actualización, lectura y eliminación para usuarios autenticados con rol `admin` y lectura para `accounting_auditor`.
 - **2026-08-04:** Implementación integral del CRUD de empleados en Supabase (`src/lib/services/employees.ts`) e integración completa en la vista interactiva `/employees` (lectura en tiempo real, búsqueda multidominio, filtrado por puesto y estado, panel *Slide-over* de creación/edición y diálogo modal de eliminación con confirmación).
 - **2026-08-04:** Ajuste de permisos RLS y privilegios de esquema en Supabase (`20260804010000_fix_employees_rls.sql`) y carga inicial de semillas para puestos de trabajo en `supabase/seed.sql`.
