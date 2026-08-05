@@ -210,6 +210,61 @@ export interface Database {
           due_date: string
           created_at: string
         }
+        Insert: {
+          id?: string
+          proforma_number: string
+          client_id: string
+          fortnight_period: string
+          concept_type: 'general_hours' | 'shuttles' | 'export_tallymen'
+          status?: 'draft' | 'sent' | 'approved' | 'invoiced' | 'paid' | 'overdue'
+          subtotal?: number
+          total?: number
+          public_token?: string
+          issue_date?: string
+          due_date: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          proforma_number?: string
+          client_id?: string
+          fortnight_period?: string
+          concept_type?: 'general_hours' | 'shuttles' | 'export_tallymen'
+          status?: 'draft' | 'sent' | 'approved' | 'invoiced' | 'paid' | 'overdue'
+          subtotal?: number
+          total?: number
+          public_token?: string
+          issue_date?: string
+          due_date?: string
+          created_at?: string
+        }
+      }
+      proforma_details: {
+        Row: {
+          id: string
+          proforma_id: string
+          description: string
+          quantity: number
+          unit_price: number
+          subtotal: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          proforma_id: string
+          description: string
+          quantity: number
+          unit_price: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          proforma_id?: string
+          description?: string
+          quantity?: number
+          unit_price?: number
+          created_at?: string
+        }
       }
       tax_invoices: {
         Row: {
@@ -221,6 +276,26 @@ export interface Database {
           status: 'pending' | 'paid'
           invoice_date: string
           created_at: string
+        }
+        Insert: {
+          id?: string
+          proforma_id: string
+          invoice_number: string
+          pdf_storage_path?: string
+          invoiced_amount: number
+          status?: 'pending' | 'paid'
+          invoice_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          proforma_id?: string
+          invoice_number?: string
+          pdf_storage_path?: string
+          invoiced_amount?: number
+          status?: 'pending' | 'paid'
+          invoice_date?: string
+          created_at?: string
         }
       }
       hour_types: {
