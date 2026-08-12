@@ -6,7 +6,7 @@ export function Footer() {
       {/* Left Side: Copyright and Developer Info */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-[#424752] font-medium text-center sm:text-left">
-          2026 | MTS Gestión Logística - Desarrollo: Dibrand
+          2026 | MTS Gestión Logística - Desarrollo: <a href="https://www.dibrand.co" target="_blank" rel="noopener noreferrer">Dibrand</a>
         </span>
       </div>
 
