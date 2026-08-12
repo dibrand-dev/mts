@@ -161,7 +161,7 @@ export default function LoginPage() {
         {/* Developer Credit */}
         <div className="absolute bottom-8 text-center w-full">
           <p className="text-xs text-gray-400">
-            Desarrollado por Dibrand
+            Desarrollado por <a href="https://www.dibrand.co" target="_blank" rel="noopener noreferrer">Dibrand</a>
           </p>
         </div>
       </section>

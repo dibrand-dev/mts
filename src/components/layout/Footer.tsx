@@ -14,7 +14,7 @@ export function Footer() {
       <nav className="flex items-center gap-6">
         <a 
           className="text-xs text-[#424752] hover:text-[#004392] font-medium transition-colors duration-200" 
-          href="mailto:soporte@dibrand.com"
+          href="mailto:soporte@dibrand.co"
           target="_blank"
           rel="noopener noreferrer"
         >
