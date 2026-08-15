@@ -73,10 +73,8 @@ END $$;
 -- Seed default Positions (Puestos)
 INSERT INTO public.positions (name, requires_vehicle_bonus)
 VALUES 
-    ('Supervisor', true),
-    ('Estibador', false),
-    ('Guinchero', false),
-    ('Capataz', false)
+    ('Encargado', true),
+    ('Apuntador', false)
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed default Hour Types (Tipos de Hora)

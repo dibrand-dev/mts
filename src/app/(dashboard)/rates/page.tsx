@@ -292,6 +292,7 @@ export default function RatesPage() {
                 className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-sm text-[#0B1C30] appearance-none focus:outline-none focus:border-[#1E5BB4]"
               >
                 <option value="">Todos los Plazos</option>
+                <option value="7">7 Días</option>
                 <option value="15">15 Días</option>
                 <option value="30">30 Días</option>
                 <option value="60">60 Días</option>

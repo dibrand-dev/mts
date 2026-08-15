@@ -33,9 +33,9 @@ export default function DailyEntryPage() {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Ubicación / Muelle</label>
+            <label className="text-sm font-medium">Lugar de Trabajo / Muelle</label>
             <select className="w-full p-2 border-2 border-[#0F2547] rounded-lg bg-white text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]">
-              <option>Seleccionar Ubicación</option>
+              <option>Seleccionar Lugar de Trabajo</option>
               <option>Muelle Sur - Sitio 1</option>
               <option>Muelle Norte - Sitio 2</option>
             </select>
@@ -59,9 +59,8 @@ export default function DailyEntryPage() {
             <label className="text-sm font-medium">Función / Puesto</label>
             <select className="w-full p-2 border-2 border-[#0F2547] rounded-lg bg-white text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]">
               <option>Seleccionar Función</option>
-              <option>Capataz de Operaciones</option>
+              <option>Encargado</option>
               <option>Apuntador</option>
-              <option>Conductor / Chofer</option>
             </select>
           </div>
           <div className="md:col-span-2 flex flex-col gap-1">
@@ -113,7 +112,7 @@ export default function DailyEntryPage() {
               <tr className="hover:bg-slate-50 transition-colors">
                 <td className="p-3 pl-6 font-mono text-xs text-slate-500">LEG-1002</td>
                 <td className="p-3 font-medium">González, Juan Carlos</td>
-                <td className="p-3">Capataz de Operaciones</td>
+                <td className="p-3">Encargado</td>
                 <td className="p-3 text-center font-mono">8</td>
                 <td className="p-3 text-center font-mono">2</td>
                 <td className="p-3 text-center font-mono">0</td>

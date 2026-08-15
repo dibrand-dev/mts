@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ChevronDown, Plus, Edit2, Trash2, X, Loader2, AlertCircle } from 'lucide-react';
+import { Search, ChevronDown, Plus, Edit2, Trash2, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
   getLocations,
   createLocation,
@@ -14,6 +14,7 @@ export default function LocationsPage() {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,9 +35,13 @@ export default function LocationsPage() {
     code: '',
     name: '',
     port_city: '',
-    capacity: '',
     status: 'active' as 'active' | 'maintenance' | 'inactive',
   });
+
+  const showNotification = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
 
   const fetchData = async () => {
     try {
@@ -45,7 +50,7 @@ export default function LocationsPage() {
       const data = await getLocations();
       setLocations(data);
     } catch (err: any) {
-      setError(err.message || 'Error al cargar las locaciones');
+      setError(err.message || 'Error al cargar los lugares de trabajo');
     } finally {
       setIsLoading(false);
     }
@@ -61,7 +66,6 @@ export default function LocationsPage() {
       code: '',
       name: '',
       port_city: '',
-      capacity: '',
       status: 'active',
     });
     setFormError(null);
@@ -74,7 +78,6 @@ export default function LocationsPage() {
       code: loc.code || '',
       name: loc.name || '',
       port_city: loc.port_city || '',
-      capacity: loc.capacity || '',
       status: loc.status || 'active',
     });
     setFormError(null);
@@ -84,19 +87,15 @@ export default function LocationsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.code.trim()) {
-      setFormError('El código de la locación es requerido.');
+      setFormError('El código del lugar de trabajo es requerido.');
       return;
     }
     if (!formData.name.trim()) {
-      setFormError('El nombre de la locación es requerido.');
+      setFormError('El nombre del lugar de trabajo es requerido.');
       return;
     }
     if (!formData.port_city.trim()) {
-      setFormError('El puerto / ciudad es requerido.');
-      return;
-    }
-    if (!formData.capacity.trim()) {
-      setFormError('La capacidad es requerida.');
+      setFormError('El puerto o ciudad es requerido.');
       return;
     }
 
@@ -108,21 +107,23 @@ export default function LocationsPage() {
         code: formData.code.trim(),
         name: formData.name.trim(),
         port_city: formData.port_city.trim(),
-        capacity: formData.capacity.trim(),
+        capacity: '',
         status: formData.status,
       };
 
       if (editingLocation) {
         const updated = await updateLocation(editingLocation.id, payload);
         setLocations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        showNotification('Lugar de trabajo actualizado correctamente.');
       } else {
         const created = await createLocation(payload);
         setLocations((prev) => [created, ...prev]);
+        showNotification('Nuevo lugar de trabajo creado correctamente.');
       }
 
       setIsSlideoverOpen(false);
     } catch (err: any) {
-      setFormError(err.message || 'Ocurrió un error al guardar la locación');
+      setFormError(err.message || 'Ocurrió un error al guardar el lugar de trabajo');
     } finally {
       setIsSubmitting(false);
     }
@@ -135,6 +136,7 @@ export default function LocationsPage() {
       await deleteLocation(deletingLocation.id);
       setLocations((prev) => prev.filter((item) => item.id !== deletingLocation.id));
       setDeletingLocation(null);
+      showNotification('Lugar de trabajo eliminado con éxito.');
     } catch (err: any) {
       alert(`Error al eliminar: ${err.message}`);
     } finally {
@@ -171,7 +173,7 @@ export default function LocationsPage() {
       case 'maintenance':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-            Mantenimiento
+            En Mantenimiento
           </span>
         );
       case 'inactive':
@@ -185,23 +187,31 @@ export default function LocationsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto relative">
+    <div className="space-y-6 max-w-7xl mx-auto relative pb-10">
+      {/* Notifications */}
+      {successMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg flex items-center gap-2 shadow-xs transition-all">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+          <span className="text-sm font-medium">{successMsg}</span>
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B1C30]">Gestión de Locaciones</h1>
-          <p className="text-slate-500 text-sm mt-1">Administre muelles, almacenes y áreas de operaciones.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B1C30]">Gestión de Lugares de Trabajo</h1>
+          <p className="text-slate-500 text-sm mt-1">Administre predios, muelles, terminales y áreas de operaciones portuarias.</p>
         </div>
       </header>
 
       {/* Error alert */}
-      {error && (
+      {error && !isSlideoverOpen && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3 text-red-700 text-sm">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
           <button
             onClick={fetchData}
-            className="ml-auto underline text-xs font-semibold hover:text-red-900"
+            className="ml-auto underline text-xs font-semibold hover:text-red-900 cursor-pointer"
           >
             Reintentar
           </button>
@@ -213,7 +223,7 @@ export default function LocationsPage() {
         <div className="flex flex-col md:flex-row gap-4 items-end">
           {/* Search Input */}
           <div className="flex-1 w-full flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium" htmlFor="search-location">Buscar</label>
+            <label className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white" htmlFor="search-location">Buscar</label>
             <div className="relative">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#0F2547]" />
               <input
@@ -229,7 +239,7 @@ export default function LocationsPage() {
 
           {/* Status Filter Dropdown */}
           <div className="w-full md:w-64 flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium" htmlFor="filter-status">Estado</label>
+            <label className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white" htmlFor="filter-status">Estado</label>
             <div className="relative w-full">
               <select
                 id="filter-status"
@@ -239,7 +249,7 @@ export default function LocationsPage() {
               >
                 <option value="">Todos los estados</option>
                 <option value="active">Activo</option>
-                <option value="maintenance">Mantenimiento</option>
+                <option value="maintenance">En Mantenimiento</option>
                 <option value="inactive">Inactivo</option>
               </select>
               <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#0F2547]" />
@@ -250,11 +260,11 @@ export default function LocationsPage() {
           <div className="w-full md:w-auto">
             <button
               onClick={handleOpenCreate}
-              className="w-full md:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap"
+              className="w-full md:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap cursor-pointer"
               type="button"
             >
               <Plus className="h-4 w-4" />
-              <span>Nueva Locación</span>
+              <span>Nuevo Lugar de Trabajo</span>
             </button>
           </div>
         </div>
@@ -265,12 +275,12 @@ export default function LocationsPage() {
         {isLoading ? (
           <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
             <Loader2 className="h-8 w-8 animate-spin text-[#0EA5E9]" />
-            <p className="text-sm font-medium">Cargando locaciones...</p>
+            <p className="text-sm font-medium">Cargando lugares de trabajo...</p>
           </div>
         ) : filteredLocations.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
-            <p className="text-base font-semibold">No se encontraron locaciones</p>
-            <p className="text-xs text-slate-400 mt-1">Prueba cambiando los filtros de búsqueda o crea una nueva locación.</p>
+            <p className="text-base font-semibold">No se encontraron lugares de trabajo</p>
+            <p className="text-xs text-slate-400 mt-1">Prueba cambiando los filtros de búsqueda o crea un nuevo lugar de trabajo.</p>
           </div>
         ) : (
           <div className="overflow-x-auto w-full">
@@ -278,9 +288,8 @@ export default function LocationsPage() {
               <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
                 <tr>
                   <th className="py-3 px-4 pl-6 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Código</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Nombre</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Puerto/Ciudad</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Capacidad</th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Nombre del Lugar</th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Puerto / Ciudad</th>
                   <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Estado</th>
                   <th className="py-3 px-4 pr-6 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">Acciones</th>
                 </tr>
@@ -300,24 +309,21 @@ export default function LocationsPage() {
                     <td className="py-3 px-4 text-slate-700">
                       {loc.port_city}
                     </td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-600">
-                      {loc.capacity}
-                    </td>
                     <td className="py-3 px-4">
                       {getStatusBadge(loc.status)}
                     </td>
                     <td className="py-3 px-4 pr-6 text-right space-x-1 whitespace-nowrap">
                       <button
                         onClick={() => handleOpenEdit(loc)}
-                        className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors"
-                        title="Editar"
+                        className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                        title="Editar Lugar de Trabajo"
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => setDeletingLocation(loc)}
-                        className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                        title="Eliminar"
+                        className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Eliminar Lugar de Trabajo"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -330,7 +336,7 @@ export default function LocationsPage() {
         )}
       </section>
 
-      {/* Slide-over (Alta / Edición de Locación) */}
+      {/* Slide-over (Alta / Edición de Lugar de Trabajo) */}
       {isSlideoverOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
           <div
@@ -340,11 +346,11 @@ export default function LocationsPage() {
           <div className="relative w-screen max-w-md bg-[#0EA5E9] text-white shadow-xl z-50 flex flex-col h-full overflow-y-auto">
             <div className="p-6 border-b border-[#0F2547]/20 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">
-                {editingLocation ? 'Editar Locación' : 'Nueva Locación'}
+                {editingLocation ? 'Editar Lugar de Trabajo' : 'Nuevo Lugar de Trabajo'}
               </h2>
               <button
                 onClick={() => !isSubmitting && setIsSlideoverOpen(false)}
-                className="text-white hover:text-slate-200 p-1 rounded-md"
+                className="text-white hover:text-slate-200 p-1 rounded-md cursor-pointer"
               >
                 <X className="h-6 w-6" />
               </button>
@@ -352,8 +358,9 @@ export default function LocationsPage() {
 
             <form onSubmit={handleSubmit} className="p-6 flex-1 space-y-4">
               {formError && (
-                <div className="p-3 bg-red-600/90 text-white rounded-lg text-xs font-semibold">
-                  {formError}
+                <div className="p-3 bg-red-600/90 text-white rounded-lg text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{formError}</span>
                 </div>
               )}
 
@@ -363,14 +370,14 @@ export default function LocationsPage() {
                   type="text"
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  placeholder="Ej: LOC-001"
+                  placeholder="Ej: LDT-001"
                   required
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-white">Nombre Locación *</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white">Nombre del Lugar de Trabajo *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -387,26 +394,14 @@ export default function LocationsPage() {
                   type="text"
                   value={formData.port_city}
                   onChange={(e) => setFormData({ ...formData, port_city: e.target.value })}
-                  placeholder="Ej: Puerto Valparaíso"
+                  placeholder="Ej: Puerto Buenos Aires"
                   required
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-white">Capacidad *</label>
-                <input
-                  type="text"
-                  value={formData.capacity}
-                  onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
-                  placeholder="Ej: 5000 TEU"
-                  required
-                  className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-white">Estado</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white">Estado *</label>
                 <select
                   value={formData.status}
                   onChange={(e) =>
@@ -420,14 +415,21 @@ export default function LocationsPage() {
                 </select>
               </div>
 
-              <div className="flex justify-end pt-4">
+              <div className="flex justify-end pt-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsSlideoverOpen(false)}
+                  className="px-4 py-2.5 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg text-sm transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg shadow-sm transition-colors text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <span>{editingLocation ? 'Guardar Cambios' : 'Crear Locación'}</span>
+                  <span>{editingLocation ? 'Guardar Cambios' : 'Crear Lugar de Trabajo'}</span>
                 </button>
               </div>
             </form>
@@ -442,11 +444,16 @@ export default function LocationsPage() {
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
             onClick={() => !isDeleting && setDeletingLocation(null)}
           />
-          <div className="relative bg-white rounded-xl max-w-md w-full p-6 shadow-xl z-50 space-y-4 text-slate-800">
-            <h3 className="text-lg font-bold text-slate-900">¿Eliminar locación?</h3>
+          <div className="relative bg-white rounded-xl max-w-md w-full p-6 shadow-xl z-50 space-y-4 text-slate-800 border border-slate-200">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">¿Eliminar Lugar de Trabajo?</h3>
+            </div>
             <p className="text-sm text-slate-600">
-              ¿Estás seguro de que deseas eliminar la locación{' '}
-              <strong className="text-slate-900">{deletingLocation.name}</strong> ({deletingLocation.code})?
+              ¿Estás seguro de que deseas eliminar el lugar de trabajo{' '}
+              <strong className="text-slate-900">{deletingLocation.name}</strong> (Código: {deletingLocation.code})?
               Esta acción no se puede deshacer.
             </p>
             <div className="flex justify-end gap-3 pt-2">
@@ -454,7 +461,7 @@ export default function LocationsPage() {
                 type="button"
                 disabled={isDeleting}
                 onClick={() => setDeletingLocation(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-lg transition-colors"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-lg transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -462,7 +469,7 @@ export default function LocationsPage() {
                 type="button"
                 disabled={isDeleting}
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm rounded-lg transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
                 <span>Eliminar</span>

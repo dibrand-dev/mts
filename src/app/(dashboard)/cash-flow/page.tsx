@@ -9,7 +9,7 @@ export default function CashFlowPage() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Flujo de Caja</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Ingreso de Caja y Flujo de Caja</h1>
           <p className="text-slate-500 text-sm mt-1">Control de ingresos, egresos y saldo operativo</p>
         </div>
       </header>

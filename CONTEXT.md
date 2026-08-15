@@ -127,6 +127,11 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-15:** Implementación de requerimientos operativos:
+  1. Múltiples emails en Gestión de Clientes (`/clients`) mediante chips/tags interactivos que se agregan con coma (`,`) o Enter y se almacenan como texto separado por comas (`email1@mail.com,email2@mail.com`).
+  2. Opción de plazo de pago a 7 días en el alta/edición de clientes y en el filtro de tarifas comerciales (`/rates`).
+  3. Renombrado integral en toda la interfaz de usuario de "Locaciones" a "Lugares de Trabajo" (`Sidebar.tsx`, `/locations`, `/reports`, `/daily-entry`), asegurando 100% de coherencia en español y eliminando el campo/columna de capacidad.
+  4. Filtro interactivo de rango de fechas en Tablero Principal (`/`) y Cálculo de Sueldos (`/payroll`), configurando por defecto como fecha máxima el último día de la semana actual (domingo).
 - **2026-08-04:** Corrección del error en alta de tarifas comerciales mediante la migración `20260804050000_seed_hour_types.sql` y auto-sembrado inteligente de tipos de hora (`REGULAR`, `OVERTIME_50`, `OVERTIME_100`) en `src/lib/services/rates.ts`, garantizando la existencia de los códigos de hora requeridos.
 - **2026-08-04:** Implementación completa del CRUD de Gestión de Clientes (`src/lib/services/clients.ts`) e integración en la vista `/clients` (lectura en tiempo real, búsqueda multidominio por Razón Social / CUIT / Email, filtrado por estado Activo/Inactivo, panel *Slide-over* de alta y edición con campos de plazo de pago en días, y diálogo modal de eliminación con confirmación). Se añadieron políticas RLS adicionales en `20260804040000_add_clients_rls.sql`.
 

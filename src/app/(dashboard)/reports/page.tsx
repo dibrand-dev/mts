@@ -39,10 +39,10 @@ export default function ReportsPage() {
                 className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] appearance-none focus:outline-none focus:border-[#1E5BB4]"
               >
                 <option>Todos los módulos</option>
-                <option>Carga Diaria</option>
-                <option>Flujo de Caja</option>
+                <option>Carga Diaria de Horas</option>
+                <option>Ingreso de Caja y Flujo de Caja</option>
                 <option>Personal</option>
-                <option>Locaciones</option>
+                <option>Lugares de Trabajo</option>
               </select>
               <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#0F2547]" />
             </div>
@@ -103,7 +103,7 @@ export default function ReportsPage() {
               <tr className="hover:bg-slate-50 transition-colors">
                 <td className="p-3 pl-4 sm:pl-6 font-mono text-xs font-bold text-[#0F2547]">#REP-0091</td>
                 <td className="p-3 text-slate-600 text-xs">12/10/2026</td>
-                <td className="p-3 font-medium">Carga Diaria</td>
+                <td className="p-3 font-medium">Carga Diaria de Horas</td>
                 <td className="p-3 max-w-[200px] truncate" title="Resumen de horas buque Amazonas">Resumen de horas buque Amazonas</td>
                 <td className="p-3">Carlos Mendoza</td>
                 <td className="p-3">
@@ -120,7 +120,7 @@ export default function ReportsPage() {
               <tr className="bg-slate-50/50 hover:bg-slate-50 transition-colors">
                 <td className="p-3 pl-4 sm:pl-6 font-mono text-xs font-bold text-[#0F2547]">#REP-0092</td>
                 <td className="p-3 text-slate-600 text-xs">12/10/2026</td>
-                <td className="p-3 font-medium">Flujo de Caja</td>
+                <td className="p-3 font-medium">Ingreso de Caja y Flujo de Caja</td>
                 <td className="p-3 max-w-[200px] truncate" title="Balance Semanal Locación Norte">Balance Semanal Locación Norte</td>
                 <td className="p-3">Ana Ramírez</td>
                 <td className="p-3">
@@ -154,7 +154,7 @@ export default function ReportsPage() {
               <tr className="bg-slate-50/50 hover:bg-slate-50 transition-colors">
                 <td className="p-3 pl-4 sm:pl-6 font-mono text-xs font-bold text-[#0F2547]">#REP-0094</td>
                 <td className="p-3 text-slate-600 text-xs">10/10/2026</td>
-                <td className="p-3 font-medium">Locaciones</td>
+                <td className="p-3 font-medium">Lugares de Trabajo</td>
                 <td className="p-3 max-w-[200px] truncate" title="Inventario general Depósito Sur">Inventario general Depósito Sur</td>
                 <td className="p-3">Marta Silva</td>
                 <td className="p-3">
