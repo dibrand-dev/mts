@@ -637,7 +637,7 @@ export default function ClientsPage() {
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
                   <option value={7}>7 Días</option>
-                  <option value={15}>15 Días (Estándar)</option>
+                  <option value={15}>15 Días</option>
                   <option value={30}>30 Días</option>
                   <option value={60}>60 Días</option>
                   <option value={90}>90 Días</option>

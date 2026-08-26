@@ -91,21 +91,23 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 src/
 ├── app/
 │   ├── (dashboard)/                   # Route Group con App Shell compartida (Sidebar, TopNav, Footer)
-│   │   ├── layout.tsx                 # Contenedor maestro del Dashboard
-│   │   ├── page.tsx                   # Ruta raíz (/): Tablero Principal / Dashboard Operativo
-│   │   ├── cash-flow/                 # /cash-flow
-│   │   ├── change-password/           # /change-password
-│   │   ├── clients/                   # /clients
-│   │   ├── daily-entry/               # /daily-entry
-│   │   ├── employees/                 # /employees
-│   │   ├── invoicing/                 # /invoicing
-│   │   ├── locations/                 # /locations
-│   │   ├── payroll/                   # /payroll
-│   │   ├── rates/                     # /rates
-│   │   ├── reports/                   # /reports
-│   │   └── settings/                  # /settings
+│   │   ├── layout.tsx                 # Contenedor maestro del Dashboard (Metadata: Tablero Principal)
+│   │   ├── page.tsx                   # Ruta raíz (/): Tablero Principal & Flujo de Caja (stitch_mts/Dashboard)
+│   │   ├── cash-flow/                 # /cash-flow (page.tsx, layout.tsx)
+│   │   ├── change-password/           # /change-password (page.tsx, layout.tsx)
+│   │   ├── clients/                   # /clients (page.tsx, layout.tsx)
+│   │   ├── daily-entry/               # /daily-entry (page.tsx, layout.tsx) - Retención de turno y Finalizar Turno
+│   │   ├── employees/                 # /employees (page.tsx, layout.tsx) - Filtro de fechas y auditoría quincenal
+│   │   ├── invoicing/                 # /invoicing (page.tsx, layout.tsx) - Proformas automáticas 100% transaccionales
+│   │   ├── locations/                 # /locations (page.tsx, layout.tsx)
+│   │   ├── payroll/                   # /payroll (page.tsx, layout.tsx)
+│   │   ├── rates/                     # /rates (page.tsx, layout.tsx)
+│   │   ├── reports/                   # /reports (page.tsx, layout.tsx)
+│   │   └── settings/                  # /settings (page.tsx, layout.tsx)
 │   ├── login/
+│   │   ├── layout.tsx                 # Metadata: Iniciar Sesión
 │   │   └── page.tsx                   # Ruta /login aislada del App Shell
+│   ├── layout.tsx                     # Root Layout con plantilla de metadatos %s | MTS Gestión Logística
 │   └── globals.css                    # Variables CSS B2B y Tailwind v4
 ├── components/
 │   └── layout/
@@ -113,6 +115,13 @@ src/
 │       ├── TopNav.tsx                 # Barra superior maestra con buscador y desplegable
 │       └── Footer.tsx                 # Pie de página maestro (stitch_mts/pie-de-pagina)
 ├── lib/
+│   ├── services/
+│   │   ├── clients.ts                 # CRUD de Clientes
+│   │   ├── daily-entries.ts           # Turnos, horas transaccionales y cálculo automático
+│   │   ├── employees.ts               # CRUD de Empleados y auditoría de horas
+│   │   ├── invoicing.ts               # Proformas, facturación y cruce de tarifas
+│   │   ├── locations.ts               # CRUD de Lugares de Trabajo
+│   │   └── rates.ts                   # CRUD de Tarifario Comercial y tipos de hora
 │   └── supabase/
 │       ├── client.ts                  # createBrowserClient (@supabase/ssr)
 │       └── server.ts                  # createServerClient (@supabase/ssr)
@@ -127,6 +136,12 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-08-25:** Implementación de requerimientos clave de negocio y actualización de Dashboard:
+  1. **Optimización del Data Entry (Panel Slide-over y Retención de Sesión):** En `/daily-entry`, el formulario de imputación de personal se transformó en un panel **Slide-over lateral derecho** desplegable mediante el botón **"Cargar Horas"** (o *"Agregar"* / *"Cargar Primer Operario"*). Mantiene la retención de sesión de fecha, cliente, lugar y horas al imputar un registro para carga masiva ultra rápida con opciones *"Guardar y Seguir"* y *"Guardar y Cerrar"*. Se conserva el botón interactivo **"Finalizar Turno"** en la cabecera para resetear la memoria de sesión.
+  2. **Automatización Real de Proformas:** En `/invoicing`, se eliminó el input manual de subtotales. La liquidación de proforma se autocalcula de forma reactiva en tiempo real cruzando cliente + período seleccionado + horas transaccionales (`daily_staff_entries`) + tarifario comercial (`client_position_rates`), bloqueando la emisión si no existen horas cargadas.
+  3. **Buscadores Temporales y Auditoría de Empleados:** En `/employees`, se incorporó el filtro por rango de fechas (con presets quincenales Q1, Q2 y Mes) y la columna de resumen de horas trabajadas. Se añadió el panel modal interactivo **"Auditar Horas"** para inspeccionar la lista detallada de turnos por operario en el período quincenal y cotejar con la liquidación recibida.
+  4. **Rediseño del Dashboard según `stitch_mts/Dashboard`:** En `/`, se implementó la nueva interfaz con pestañas superiores (*Dashboard* y *Flujo de Caja*), tarjetas KPI estilizadas (*Saldo Banco*, *Total Facturado*, *Total Sueldos*, *Egresos Proyectados* ARCA/ARBA/Echeqs/Cheques/Servicios) y acordeones colapsables para *Proformas a Enviar*, *Facturas a Enviar* y *Facturas a Cobrar* con datos de prueba.
+  5. **Configuración de Metadatos y Títulos Semánticos de Página:** Se reemplazó el título por defecto *"Create Next App"* por una plantilla jerárquica `%s | MTS Gestión Logística` en `src/app/layout.tsx` y layouts dedicados en todas las rutas del sistema (`Carga Diaria de Horas`, `Gestión de Facturación`, `Cálculo de Sueldos`, `Tarifario Comercial`, `Ingreso y Flujo de Caja`, `Gestión de Personal`, `Lugares de Trabajo`, `Gestión de Clientes`, `Centro de Reportes`, `Configuración del Sistema`, `Modificación de Contraseña`, `Iniciar Sesión`).
 - **2026-08-15:** Implementación de requerimientos operativos:
   1. Múltiples emails en Gestión de Clientes (`/clients`) mediante chips/tags interactivos que se agregan con coma (`,`) o Enter y se almacenan como texto separado por comas (`email1@mail.com,email2@mail.com`).
   2. Opción de plazo de pago a 7 días en el alta/edición de clientes y en el filtro de tarifas comerciales (`/rates`).

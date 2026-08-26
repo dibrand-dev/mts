@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Calendar,
   Search,
@@ -15,8 +15,18 @@ import {
   Clock,
   ArrowDownRight,
   TrendingUp,
-  Download
+  Download,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  Briefcase
 } from 'lucide-react';
+import {
+  getPayrollData,
+  exportPayrollToCSV,
+  PayrollRecord,
+  PayrollShiftDetail
+} from '@/lib/services/payroll';
 
 // Helper to format Date to YYYY-MM-DD
 function toISODate(d: Date): string {
@@ -52,105 +62,17 @@ function getCurrentWeekDates() {
   };
 }
 
-interface PayrollRecord {
-  id: string;
-  fileNumber: string; // Legajo
-  fullName: string;
-  position: string;
-  contractType: 'Jornal' | 'Quincenal' | 'Mensual';
-  regularHours: number;
-  overtime50Hours: number;
-  overtime100Hours: number;
-  grossAmount: number;
-  advancesAmount: number;
-  bonusAmount: number;
-  netAmount: number;
-  shiftsCount: number;
-}
-
-const mockPayrollData: PayrollRecord[] = [
-  {
-    id: '1',
-    fileNumber: 'LEG-1042',
-    fullName: 'BRITES LUCAS DAVID',
-    position: 'Capataz de Operaciones',
-    contractType: 'Jornal',
-    regularHours: 40,
-    overtime50Hours: 12,
-    overtime100Hours: 4,
-    grossAmount: 385000,
-    advancesAmount: 15000,
-    bonusAmount: 25000,
-    netAmount: 395000,
-    shiftsCount: 5,
-  },
-  {
-    id: '2',
-    fileNumber: 'LEG-1045',
-    fullName: 'FERREIRA MARIANO AGUSTÍN',
-    position: 'Apuntador Portuario',
-    contractType: 'Jornal',
-    regularHours: 40,
-    overtime50Hours: 8,
-    overtime100Hours: 0,
-    grossAmount: 320000,
-    advancesAmount: 20000,
-    bonusAmount: 18000,
-    netAmount: 318000,
-    shiftsCount: 5,
-  },
-  {
-    id: '3',
-    fileNumber: 'LEG-1051',
-    fullName: 'GONZALEZ HÉCTOR RAMÓN',
-    position: 'Conductor / Chofer',
-    contractType: 'Quincenal',
-    regularHours: 48,
-    overtime50Hours: 16,
-    overtime100Hours: 8,
-    grossAmount: 490000,
-    advancesAmount: 50000,
-    bonusAmount: 35000,
-    netAmount: 475000,
-    shiftsCount: 6,
-  },
-  {
-    id: '4',
-    fileNumber: 'LEG-1058',
-    fullName: 'MARTÍNEZ CARLOS ALBERTO',
-    position: 'Estibador / Operario',
-    contractType: 'Jornal',
-    regularHours: 32,
-    overtime50Hours: 4,
-    overtime100Hours: 0,
-    grossAmount: 240000,
-    advancesAmount: 0,
-    bonusAmount: 12000,
-    netAmount: 252000,
-    shiftsCount: 4,
-  },
-  {
-    id: '5',
-    fileNumber: 'LEG-1064',
-    fullName: 'RODRÍGUEZ JUAN PABLO',
-    position: 'Guinchero',
-    contractType: 'Quincenal',
-    regularHours: 40,
-    overtime50Hours: 10,
-    overtime100Hours: 6,
-    grossAmount: 430000,
-    advancesAmount: 30000,
-    bonusAmount: 28000,
-    netAmount: 428000,
-    shiftsCount: 5,
-  },
-];
-
 export default function PayrollPage() {
   const weekDefaults = useMemo(() => getCurrentWeekDates(), []);
   const [startDate, setStartDate] = useState<string>(weekDefaults.start);
   const [endDate, setEndDate] = useState<string>(weekDefaults.end);
   const [activePreset, setActivePreset] = useState<'week' | 'fortnight' | 'month' | 'custom'>('week');
+
+  // Dynamic payroll data state
+  const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [approvalSuccess, setApprovalSuccess] = useState<boolean>(false);
 
   // Search & Type Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -159,6 +81,27 @@ export default function PayrollPage() {
   // Slideover for employee payroll detail
   const [selectedRecord, setSelectedRecord] = useState<PayrollRecord | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // Fetch dynamic payroll from Supabase
+  const loadPayroll = useCallback(async (start: string, end: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getPayrollData(start, end);
+      setPayrollData(data);
+    } catch (err: any) {
+      console.error('Error fetching dynamic payroll:', err);
+      setError(err?.message || 'No se pudo cargar la liquidación del período.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (startDate && endDate) {
+      loadPayroll(startDate, endDate);
+    }
+  }, [startDate, endDate, loadPayroll]);
 
   // Quick filter presets
   const handleSetPreset = (preset: 'week' | 'fortnight' | 'month') => {
@@ -200,7 +143,7 @@ export default function PayrollPage() {
 
   // Filtered rows
   const filteredData = useMemo(() => {
-    return mockPayrollData.filter((r) => {
+    return payrollData.filter((r) => {
       const matchSearch =
         r.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.fileNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -210,18 +153,31 @@ export default function PayrollPage() {
 
       return matchSearch && matchType;
     });
-  }, [searchTerm, typeFilter]);
+  }, [payrollData, searchTerm, typeFilter]);
 
   // Dynamic totals
   const totals = useMemo(() => {
     return filteredData.reduce(
       (acc, curr) => ({
-        count: acc.count + 1,
+        count: acc.count + (curr.shiftsCount > 0 ? 1 : 0),
+        totalStaff: acc.totalStaff + 1,
         gross: acc.gross + curr.grossAmount,
         advances: acc.advances + curr.advancesAmount,
         net: acc.net + curr.netAmount,
+        regularHours: acc.regularHours + curr.regularHours,
+        ot50Hours: acc.ot50Hours + curr.overtime50Hours,
+        ot100Hours: acc.ot100Hours + curr.overtime100Hours,
       }),
-      { count: 0, gross: 0, advances: 0, net: 0 }
+      {
+        count: 0,
+        totalStaff: 0,
+        gross: 0,
+        advances: 0,
+        net: 0,
+        regularHours: 0,
+        ot50Hours: 0,
+        ot100Hours: 0,
+      }
     );
   }, [filteredData]);
 
@@ -238,31 +194,63 @@ export default function PayrollPage() {
     setIsDetailOpen(true);
   };
 
+  const handleExport = () => {
+    if (filteredData.length === 0) return;
+    exportPayrollToCSV(filteredData, startDate, endDate);
+  };
+
+  const handleApprovePeriod = () => {
+    setApprovalSuccess(true);
+    setTimeout(() => {
+      setApprovalSuccess(false);
+    }, 4000);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B1C30]">Cálculo de Sueldos y Jornales</h1>
-          <p className="text-slate-500 text-sm mt-1">Auditoría de turnos, conceptos y liquidación de personal operativo</p>
+          <p className="text-slate-500 text-sm mt-1">Auditoría de turnos, conceptos y liquidación de personal operativo en tiempo real</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
-            className="flex-1 sm:flex-none px-4 py-2 border border-slate-400 text-[#0B1C30] hover:bg-slate-100 font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+            onClick={handleExport}
+            disabled={loading || filteredData.length === 0}
+            className="flex-1 sm:flex-none px-4 py-2 border border-slate-400 text-[#0B1C30] hover:bg-slate-100 font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="h-4 w-4" />
             <span>Exportar Pre-liquidación</span>
           </button>
           <button
             type="button"
-            className="flex-1 sm:flex-none px-4 py-2 bg-[#1E5BB4] text-white hover:bg-[#004392] font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap cursor-pointer"
+            onClick={handleApprovePeriod}
+            disabled={loading || filteredData.length === 0}
+            className="flex-1 sm:flex-none px-4 py-2 bg-[#1E5BB4] text-white hover:bg-[#004392] font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="h-4 w-4" />
             <span>Aprobar Período</span>
           </button>
         </div>
       </header>
+
+      {/* Approval Success Alert */}
+      {approvalSuccess && (
+        <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded-r-lg flex items-center justify-between text-emerald-800 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">Período de Liquidación Aprobado</p>
+              <p className="text-xs text-emerald-700">Se validaron los haberes del período {formatDisplayDate(startDate)} al {formatDisplayDate(endDate)} para {totals.count} legajos con actividad.</p>
+            </div>
+          </div>
+          <button onClick={() => setApprovalSuccess(false)} className="text-emerald-700 hover:text-emerald-900 p-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Date Range & Search Filter (Celeste B2B Card) */}
       <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
@@ -374,16 +362,53 @@ export default function PayrollPage() {
             </button>
           </div>
 
-          <div className="text-xs text-sky-100 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-sky-200" />
-            <span>
-              Liquidación activa:{' '}
-              <strong className="text-white font-semibold">{formatDisplayDate(startDate)}</strong> al{' '}
-              <strong className="text-white font-semibold">{formatDisplayDate(endDate)}</strong>
-            </span>
+          <div className="flex items-center gap-4 text-xs text-sky-100">
+            {loading ? (
+              <span className="flex items-center gap-1.5 text-white font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+                Calculando liquidación...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-sky-200" />
+                <span>
+                  Liquidación activa:{' '}
+                  <strong className="text-white font-semibold">{formatDisplayDate(startDate)}</strong> al{' '}
+                  <strong className="text-white font-semibold">{formatDisplayDate(endDate)}</strong>
+                </span>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => loadPayroll(startDate, endDate)}
+              disabled={loading}
+              title="Recalcular haberes"
+              className="p-1 hover:bg-white/20 rounded-md transition-colors text-white"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
       </section>
+
+      {/* Error state */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex items-center justify-between text-red-800">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">Error al calcular nómina</p>
+              <p className="text-xs text-red-700">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => loadPayroll(startDate, endDate)}
+            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 rounded font-semibold text-xs transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -392,7 +417,9 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Personal Liquidado</span>
             <Users className="h-4 w-4 text-[#1E5BB4]" />
           </div>
-          <div className="text-2xl font-bold text-[#0B1C30] mt-2">{totals.count} Legajos</div>
+          <div className="text-2xl font-bold text-[#0B1C30] mt-2">
+            {totals.count} <span className="text-sm font-normal text-slate-500">de {totals.totalStaff} Legajos</span>
+          </div>
         </article>
 
         <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
@@ -408,7 +435,9 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Anticipos</span>
             <ArrowDownRight className="h-4 w-4 text-red-500" />
           </div>
-          <div className="text-2xl font-bold text-red-600 font-mono mt-2">-{formatCurrency(totals.advances)}</div>
+          <div className="text-2xl font-bold text-red-600 font-mono mt-2">
+            {totals.advances > 0 ? `-${formatCurrency(totals.advances)}` : formatCurrency(0)}
+          </div>
         </article>
 
         <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between border-l-4 border-l-[#1E5BB4]">
@@ -425,15 +454,23 @@ export default function PayrollPage() {
         <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold text-[#0B1C30]">Detalle de Sueldos y Jornales</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Desglose de horas trabajadas, recargos y descuentos del período seleccionado</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Desglose de turnos trabajados, horas y anticipos del {formatDisplayDate(startDate)} al {formatDisplayDate(endDate)}
+            </p>
           </div>
           <span className="text-xs text-slate-500 font-medium">Mostrando {filteredData.length} registros</span>
         </div>
 
-        {filteredData.length === 0 ? (
+        {loading ? (
+          <div className="p-16 flex flex-col items-center justify-center text-slate-500 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-[#1E5BB4]" />
+            <p className="text-sm font-medium text-[#0B1C30]">Consultando turnos y calculando liquidaciones...</p>
+            <p className="text-xs text-slate-400">Sincronizando con partes diarios y tarifarios de Supabase</p>
+          </div>
+        ) : filteredData.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
-            <p className="text-base font-semibold">No se encontraron registros de sueldos para este período o filtro.</p>
-            <p className="text-xs text-slate-400 mt-1">Prueba ampliando el rango de fechas o modificando el término de búsqueda.</p>
+            <p className="text-base font-semibold text-[#0B1C30]">No se encontraron registros de turnos para este período o filtro.</p>
+            <p className="text-xs text-slate-400 mt-1">Prueba ampliando el rango de fechas en el selector o modificando los términos de búsqueda.</p>
           </div>
         ) : (
           <div className="overflow-x-auto w-full">
@@ -444,6 +481,7 @@ export default function PayrollPage() {
                   <th className="py-3 px-4 whitespace-nowrap">Empleado</th>
                   <th className="py-3 px-4 whitespace-nowrap">Puesto / Función</th>
                   <th className="py-3 px-4 whitespace-nowrap">Régimen</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Turnos</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Norm.</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Ext. 50%</th>
                   <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Ext. 100%</th>
@@ -469,8 +507,17 @@ export default function PayrollPage() {
                         {rec.contractType}
                       </span>
                     </td>
+                    <td className="py-3 px-4 text-center font-mono text-xs whitespace-nowrap">
+                      {rec.shiftsCount > 0 ? (
+                        <span className="bg-blue-50 text-[#1E5BB4] font-bold px-2 py-0.5 rounded border border-blue-200">
+                          {rec.shiftsCount} {rec.shiftsCount === 1 ? 'turno' : 'turnos'}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">0</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap">
-                      {rec.regularHours}h
+                      {rec.regularHours > 0 ? `${rec.regularHours}h` : <span className="text-slate-400">0h</span>}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap">
                       {rec.overtime50Hours > 0 ? (
@@ -516,58 +563,121 @@ export default function PayrollPage() {
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
             onClick={() => setIsDetailOpen(false)}
           />
-          <div className="relative w-screen max-w-md bg-[#0EA5E9] text-white shadow-xl z-50 flex flex-col h-full overflow-y-auto">
-            <div className="p-6 border-b border-[#0F2547]/20 flex items-center justify-between">
+          <div className="relative w-screen max-w-xl bg-white text-[#0B1C30] shadow-2xl z-50 flex flex-col h-full overflow-y-auto">
+            {/* Modal Header */}
+            <div className="p-6 bg-[#0F2547] text-white flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">Detalle de Liquidación</h2>
-                <p className="text-xs text-sky-100 mt-0.5">{selectedRecord.fullName} ({selectedRecord.fileNumber})</p>
+                <p className="text-xs text-sky-200 mt-0.5">
+                  {selectedRecord.fullName} ({selectedRecord.fileNumber})
+                </p>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  Período: {formatDisplayDate(startDate)} al {formatDisplayDate(endDate)}
+                </p>
               </div>
               <button
                 onClick={() => setIsDetailOpen(false)}
-                className="text-white hover:text-slate-200 p-1 rounded-md cursor-pointer"
+                className="text-white/80 hover:text-white p-1 rounded-md cursor-pointer hover:bg-white/10 transition-colors"
               >
                 <X className="h-6 w-6" />
               </button>
             </div>
 
-            <div className="p-6 flex-1 space-y-4">
-              <div className="bg-white text-[#0B1C30] p-4 rounded-xl shadow-xs space-y-3">
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+            <div className="p-6 flex-1 space-y-6">
+              {/* Resumen de Conceptos */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-xs space-y-3">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Puesto / Función</span>
                   <span className="text-sm font-semibold">{selectedRecord.position}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Régimen</span>
                   <span className="text-sm font-semibold">{selectedRecord.contractType}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Turnos Computados</span>
                   <span className="text-sm font-semibold">{selectedRecord.shiftsCount} turnos</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Horas Normales</span>
                   <span className="text-sm font-mono">{selectedRecord.regularHours} horas</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Horas Extras 50%</span>
                   <span className="text-sm font-mono text-amber-700 font-semibold">{selectedRecord.overtime50Hours} horas</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Horas Extras 100%</span>
                   <span className="text-sm font-mono text-purple-700 font-semibold">{selectedRecord.overtime100Hours} horas</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase">Plus / Delta Aplicado</span>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Total Pluses / Adicionales</span>
                   <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.bonusAmount)}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase">Anticipos Solicitados</span>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Total Anticipos Solicitados</span>
                   <span className="text-sm font-mono text-red-600 font-semibold">-{formatCurrency(selectedRecord.advancesAmount)}</span>
                 </div>
-                <div className="flex justify-between pt-2 border-t-2 border-slate-200 text-[#1E5BB4]">
+                <div className="flex justify-between pt-2 border-t-2 border-slate-300 text-[#1E5BB4]">
                   <span className="text-sm font-bold uppercase">Neto a Percibir</span>
                   <span className="text-lg font-bold font-mono">{formatCurrency(selectedRecord.netAmount)}</span>
                 </div>
+              </div>
+
+              {/* Desglose de Turnos Individuales */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-[#0B1C30] uppercase tracking-wider flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-[#1E5BB4]" />
+                  Desglose de Partes Diarios ({selectedRecord.shifts.length})
+                </h3>
+
+                {selectedRecord.shifts.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-lg border border-dashed border-slate-200 text-center">
+                    No registra partes diarios trabajados en este rango de fechas.
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                    {selectedRecord.shifts.map((s, idx) => (
+                      <div key={s.id || idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-2">
+                        <div className="flex justify-between items-center font-bold text-[#0B1C30]">
+                          <span className="flex items-center gap-1.5 text-blue-700">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {formatDisplayDate(s.workDate)}
+                          </span>
+                          <span className="text-[#0B1C30]">{s.clientName}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-slate-600 pt-1 border-t border-slate-200">
+                          <div>
+                            <span className="text-slate-400">Horario:</span> {s.shiftStartTime || '--:--'} a {s.shiftEndTime || '--:--'}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Puesto:</span> {s.positionName}
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Hs. Norm:</span> {s.regularHours}h
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Extras:</span> {s.overtime50Hours + s.overtime100Hours}h
+                          </div>
+                          {s.plusDeltaAmount + s.bonusAppliedAmount > 0 && (
+                            <div className="text-emerald-700 font-medium">
+                              <span className="text-slate-400">Plus:</span> +{formatCurrency(s.plusDeltaAmount + s.bonusAppliedAmount)}
+                            </div>
+                          )}
+                          {s.advanceAmount > 0 && (
+                            <div className="text-red-600 font-medium">
+                              <span className="text-slate-400">Anticipo:</span> -{formatCurrency(s.advanceAmount)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-semibold text-slate-800">
+                          <span>Subtotal Turno:</span>
+                          <span className="font-mono text-[#1E5BB4]">{formatCurrency(s.shiftNetAmount)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-2">

@@ -107,7 +107,6 @@ export default function LocationsPage() {
         code: formData.code.trim(),
         name: formData.name.trim(),
         port_city: formData.port_city.trim(),
-        capacity: '',
         status: formData.status,
       };
 

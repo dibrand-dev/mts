@@ -35,7 +35,6 @@ export interface Database {
           code: string
           name: string
           port_city: string
-          capacity: string
           status: 'active' | 'maintenance' | 'inactive'
           created_at: string
         }
@@ -44,7 +43,6 @@ export interface Database {
           code: string
           name: string
           port_city: string
-          capacity: string
           status?: 'active' | 'maintenance' | 'inactive'
           created_at?: string
         }
@@ -53,7 +51,6 @@ export interface Database {
           code?: string
           name?: string
           port_city?: string
-          capacity?: string
           status?: 'active' | 'maintenance' | 'inactive'
           created_at?: string
         }
@@ -174,6 +171,26 @@ export interface Database {
           logged_by: string
           created_at: string
         }
+        Insert: {
+          id?: string
+          work_date?: string
+          client_id: string
+          location_id?: string | null
+          total_vehicles_handled?: number
+          is_export_day?: boolean
+          logged_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          work_date?: string
+          client_id?: string
+          location_id?: string | null
+          total_vehicles_handled?: number
+          is_export_day?: boolean
+          logged_by?: string
+          created_at?: string
+        }
       }
       daily_staff_entries: {
         Row: {
@@ -181,7 +198,9 @@ export interface Database {
           daily_work_log_id: string
           employee_id: string
           position_id: string
+          shift_start_date: string
           shift_start_time: string
+          shift_end_date: string
           shift_end_time: string
           regular_hours: number
           overtime_50_hours: number
@@ -193,6 +212,46 @@ export interface Database {
           is_day_off: boolean
           bonus_applied_amount: number
           created_at: string
+        }
+        Insert: {
+          id?: string
+          daily_work_log_id: string
+          employee_id: string
+          position_id: string
+          shift_start_date?: string
+          shift_start_time: string
+          shift_end_date?: string
+          shift_end_time: string
+          regular_hours?: number
+          overtime_50_hours?: number
+          overtime_100_hours?: number
+          shuttles_count?: number
+          plus_delta_amount?: number
+          meal_allowance_count?: number
+          advance_payment_amount?: number
+          is_day_off?: boolean
+          bonus_applied_amount?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          daily_work_log_id?: string
+          employee_id?: string
+          position_id?: string
+          shift_start_date?: string
+          shift_start_time?: string
+          shift_end_date?: string
+          shift_end_time?: string
+          regular_hours?: number
+          overtime_50_hours?: number
+          overtime_100_hours?: number
+          shuttles_count?: number
+          plus_delta_amount?: number
+          meal_allowance_count?: number
+          advance_payment_amount?: number
+          is_day_off?: boolean
+          bonus_applied_amount?: number
+          created_at?: string
         }
       }
       proformas: {

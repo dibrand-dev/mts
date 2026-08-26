@@ -33,7 +33,7 @@ BEGIN
             admin_user_id,
             'authenticated',
             'authenticated',
-            'admin@mtscaetano.com',
+            'admin@mtslogistics.com.ar',
             user_encrypted_password,
             NOW(),
             '',
@@ -70,6 +70,17 @@ BEGIN
     END IF;
 END $$;
 
+-- Seed default Clients (Clientes con días de vencimiento)
+INSERT INTO public.clients (company_name, tax_id, billing_email, phone_number, payment_due_days, is_active)
+VALUES 
+    ('CAT ARGENTINA SA', '30-70812345-1', 'facturacion@catargentina.com.ar', '+54 11 4300-1111', 30, true),
+    ('DELTA DOCK SA', '30-70987654-2', 'administracion@deltadock.com.ar', '+54 11 4300-2222', 15, true),
+    ('COOPTACORD', '30-71122334-3', 'finanzas@cooptacord.com.ar', '+54 11 4300-3333', 7, true),
+    ('SERGIO DANCHUK', '20-22334455-4', 'sdanchuk@danchuk.com.ar', '+54 11 4300-4444', 15, true)
+ON CONFLICT (tax_id) DO UPDATE SET 
+    company_name = EXCLUDED.company_name,
+    payment_due_days = EXCLUDED.payment_due_days;
+
 -- Seed default Positions (Puestos)
 INSERT INTO public.positions (name, requires_vehicle_bonus)
 VALUES 
@@ -85,12 +96,53 @@ VALUES
     ('OVERTIME_100', 'Hora Extra 100%')
 ON CONFLICT (code) DO NOTHING;
 
--- Seed default Clients (Clientes)
-INSERT INTO public.clients (company_name, tax_id, billing_email, phone_number, payment_due_days, is_active)
+-- Seed default Locations (Ubicaciones / Lugares de Trabajo)
+INSERT INTO public.locations (code, name, port_city, status)
 VALUES 
-    ('Logística Sur S.A.', '30-71123456-8', 'facturacion@logisticasur.com', '+54 11 4321-8765', 30, true),
-    ('Naviera del Puerto', '30-68987654-2', 'administracion@navieradelpuerto.com', '+54 11 5678-1234', 60, true),
-    ('Distribuidora Central', '30-54321098-7', 'pagos@distribuidoracentral.com', '+54 11 8765-4321', 15, true)
-ON CONFLICT (tax_id) DO NOTHING;
+    ('LOC-001', 'Terminal Muelle Norte', 'Puerto Buenos Aires', 'active'),
+    ('LOC-002', 'Muelle Fiscal Sur', 'Puerto Dock Sud', 'active')
+ON CONFLICT (code) DO NOTHING;
+
+-- Seed default Employees (Personal)
+DO $$
+DECLARE
+    encargado_id UUID;
+    apuntador_id UUID;
+BEGIN
+    SELECT id INTO encargado_id FROM public.positions WHERE name = 'Encargado' LIMIT 1;
+    SELECT id INTO apuntador_id FROM public.positions WHERE name = 'Apuntador' LIMIT 1;
+
+    INSERT INTO public.employees (national_id, file_number, tax_id, full_name, default_position_id, phone_number, status)
+    VALUES 
+        ('34567890', 'LEG-1042', '20-34567890-9', 'BRITES LUCAS DAVID', encargado_id, '+54 11 5555-0101', 'active'),
+        ('35678901', 'LEG-1043', '20-35678901-9', 'BELO BRUNO JOAQUIN', apuntador_id, '+54 11 5555-0102', 'active'),
+        ('36789012', 'LEG-1044', '27-36789012-4', 'SUAREZ ROMINA', apuntador_id, '+54 11 5555-0103', 'active'),
+        ('37890123', 'LEG-1045', '27-37890123-4', 'MORALES ROSANA LORENA', apuntador_id, '+54 11 5555-0104', 'active'),
+        ('38901234', 'LEG-1046', '27-38901234-4', 'ARENA CECILIA', apuntador_id, '+54 11 5555-0105', 'active')
+    ON CONFLICT (national_id) DO NOTHING;
+
+    -- Seed Client Commercial Rates (Tarifario Comercial: Normal, 50%, 100%)
+    INSERT INTO public.client_position_rates (client_id, position_id, hour_type_id, hourly_rate, effective_from)
+    SELECT 
+        c.id as client_id,
+        p.id as position_id,
+        ht.id as hour_type_id,
+        CASE 
+            WHEN p.name = 'Encargado' AND ht.code = 'REGULAR' THEN 10777.06
+            WHEN p.name = 'Encargado' AND ht.code = 'OVERTIME_50' THEN 16165.60
+            WHEN p.name = 'Encargado' AND ht.code = 'OVERTIME_100' THEN 21554.13
+            WHEN p.name = 'Apuntador' AND ht.code = 'REGULAR' THEN 8983.68
+            WHEN p.name = 'Apuntador' AND ht.code = 'OVERTIME_50' THEN 13475.53
+            WHEN p.name = 'Apuntador' AND ht.code = 'OVERTIME_100' THEN 17967.37
+            ELSE 10000.00
+        END as hourly_rate,
+        CURRENT_DATE as effective_from
+    FROM public.clients c
+    CROSS JOIN public.positions p
+    CROSS JOIN public.hour_types ht
+    ON CONFLICT (client_id, position_id, hour_type_id, effective_from) DO UPDATE SET
+        hourly_rate = EXCLUDED.hourly_rate;
+END $$;
+
 
 

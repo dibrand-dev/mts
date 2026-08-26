@@ -1,6 +1,11 @@
+import type { Metadata } from 'next';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopNav } from '@/components/layout/TopNav';
 import { Footer } from '@/components/layout/Footer';
+
+export const metadata: Metadata = {
+  title: 'Tablero Principal',
+};
 
 export default function DashboardLayout({
   children,
