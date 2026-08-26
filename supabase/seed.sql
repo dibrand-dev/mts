@@ -1,4 +1,6 @@
 -- Seed script for local Supabase development environment
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
 -- Seed default Admin user into auth.users and auth.identities
 
 DO $$
@@ -7,7 +9,7 @@ DECLARE
     user_encrypted_password TEXT;
 BEGIN
     -- Password hash for 'Admin123!' generated using pgcrypto extension
-    user_encrypted_password := crypt('Admin123!', gen_salt('bf'));
+    user_encrypted_password := extensions.crypt('Admin123!', extensions.gen_salt('bf'));
 
     -- Insert Admin into auth.users if not exists
     IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = admin_user_id) THEN

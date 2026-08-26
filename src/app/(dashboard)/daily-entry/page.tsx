@@ -88,6 +88,7 @@ export default function DailyEntryPage() {
   const [submittingEntry, setSubmittingEntry] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [slideoverSuccess, setSlideoverSuccess] = useState<string | null>(null);
 
   // Slideover & Form State
   const [isSlideoverOpen, setIsSlideoverOpen] = useState<boolean>(false);
@@ -419,27 +420,41 @@ export default function DailyEntryPage() {
 
       if (editingEntryId) {
         await updateStaffEntry(editingEntryId, payload);
+        const successMsg = 'Registro de personal actualizado correctamente.';
         setNotification({
           type: 'success',
-          message: 'Registro de personal actualizado correctamente.',
+          message: successMsg,
         });
-        setIsSlideoverOpen(false);
-      } else {
-        await addStaffEntryToWorkLog(workLog.id, payload);
-        setNotification({
-          type: 'success',
-          message: 'Horas cargadas exitosamente.',
-        });
-
-        // Reset employee fields & close slideover
+        setSlideoverSuccess(successMsg);
+        setEditingEntryId(null);
         setSelectedEmployeeId('');
+        setEmployeeSearchTerm('');
         setPlusDeltaAmount('0');
         setShuttlesCount('0');
         setMealAllowanceCount('0');
         setIsDayOff(false);
         setAdvancePaymentAmount('0');
         setIsManualHoursMode(false);
-        setIsSlideoverOpen(false);
+      } else {
+        await addStaffEntryToWorkLog(workLog.id, payload);
+        const empObj = employees.find((e) => e.id === selectedEmployeeId);
+        const empName = empObj ? empObj.full_name : 'Personal';
+        const successMsg = `¡Horas cargadas exitosamente para ${empName}! Puedes continuar cargando otro personal.`;
+        setNotification({
+          type: 'success',
+          message: `Horas cargadas exitosamente para ${empName}.`,
+        });
+        setSlideoverSuccess(successMsg);
+
+        // Reset employee fields & keep slideover open for next employee
+        setSelectedEmployeeId('');
+        setEmployeeSearchTerm('');
+        setPlusDeltaAmount('0');
+        setShuttlesCount('0');
+        setMealAllowanceCount('0');
+        setIsDayOff(false);
+        setAdvancePaymentAmount('0');
+        setIsManualHoursMode(false);
       }
 
       await loadLogs();
