@@ -315,7 +315,7 @@ export default function EmployeesPage() {
   const isDateRangeActive = Boolean(fromDate || toDate);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto relative">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>

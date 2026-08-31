@@ -277,7 +277,7 @@ export default function ClientsPage() {
   }, [clients, searchTerm, statusFilter]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto relative pb-10">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
       {/* Notifications */}
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg flex items-center gap-2 shadow-xs transition-all">

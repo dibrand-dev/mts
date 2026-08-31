@@ -207,7 +207,7 @@ export default function PayrollPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 pb-10">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
