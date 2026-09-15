@@ -105,6 +105,41 @@ export interface Database {
           created_at: string
         }
       }
+      cash_movements: {
+        Row: {
+          id: string
+          movement_date: string
+          type: 'income' | 'expense'
+          area: string
+          detail: string
+          amount: number
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          movement_date?: string
+          type?: 'income' | 'expense'
+          area: string
+          detail: string
+          amount: number
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          movement_date?: string
+          type?: 'income' | 'expense'
+          area?: string
+          detail?: string
+          amount?: number
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+      }
       positions: {
         Row: {
           id: string

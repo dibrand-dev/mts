@@ -51,6 +51,7 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 - `employees`: `national_id` (DNI), `file_number` (Legajo), `tax_id` (CUIL), `full_name`, `default_position_id`, `phone_number`, `status`.
 - `expense_categories`: `name`, `type`.
 - `expenses`: `category_id`, `description`, `amount`, `expense_date`.
+- `cash_movements`: `movement_date`, `type` (`income` | `expense`), `area`, `detail`, `amount`, `created_by`.
 
 ### 3. Operaciones Diarias (Transaccional)
 - `daily_work_logs`: `work_date`, `client_id`, `location_id`, `total_vehicles_handled`, `is_export_day` (boolean), `logged_by`.
@@ -116,6 +117,7 @@ src/
 │       └── Footer.tsx                 # Pie de página maestro (stitch_mts/pie-de-pagina)
 ├── lib/
 │   ├── services/
+│   │   ├── cash-flow.ts               # CRUD de Movimientos de Flujo de Caja
 │   │   ├── clients.ts                 # CRUD de Clientes
 │   │   ├── daily-entries.ts           # Turnos, horas transaccionales y cálculo automático
 │   │   ├── employees.ts               # CRUD de Empleados y auditoría de horas
@@ -136,6 +138,10 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-09-03:** Implementación integral del Formulario y Módulo de Ingreso de Flujo de Caja (`/cash-flow`):
+  1. **Persistencia Real en Supabase:** Creación de la migración `20260903000000_add_cash_movements.sql`, enum `cash_movement_type` (`income` | `expense`), tabla `cash_movements` con RLS para `admin` y `accounting_auditor`, y datos semilla.
+  2. **Capa de Servicios Tipada:** Implementación de `src/lib/services/cash-flow.ts` (`getCashMovements`, `createCashMovement`, `updateCashMovement`, `deleteCashMovement`) y tipado estricto en `database.types.ts`.
+  3. **Formulario Slide-over y UX de Flujo de Caja:** Integración en tiempo real del formulario B2B (`#0EA5E9`, inputs blancos con bordes oscuros `#0F2547`), soporte para altas y ediciones de ingresos y egresos, validaciones, modal interactivo de confirmación de eliminación, tarjetas KPI superiores (*Total Ingresos*, *Total Egresos*, *Saldo Operativo*) y cálculo progresivo de saldo acumulativo.
 - **2026-08-25:** Implementación de requerimientos clave de negocio y actualización de Dashboard:
   1. **Optimización del Data Entry (Panel Slide-over y Retención de Sesión):** En `/daily-entry`, el formulario de imputación de personal se transformó en un panel **Slide-over lateral derecho** desplegable mediante el botón **"Cargar Horas"** (o *"Agregar"* / *"Cargar Primer Operario"*). Mantiene la retención de sesión de fecha, cliente, lugar y horas al imputar un registro para carga masiva ultra rápida con opciones *"Guardar y Seguir"* y *"Guardar y Cerrar"*. Se conserva el botón interactivo **"Finalizar Turno"** en la cabecera para resetear la memoria de sesión.
   2. **Automatización Real de Proformas:** En `/invoicing`, se eliminó el input manual de subtotales. La liquidación de proforma se autocalcula de forma reactiva en tiempo real cruzando cliente + período seleccionado + horas transaccionales (`daily_staff_entries`) + tarifario comercial (`client_position_rates`), bloqueando la emisión si no existen horas cargadas.

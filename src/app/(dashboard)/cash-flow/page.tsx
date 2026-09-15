@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Edit2,
@@ -10,125 +10,149 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
-  DollarSign,
   TrendingUp,
   TrendingDown,
-  ArrowDownRight,
-  ArrowUpRight
+  Wallet,
+  Loader2
 } from 'lucide-react';
-
-interface CashMovement {
-  id: string;
-  date: string;
-  type: 'ingreso' | 'egreso';
-  area: string;
-  detail: string;
-  amount: number;
-}
-
-const INITIAL_MOVEMENTS: CashMovement[] = [
-  {
-    id: 'MOV-001',
-    date: '2026-10-15',
-    type: 'ingreso',
-    area: 'Cobros',
-    detail: 'Factura #4589 - Cliente A',
-    amount: 12500,
-  },
-  {
-    id: 'MOV-002',
-    date: '2026-10-14',
-    type: 'egreso',
-    area: 'Impuestos',
-    detail: 'Pago IVA Septiembre',
-    amount: 4200,
-  },
-  {
-    id: 'MOV-003',
-    date: '2026-10-12',
-    type: 'egreso',
-    area: 'Sueldos',
-    detail: 'Nómina Quincenal',
-    amount: 28400,
-  },
-  {
-    id: 'MOV-004',
-    date: '2026-10-10',
-    type: 'ingreso',
-    area: 'Cobros',
-    detail: 'Factura #4588 - Cliente B',
-    amount: 8900,
-  },
-  {
-    id: 'MOV-005',
-    date: '2026-10-08',
-    type: 'egreso',
-    area: 'Proveedores',
-    detail: 'Mantenimiento Flota',
-    amount: 5150,
-  },
-];
+import {
+  getCashMovements,
+  createCashMovement,
+  updateCashMovement,
+  deleteCashMovement,
+  CashMovementRow
+} from '@/lib/services/cash-flow';
 
 export default function CashFlowPage() {
-  const [movements, setMovements] = useState<CashMovement[]>(INITIAL_MOVEMENTS);
-  const [initialBaseBalance] = useState<number>(140000);
+  const [movements, setMovements] = useState<CashMovementRow[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Notifications
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
+  const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense'>('all');
 
   // Slideover & Form state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingMovement, setEditingMovement] = useState<CashMovementRow | null>(null);
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formType, setFormType] = useState<'ingreso' | 'egreso'>('ingreso');
-  const [formArea, setFormArea] = useState('');
+  const [formType, setFormType] = useState<'income' | 'expense'>('income');
+  const [formArea, setFormArea] = useState('Cobros');
   const [formDetail, setFormDetail] = useState('');
   const [formAmount, setFormAmount] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Delete Modal state
+  const [movementToDelete, setMovementToDelete] = useState<CashMovementRow | null>(null);
+
+  // Base balance for ledger calculation
+  const initialBaseBalance = 0;
+
+  // Load data from Supabase on mount
+  useEffect(() => {
+    let isCancelled = false;
+
+    getCashMovements()
+      .then((data) => {
+        if (!isCancelled) {
+          setMovements(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!isCancelled) {
+          console.error('Error loading cash movements:', err);
+          const msg = err instanceof Error ? err.message : 'Error al conectar con la base de datos de flujo de caja.';
+          setNotification({ type: 'error', message: msg });
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  // KPIs Totals
+  const { totalIncome, totalExpense, netBalance } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    for (const m of movements) {
+      const amt = Number(m.amount) || 0;
+      if (m.type === 'income') inc += amt;
+      else exp += amt;
+    }
+    return {
+      totalIncome: inc,
+      totalExpense: exp,
+      netBalance: inc - exp,
+    };
+  }, [movements]);
 
   // Filtered movements
   const filteredMovements = useMemo(() => {
     return movements.filter((m) => {
-      if (fromDate && m.date < fromDate) return false;
-      if (toDate && m.date > toDate) return false;
+      if (fromDate && m.movement_date < fromDate) return false;
+      if (toDate && m.movement_date > toDate) return false;
       if (selectedArea && selectedArea !== 'Todas' && m.area.toLowerCase() !== selectedArea.toLowerCase()) {
+        return false;
+      }
+      if (selectedType !== 'all' && m.type !== selectedType) {
         return false;
       }
       return true;
     });
-  }, [movements, fromDate, toDate, selectedArea]);
+  }, [movements, fromDate, toDate, selectedArea, selectedType]);
 
   // Running balance calculation
+  // Order chronologically (ASC) to assign running balance, then reverse to display newest first
   const movementsWithBalance = useMemo(() => {
-    let current = initialBaseBalance;
-    // Calculate reverse cumulative or progressive balance
-    return filteredMovements.map((m) => {
-      const effect = m.type === 'ingreso' ? m.amount : -m.amount;
-      current += effect;
-      return {
-        ...m,
-        balanceAfter: current,
-      };
+    const chronological = [...filteredMovements].sort((a, b) => {
+      if (a.movement_date !== b.movement_date) {
+        return a.movement_date.localeCompare(b.movement_date);
+      }
+      return (a.created_at || '').localeCompare(b.created_at || '');
     });
+
+    let runningBal = initialBaseBalance;
+    const withBal = [];
+    for (const m of chronological) {
+      const effect = m.type === 'income' ? Number(m.amount) : -Number(m.amount);
+      runningBal += effect;
+      withBal.push({
+        ...m,
+        balanceAfter: runningBal,
+      });
+    }
+
+    return withBal.reverse();
   }, [filteredMovements, initialBaseBalance]);
 
-  const handleOpenNew = () => {
-    setEditingId(null);
+  const handleOpenNew = (defaultType: 'income' | 'expense' = 'income') => {
+    setEditingMovement(null);
     setFormDate(new Date().toISOString().split('T')[0]);
-    setFormType('ingreso');
-    setFormArea('Cobros');
+    setFormType(defaultType);
+    setFormArea(defaultType === 'income' ? 'Cobros' : 'Proveedores');
     setFormDetail('');
     setFormAmount('');
     setFormError(null);
     setIsSlideoverOpen(true);
   };
 
-  const handleOpenEdit = (m: CashMovement) => {
-    setEditingId(m.id);
-    setFormDate(m.date);
+  const handleOpenEdit = (m: CashMovementRow) => {
+    setEditingMovement(m);
+    setFormDate(m.movement_date);
     setFormType(m.type);
     setFormArea(m.area);
     setFormDetail(m.detail);
@@ -137,14 +161,7 @@ export default function CashFlowPage() {
     setIsSlideoverOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('¿Deseas eliminar este movimiento de caja?')) return;
-    setMovements((prev) => prev.filter((m) => m.id !== id));
-    setNotification({ type: 'success', message: 'Movimiento eliminado correctamente.' });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleSaveMovement = (e: React.FormEvent) => {
+  const handleSaveMovement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formDate) {
       setFormError('Por favor ingresa la fecha del movimiento.');
@@ -164,37 +181,65 @@ export default function CashFlowPage() {
       return;
     }
 
-    if (editingId) {
-      setMovements((prev) =>
-        prev.map((m) =>
-          m.id === editingId
-            ? {
-                ...m,
-                date: formDate,
-                type: formType,
-                area: formArea,
-                detail: formDetail.trim(),
-                amount: parsedAmount,
-              }
-            : m
-        )
-      );
-      setNotification({ type: 'success', message: 'Movimiento actualizado correctamente.' });
-    } else {
-      const newMovement: CashMovement = {
-        id: `MOV-${String(movements.length + 1).padStart(3, '0')}`,
-        date: formDate,
-        type: formType,
-        area: formArea,
-        detail: formDetail.trim(),
-        amount: parsedAmount,
-      };
-      setMovements((prev) => [newMovement, ...prev]);
-      setNotification({ type: 'success', message: 'Nuevo movimiento guardado exitosamente.' });
-    }
+    try {
+      setIsSubmitting(true);
+      setFormError(null);
 
-    setIsSlideoverOpen(false);
-    setTimeout(() => setNotification(null), 3500);
+      if (editingMovement) {
+        const updated = await updateCashMovement(editingMovement.id, {
+          movement_date: formDate,
+          type: formType,
+          area: formArea,
+          detail: formDetail.trim(),
+          amount: parsedAmount,
+        });
+
+        setMovements((prev) =>
+          prev.map((m) => (m.id === editingMovement.id ? updated : m))
+        );
+        showNotification('success', 'Movimiento de caja actualizado correctamente.');
+      } else {
+        const newRecord = await createCashMovement({
+          movement_date: formDate,
+          type: formType,
+          area: formArea,
+          detail: formDetail.trim(),
+          amount: parsedAmount,
+        });
+
+        setMovements((prev) => [newRecord, ...prev]);
+        showNotification(
+          'success',
+          `Nuevo ${formType === 'income' ? 'ingreso' : 'egreso'} registrado exitosamente.`
+        );
+      }
+
+      setIsSlideoverOpen(false);
+    } catch (err: unknown) {
+      console.error('Error saving movement:', err);
+      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
+      setFormError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!movementToDelete) return;
+
+    try {
+      setIsDeleting(true);
+      await deleteCashMovement(movementToDelete.id);
+      setMovements((prev) => prev.filter((m) => m.id !== movementToDelete.id));
+      showNotification('success', 'Movimiento eliminado correctamente.');
+      setMovementToDelete(null);
+    } catch (err: unknown) {
+      console.error('Error deleting movement:', err);
+      const msg = err instanceof Error ? err.message : 'Error al eliminar el movimiento.';
+      showNotification('error', msg);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const formatCurrency = (val: number) => {
@@ -207,9 +252,71 @@ export default function CashFlowPage() {
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Flujo de Caja</h1>
-          <p className="text-slate-500 text-sm mt-1">Control de ingresos, egresos y saldo operativo</p>
+          <p className="text-slate-500 text-sm mt-1">Control de ingresos, egresos y saldo operativo en tiempo real</p>
+        </div>
+
+        {/* Quick action buttons */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => handleOpenNew('income')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+            type="button"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Nuevo Ingreso</span>
+          </button>
+          <button
+            onClick={() => handleOpenNew('expense')}
+            className="bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+            type="button"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Nuevo Movimiento</span>
+          </button>
         </div>
       </header>
+
+      {/* KPI Cards */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Total Ingresos */}
+        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Ingresos</span>
+            <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-2xl font-bold font-mono text-emerald-700">{formatCurrency(totalIncome)}</p>
+        </article>
+
+        {/* Total Egresos */}
+        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Egresos</span>
+            <span className="p-1.5 bg-red-50 text-red-600 rounded-lg">
+              <TrendingDown className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-2xl font-bold font-mono text-red-600">{formatCurrency(totalExpense)}</p>
+        </article>
+
+        {/* Saldo Neto */}
+        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Saldo Operativo</span>
+            <span className="p-1.5 bg-blue-50 text-[#1E5BB4] rounded-lg">
+              <Wallet className="h-4 w-4" />
+            </span>
+          </div>
+          <p
+            className={`text-2xl font-bold font-mono ${
+              netBalance >= 0 ? 'text-[#0B1C30]' : 'text-red-600'
+            }`}
+          >
+            {formatCurrency(netBalance)}
+          </p>
+        </article>
+      </section>
 
       {/* Notifications Alert */}
       {notification && (
@@ -262,6 +369,20 @@ export default function CashFlowPage() {
             />
           </div>
 
+          {/* Tipo de Movimiento */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs sm:text-sm font-semibold text-white">Tipo</label>
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as 'all' | 'income' | 'expense')}
+              className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+            >
+              <option value="all">Todos los tipos</option>
+              <option value="income">Solo Ingresos (+)</option>
+              <option value="expense">Solo Egresos (-)</option>
+            </select>
+          </div>
+
           {/* Área Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs sm:text-sm font-semibold text-white">Área</label>
@@ -270,25 +391,13 @@ export default function CashFlowPage() {
               onChange={(e) => setSelectedArea(e.target.value)}
               className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
             >
-              <option value="">Todas</option>
-              <option value="Sueldos">Sueldos</option>
-              <option value="Impuestos">Impuestos</option>
+              <option value="">Todas las áreas</option>
               <option value="Cobros">Cobros</option>
+              <option value="Sueldos">Sueldos</option>
               <option value="Proveedores">Proveedores</option>
+              <option value="Impuestos">Impuestos</option>
               <option value="Otros">Otros</option>
             </select>
-          </div>
-
-          {/* Action Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleOpenNew}
-              className="w-full bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg px-5 py-2.5 text-sm shadow-xs hover:opacity-90 transition-opacity flex items-center justify-center gap-2 cursor-pointer"
-              type="button"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Nuevo Movimiento</span>
-            </button>
           </div>
         </div>
       </section>
@@ -299,17 +408,40 @@ export default function CashFlowPage() {
           <table className="w-full text-left border-collapse min-w-[750px]">
             <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
               <tr>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap pl-6">Fecha</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Tipo</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Área</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider">Detalle</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">Importe</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">Saldo</th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-center whitespace-nowrap pr-6">Acciones</th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap pl-6">
+                  Fecha
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">
+                  Tipo
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">
+                  Área
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider">
+                  Detalle
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">
+                  Importe
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">
+                  Saldo
+                </th>
+                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-center whitespace-nowrap pr-6">
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-              {movementsWithBalance.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-[#1E5BB4]" />
+                      <span>Cargando movimientos de flujo de caja...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : movementsWithBalance.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                     No se encontraron movimientos registrados con los filtros seleccionados.
@@ -317,14 +449,16 @@ export default function CashFlowPage() {
                 </tr>
               ) : (
                 movementsWithBalance.map((m, index) => {
-                  const isIngreso = m.type === 'ingreso';
+                  const isIngreso = m.type === 'income';
                   return (
                     <tr
                       key={m.id}
-                      className={`hover:bg-slate-50 transition-colors ${index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}
+                      className={`hover:bg-slate-50 transition-colors ${
+                        index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
+                      }`}
                     >
                       <td className="px-4 py-3 pl-6 whitespace-nowrap font-mono text-xs text-slate-600">
-                        {m.date.split('-').reverse().join('/')}
+                        {m.movement_date.split('-').reverse().join('/')}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span
@@ -344,7 +478,7 @@ export default function CashFlowPage() {
                           isIngreso ? 'text-emerald-700' : 'text-red-600'
                         }`}
                       >
-                        {isIngreso ? `+${formatCurrency(m.amount)}` : `-${formatCurrency(m.amount)}`}
+                        {isIngreso ? `+${formatCurrency(Number(m.amount))}` : `-${formatCurrency(Number(m.amount))}`}
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
                         {formatCurrency(m.balanceAfter)}
@@ -358,7 +492,7 @@ export default function CashFlowPage() {
                           <Edit2 className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(m.id)}
+                          onClick={() => setMovementToDelete(m)}
                           className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
                           title="Eliminar"
                         >
@@ -375,13 +509,21 @@ export default function CashFlowPage() {
 
         {/* Pagination Footer */}
         <div className="px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs sm:text-sm bg-slate-50/50">
-          <span>Mostrando 1 a {movementsWithBalance.length} de {movements.length} registros</span>
+          <span>
+            Mostrando {movementsWithBalance.length} de {movements.length} movimientos
+          </span>
           <div className="flex gap-2">
-            <button className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1" disabled>
+            <button
+              className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1"
+              disabled
+            >
               <ChevronLeft className="h-4 w-4" />
               <span>Anterior</span>
             </button>
-            <button className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1">
+            <button
+              className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1"
+              disabled
+            >
               <span>Siguiente</span>
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -395,25 +537,27 @@ export default function CashFlowPage() {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setIsSlideoverOpen(false)}
+            onClick={() => !isSubmitting && setIsSlideoverOpen(false)}
           />
 
-          {/* Slideover Panel (Sky Blue matching Stitch) */}
+          {/* Slideover Panel (Sky Blue matching Stitch B2B standard) */}
           <div className="relative w-screen max-w-md bg-[#0EA5E9] shadow-2xl z-50 flex flex-col h-full overflow-hidden animate-in slide-in-from-right duration-200 border-l border-[#0F2547]/20">
             {/* Header */}
             <div className="p-5 sm:p-6 border-b border-[#0F2547]/20 flex items-center justify-between">
               <h2 className="font-bold text-lg sm:text-xl text-white">
-                {editingId ? 'Editar Movimiento' : 'Ingresar Nuevo Movimiento'}
+                {editingMovement ? 'Editar Movimiento' : formType === 'income' ? 'Ingreso de Flujo de Caja' : 'Ingresar Nuevo Egreso'}
               </h2>
               <button
+                type="button"
+                disabled={isSubmitting}
                 onClick={() => setIsSlideoverOpen(false)}
-                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer"
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Body */}
+            {/* Form Body */}
             <form onSubmit={handleSaveMovement} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
               {formError && (
                 <div className="p-3 bg-red-600 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-xs">
@@ -427,51 +571,66 @@ export default function CashFlowPage() {
                 <label className="text-xs sm:text-sm font-semibold text-white">Fecha</label>
                 <input
                   type="date"
+                  required
+                  disabled={isSubmitting}
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 />
               </div>
 
               {/* Tipo */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs sm:text-sm font-semibold text-white">Tipo</label>
+                <label className="text-xs sm:text-sm font-semibold text-white">Tipo de Movimiento</label>
                 <select
+                  disabled={isSubmitting}
                   value={formType}
-                  onChange={(e) => setFormType(e.target.value as 'ingreso' | 'egreso')}
-                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  onChange={(e) => {
+                    const newType = e.target.value as 'income' | 'expense';
+                    setFormType(newType);
+                    if (newType === 'income' && formArea === 'Proveedores') {
+                      setFormArea('Cobros');
+                    } else if (newType === 'expense' && formArea === 'Cobros') {
+                      setFormArea('Proveedores');
+                    }
+                  }}
+                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 >
-                  <option value="ingreso">Ingreso (+)</option>
-                  <option value="egreso">Egreso (-)</option>
+                  <option value="income">Ingreso (+)</option>
+                  <option value="expense">Egreso (-)</option>
                 </select>
               </div>
 
               {/* Área */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs sm:text-sm font-semibold text-white">Área</label>
+                <label className="text-xs sm:text-sm font-semibold text-white">Área / Categoría</label>
                 <select
+                  required
+                  disabled={isSubmitting}
                   value={formArea}
                   onChange={(e) => setFormArea(e.target.value)}
-                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 >
                   <option value="">Seleccionar área...</option>
-                  <option value="Cobros">Cobros</option>
-                  <option value="Sueldos">Sueldos</option>
-                  <option value="Proveedores">Proveedores</option>
-                  <option value="Impuestos">Impuestos</option>
+                  <option value="Cobros">Cobros (Facturación)</option>
+                  <option value="Sueldos">Sueldos (Nómina)</option>
+                  <option value="Proveedores">Proveedores (Gastos operativos)</option>
+                  <option value="Impuestos">Impuestos (ARCA / ARBA)</option>
                   <option value="Otros">Otros</option>
                 </select>
               </div>
 
               {/* Detalle */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs sm:text-sm font-semibold text-white">Detalle</label>
+                <label className="text-xs sm:text-sm font-semibold text-white">Detalle / Concepto</label>
                 <input
                   type="text"
-                  placeholder="Ej: Factura #1234, Nómina mensual..."
+                  required
+                  disabled={isSubmitting}
+                  placeholder="Ej: Factura #1234, Cobro de servicio, etc."
                   value={formDetail}
                   onChange={(e) => setFormDetail(e.target.value)}
-                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4]"
+                  className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 />
               </div>
 
@@ -483,10 +642,13 @@ export default function CashFlowPage() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
+                    required
+                    disabled={isSubmitting}
                     placeholder="0.00"
                     value={formAmount}
                     onChange={(e) => setFormAmount(e.target.value)}
-                    className="w-full bg-white border-2 border-[#0F2547] rounded-lg pl-8 pr-4 py-2.5 text-sm font-mono text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4]"
+                    className="w-full bg-white border-2 border-[#0F2547] rounded-lg pl-8 pr-4 py-2.5 text-sm font-mono text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                   />
                 </div>
               </div>
@@ -495,23 +657,68 @@ export default function CashFlowPage() {
               <div className="pt-6 border-t border-[#0F2547]/20 flex items-center justify-end gap-3">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsSlideoverOpen(false)}
-                  className="px-5 py-2.5 rounded-lg font-bold text-sm text-[#0F2547] bg-white border-2 border-transparent hover:border-[#0F2547] transition-all cursor-pointer"
+                  className="px-5 py-2.5 rounded-lg font-bold text-sm text-[#0F2547] bg-white border-2 border-transparent hover:border-[#0F2547] transition-all cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="bg-[#1E5BB4] hover:bg-[#004392] text-white px-6 py-2.5 rounded-lg font-bold text-sm shadow-md hover:opacity-95 transition-all cursor-pointer active:scale-95"
+                  disabled={isSubmitting}
+                  className="bg-[#1E5BB4] hover:bg-[#004392] text-white px-6 py-2.5 rounded-lg font-bold text-sm shadow-md hover:opacity-95 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                 >
-                  {editingId ? 'Guardar Cambios' : 'Guardar Movimiento'}
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>{editingMovement ? 'Guardar Cambios' : 'Guardar Movimiento'}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {movementToDelete && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+            onClick={() => !isDeleting && setMovementToDelete(null)}
+          />
+          <div className="relative bg-white rounded-xl max-w-md w-full p-6 shadow-xl z-50 space-y-4 text-slate-800 border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">¿Eliminar Movimiento?</h3>
+            </div>
+            <p className="text-sm text-slate-600">
+              ¿Estás seguro de que deseas eliminar el movimiento{' '}
+              <strong className="text-slate-900">&quot;{movementToDelete.detail}&quot;</strong> por un importe de{' '}
+              <strong className="text-slate-900 font-mono">{formatCurrency(Number(movementToDelete.amount))}</strong>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setMovementToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm rounded-lg transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                <span>Eliminar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
