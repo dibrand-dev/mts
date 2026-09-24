@@ -204,6 +204,12 @@ export interface Database {
           total_vehicles_handled: number
           is_export_day: boolean
           logged_by: string
+          vessel_name: string | null
+          vehicles_discharged: number
+          vehicles_loaded: number
+          vehicles_shifted: number
+          vehicles_regular_time: number
+          vehicles_overtime: number
           created_at: string
         }
         Insert: {
@@ -214,6 +220,12 @@ export interface Database {
           total_vehicles_handled?: number
           is_export_day?: boolean
           logged_by: string
+          vessel_name?: string | null
+          vehicles_discharged?: number
+          vehicles_loaded?: number
+          vehicles_shifted?: number
+          vehicles_regular_time?: number
+          vehicles_overtime?: number
           created_at?: string
         }
         Update: {
@@ -224,6 +236,12 @@ export interface Database {
           total_vehicles_handled?: number
           is_export_day?: boolean
           logged_by?: string
+          vessel_name?: string | null
+          vehicles_discharged?: number
+          vehicles_loaded?: number
+          vehicles_shifted?: number
+          vehicles_regular_time?: number
+          vehicles_overtime?: number
           created_at?: string
         }
       }
@@ -246,6 +264,9 @@ export interface Database {
           advance_payment_amount: number
           is_day_off: boolean
           bonus_applied_amount: number
+          is_approved: boolean
+          approved_at: string | null
+          approved_by: string | null
           created_at: string
         }
         Insert: {
@@ -266,6 +287,9 @@ export interface Database {
           advance_payment_amount?: number
           is_day_off?: boolean
           bonus_applied_amount?: number
+          is_approved?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
         }
         Update: {
@@ -286,6 +310,9 @@ export interface Database {
           advance_payment_amount?: number
           is_day_off?: boolean
           bonus_applied_amount?: number
+          is_approved?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
         }
       }
@@ -302,6 +329,18 @@ export interface Database {
           public_token: string
           issue_date: string
           due_date: string
+          vessel_name: string | null
+          operation_dates: string | null
+          discount_percentage: number
+          discount_amount: number
+          subtotal_operativa: number
+          subtotal_encargado: number
+          subtotal_compensacion: number
+          total_neto: number
+          tax_amount: number
+          proforma_type: string
+          calculation_payload: any
+          notes: string[] | null
           created_at: string
         }
         Insert: {
@@ -316,6 +355,18 @@ export interface Database {
           public_token?: string
           issue_date?: string
           due_date: string
+          vessel_name?: string | null
+          operation_dates?: string | null
+          discount_percentage?: number
+          discount_amount?: number
+          subtotal_operativa?: number
+          subtotal_encargado?: number
+          subtotal_compensacion?: number
+          total_neto?: number
+          tax_amount?: number
+          proforma_type?: string
+          calculation_payload?: any
+          notes?: string[] | null
           created_at?: string
         }
         Update: {
@@ -330,6 +381,18 @@ export interface Database {
           public_token?: string
           issue_date?: string
           due_date?: string
+          vessel_name?: string | null
+          operation_dates?: string | null
+          discount_percentage?: number
+          discount_amount?: number
+          subtotal_operativa?: number
+          subtotal_encargado?: number
+          subtotal_compensacion?: number
+          total_neto?: number
+          tax_amount?: number
+          proforma_type?: string
+          calculation_payload?: any
+          notes?: string[] | null
           created_at?: string
         }
       }
@@ -438,6 +501,64 @@ export interface Database {
           hour_type_id?: string
           hourly_rate?: number
           effective_from?: string
+          created_at?: string
+        }
+      }
+      client_service_rates: {
+        Row: {
+          id: string
+          client_id: string
+          service_code: string
+          description: string
+          rate_value: number
+          effective_from: string
+          metadata: any
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          service_code: string
+          description: string
+          rate_value: number
+          effective_from?: string
+          metadata?: any
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          service_code?: string
+          description?: string
+          rate_value?: number
+          effective_from?: string
+          metadata?: any
+          created_at?: string
+        }
+      }
+      client_operations: {
+        Row: {
+          id: string
+          client_id: string
+          name: string
+          operation_type: 'vessel' | 'yard' | 'deposit' | 'general'
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          name: string
+          operation_type?: 'vessel' | 'yard' | 'deposit' | 'general'
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          name?: string
+          operation_type?: 'vessel' | 'yard' | 'deposit' | 'general'
+          is_active?: boolean
           created_at?: string
         }
       }

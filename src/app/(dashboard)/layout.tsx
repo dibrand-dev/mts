@@ -13,11 +13,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-[#F8FAFC]">
       {/* Sidebar Maestro */}
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="lg:pl-64 flex flex-col min-h-screen min-w-0">
         {/* TopNav Maestro */}
         <TopNav />
 

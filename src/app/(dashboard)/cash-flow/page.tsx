@@ -103,8 +103,13 @@ export default function CashFlowPage() {
   // Filtered movements
   const filteredMovements = useMemo(() => {
     return movements.filter((m) => {
-      if (fromDate && m.movement_date < fromDate) return false;
-      if (toDate && m.movement_date > toDate) return false;
+      // If only fromDate is set, filter STRICTLY for that specific date (no subsequent dates)
+      if (fromDate && !toDate && m.movement_date !== fromDate) return false;
+      // If only toDate is set, show up to toDate
+      if (!fromDate && toDate && m.movement_date > toDate) return false;
+      // If both fromDate and toDate are set, show the inclusive range
+      if (fromDate && toDate && (m.movement_date < fromDate || m.movement_date > toDate)) return false;
+
       if (selectedArea && selectedArea !== 'Todas' && m.area.toLowerCase() !== selectedArea.toLowerCase()) {
         return false;
       }
@@ -349,7 +354,16 @@ export default function CashFlowPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
           {/* Fecha Desde */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-semibold text-white">Fecha Desde</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs sm:text-sm font-semibold text-white">
+                {toDate ? 'Fecha Desde' : 'Fecha (Día Exacto)'}
+              </label>
+              {fromDate && !toDate && (
+                <span className="text-[10px] bg-sky-900/60 text-white px-1.5 py-0.5 rounded font-bold">
+                  Solo este día
+                </span>
+              )}
+            </div>
             <input
               type="date"
               value={fromDate}
@@ -360,7 +374,7 @@ export default function CashFlowPage() {
 
           {/* Fecha Hasta */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-semibold text-white">Fecha Hasta</label>
+            <label className="text-xs sm:text-sm font-semibold text-white">Fecha Hasta (Opcional p/ Rango)</label>
             <input
               type="date"
               value={toDate}
@@ -400,6 +414,28 @@ export default function CashFlowPage() {
             </select>
           </div>
         </div>
+
+        {(fromDate || toDate || selectedArea || selectedType !== 'all') && (
+          <div className="flex items-center justify-between pt-2 border-t border-white/20 text-xs">
+            <span className="text-sky-100">
+              {fromDate && !toDate && `Mostrando exclusivamente los movimientos del día ${fromDate}`}
+              {fromDate && toDate && `Mostrando rango del ${fromDate} al ${toDate}`}
+              {!fromDate && toDate && `Mostrando movimientos hasta el día ${toDate}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setFromDate('');
+                setToDate('');
+                setSelectedArea('');
+                setSelectedType('all');
+              }}
+              className="text-white hover:underline font-bold cursor-pointer"
+            >
+              Restablecer Filtros
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Data Table Section */}

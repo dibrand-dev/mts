@@ -240,6 +240,7 @@ export default function DashboardPage() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
                         <th className="py-3 px-5 font-mono">Factura #</th>
                         <th className="py-3 px-5">Cliente</th>
+                        <th className="py-3 px-5">Fecha</th>
                         <th className="py-3 px-5 text-right font-mono pr-5">Monto</th>
                       </tr>
                     </thead>
@@ -247,16 +248,19 @@ export default function DashboardPage() {
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-mono text-xs font-bold text-[#1E5BB4]">INV-2023-089</td>
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Acme Corp</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">20/10/2026</td>
                         <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$15,200</td>
                       </tr>
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-mono text-xs font-bold text-[#1E5BB4]">INV-2023-090</td>
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Beta LLC</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">21/10/2026</td>
                         <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$3,400</td>
                       </tr>
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-mono text-xs font-bold text-[#1E5BB4]">INV-2023-091</td>
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Gamma Inc</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">22/10/2026</td>
                         <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$9,150</td>
                       </tr>
                     </tbody>
@@ -292,6 +296,7 @@ export default function DashboardPage() {
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
                         <th className="py-3 px-5">Cliente</th>
+                        <th className="py-3 px-5">Fecha</th>
                         <th className="py-3 px-5">Vencimiento</th>
                         <th className="py-3 px-5 text-right font-mono pr-5">Monto</th>
                       </tr>
@@ -299,6 +304,7 @@ export default function DashboardPage() {
                     <tbody className="divide-y divide-slate-100">
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Delta Services</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">10/09/2026</td>
                         <td className="py-3.5 px-5">
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 inline-flex items-center gap-1">
                             <AlertCircle className="h-3 w-3" /> Vencido (5 días)
@@ -308,6 +314,7 @@ export default function DashboardPage() {
                       </tr>
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Epsilon Group</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">12/09/2026</td>
                         <td className="py-3.5 px-5">
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
                             <Clock className="h-3 w-3" /> Mañana
@@ -317,7 +324,8 @@ export default function DashboardPage() {
                       </tr>
                       <tr className="hover:bg-slate-50 transition-colors">
                         <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Zeta Tech</td>
-                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">25/10/2023</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">15/09/2026</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">25/10/2026</td>
                         <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$18,750</td>
                       </tr>
                     </tbody>

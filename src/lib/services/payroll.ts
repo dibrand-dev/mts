@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/client';
-import { Database } from '@/types/database.types';
 
 export interface PayrollShiftDetail {
   id: string;

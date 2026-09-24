@@ -24,11 +24,17 @@ import {
   Search,
   Filter,
   XCircle,
+  Ship,
 } from 'lucide-react';
 import { getClients, ClientRow } from '@/lib/services/clients';
 import { getLocations, LocationRow } from '@/lib/services/locations';
 import { getEmployees, EmployeeRow } from '@/lib/services/employees';
 import { getPositions, PositionRow } from '@/lib/services/rates';
+import {
+  getClientOperations,
+  createClientOperation,
+  ClientOperationRow,
+} from '@/lib/services/client-operations';
 import {
   getDailyWorkLogs,
   getOrCreateDailyWorkLog,
@@ -36,6 +42,8 @@ import {
   updateStaffEntry,
   deleteStaffEntry,
   calculateShiftHours,
+  toggleStaffEntryApproval,
+  bulkApproveStaffEntries,
   DailyWorkLogWithEntries,
 } from '@/lib/services/daily-entries';
 
@@ -45,6 +53,7 @@ interface FlatDailyStaffEntry {
   work_date: string;
   client_id: string;
   client_name: string;
+  vessel_name: string | null;
   location_id: string | null;
   location_name: string;
   employee_id: string;
@@ -66,6 +75,9 @@ interface FlatDailyStaffEntry {
   advance_payment_amount: number;
   plus_delta_amount: number;
   bonus_applied_amount: number;
+  is_approved: boolean;
+  approved_at: string | null;
+  approved_by: string | null;
 }
 
 export default function DailyEntryPage() {
@@ -94,10 +106,18 @@ export default function DailyEntryPage() {
   const [isSlideoverOpen, setIsSlideoverOpen] = useState<boolean>(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
-  // Slideover Shift Context (Día, Cliente, Ubicación)
+  // Slideover Shift Context (Día, Cliente, Ubicación, Buque)
   const [formWorkDate, setFormWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formClientId, setFormClientId] = useState<string>('');
   const [formLocationId, setFormLocationId] = useState<string>('');
+  const [formVesselName, setFormVesselName] = useState<string>('');
+  const [clientOperations, setClientOperations] = useState<ClientOperationRow[]>([]);
+  const [isNewOpModalOpen, setIsNewOpModalOpen] = useState<boolean>(false);
+  const [newOpName, setNewOpName] = useState<string>('');
+  const [newOpType, setNewOpType] = useState<'vessel' | 'yard' | 'deposit' | 'general'>('vessel');
+  const [creatingOp, setCreatingOp] = useState<boolean>(false);
+  const [newOpError, setNewOpError] = useState<string | null>(null);
+  const [formIsApproved, setFormIsApproved] = useState<boolean>(true);
   const [formIsHoliday] = useState<boolean>(false);
 
   // Slideover Operario & Hours State
@@ -176,17 +196,19 @@ export default function DailyEntryPage() {
   const loadCatalogs = async () => {
     try {
       setLoadingCatalogs(true);
-      const [clientsData, locationsData, employeesData, positionsData] = await Promise.all([
+      const [clientsData, locationsData, employeesData, positionsData, operationsData] = await Promise.all([
         getClients(),
         getLocations(),
         getEmployees(),
         getPositions(),
+        getClientOperations(),
       ]);
 
       setClients(clientsData);
       setLocations(locationsData);
       setEmployees(employeesData);
       setPositions(positionsData);
+      setClientOperations(operationsData);
 
       if (clientsData.length > 0 && !formClientId) {
         setFormClientId(clientsData[0].id);
@@ -237,6 +259,7 @@ export default function DailyEntryPage() {
           work_date: entry.shift_start_date || log.work_date,
           client_id: log.client_id,
           client_name: logClientName,
+          vessel_name: log.vessel_name || null,
           location_id: log.location_id,
           location_name: logLocationName,
           employee_id: entry.employee_id,
@@ -258,6 +281,9 @@ export default function DailyEntryPage() {
           advance_payment_amount: Number(entry.advance_payment_amount || 0),
           plus_delta_amount: Number(entry.plus_delta_amount || 0),
           bonus_applied_amount: Number(entry.bonus_applied_amount || 0),
+          is_approved: Boolean(entry.is_approved),
+          approved_at: entry.approved_at || null,
+          approved_by: entry.approved_by || null,
         });
       }
     }
@@ -274,6 +300,7 @@ export default function DailyEntryPage() {
         (e.employee_file_number && e.employee_file_number.toLowerCase().includes(term)) ||
         (e.employee_national_id && e.employee_national_id.includes(term)) ||
         e.client_name.toLowerCase().includes(term) ||
+        (e.vessel_name && e.vessel_name.toLowerCase().includes(term)) ||
         e.position_name.toLowerCase().includes(term) ||
         e.location_name.toLowerCase().includes(term)
     );
@@ -293,11 +320,52 @@ export default function DailyEntryPage() {
           viandas: acc.viandas + curr.meal_allowance_count,
           anticipos: acc.anticipos + curr.advance_payment_amount,
           pluses: acc.pluses + curr.plus_delta_amount,
+          approvedCount: acc.approvedCount + (curr.is_approved ? 1 : 0),
+          unapprovedCount: acc.unapprovedCount + (curr.is_approved ? 0 : 1),
         };
       },
-      { count: 0, totalHours: 0, regularHours: 0, ot50Hours: 0, ot100Hours: 0, remises: 0, viandas: 0, anticipos: 0, pluses: 0 }
+      { count: 0, totalHours: 0, regularHours: 0, ot50Hours: 0, ot100Hours: 0, remises: 0, viandas: 0, anticipos: 0, pluses: 0, approvedCount: 0, unapprovedCount: 0 }
     );
   }, [filteredTableEntries]);
+
+  // Toggle approval for a single shift
+  const handleToggleApproval = async (entry: FlatDailyStaffEntry) => {
+    try {
+      const nextStatus = !entry.is_approved;
+      await toggleStaffEntryApproval(entry.id, nextStatus);
+      setNotification({
+        type: 'success',
+        message: nextStatus
+          ? `Horario de ${entry.employee_name} aprobado para proforma.`
+          : `Horario de ${entry.employee_name} marcado como pendiente.`,
+      });
+      await loadLogs();
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: `Error al modificar aprobación: ${err.message}`,
+      });
+    }
+  };
+
+  // Bulk approve all visible unapproved shifts
+  const handleBulkApprove = async () => {
+    const unapprovedEntries = filteredTableEntries.filter((e) => !e.is_approved);
+    if (unapprovedEntries.length === 0) return;
+    try {
+      await bulkApproveStaffEntries(unapprovedEntries.map((e) => e.id), true);
+      setNotification({
+        type: 'success',
+        message: `¡Se aprobaron exitosamente ${unapprovedEntries.length} horarios de personal para facturación!`,
+      });
+      await loadLogs();
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: `Error al aprobar horarios en lote: ${err.message}`,
+      });
+    }
+  };
 
   // Open Slideover to Add New Staff Hours
   const handleOpenNewEntry = () => {
@@ -308,6 +376,8 @@ export default function DailyEntryPage() {
     if (filterLocationId) setFormLocationId(filterLocationId);
     else if (locations.length > 0) setFormLocationId(locations[0].id);
 
+    setFormVesselName('');
+    setFormIsApproved(true);
     setSelectedEmployeeId('');
     setEmployeeSearchTerm('');
     if (positions.length > 0 && !selectedPositionId) {
@@ -325,10 +395,41 @@ export default function DailyEntryPage() {
 
   const handleEmployeeChange = (empId: string) => {
     setSelectedEmployeeId(empId);
-    const emp = employees.find((e) => e.id === empId);
-    if (emp && emp.default_position_id) {
-      setSelectedPositionId(emp.default_position_id);
+    // Only prefill position if none is selected yet for the shift
+    if (!selectedPositionId) {
+      const emp = employees.find((e) => e.id === empId);
+      if (emp && emp.default_position_id) {
+        setSelectedPositionId(emp.default_position_id);
+      }
     }
+  };
+
+  const handleFinalizeShift = () => {
+    setSelectedEmployeeId('');
+    setEmployeeSearchTerm('');
+    setSelectedPositionId('');
+    setFormClientId('');
+    setFormLocationId('');
+    setFormVesselName('');
+    setStartTime('06:00');
+    setEndTime('14:00');
+    setIsOvernight(false);
+    setRegularHours('8');
+    setOt50Hours('0');
+    setOt100Hours('0');
+    setPlusDeltaAmount('0');
+    setShuttlesCount('0');
+    setMealAllowanceCount('0');
+    setIsDayOff(false);
+    setAdvancePaymentAmount('0');
+    setIsManualHoursMode(false);
+    setEditingEntryId(null);
+    setIsSlideoverOpen(false);
+    setSlideoverSuccess(null);
+    setNotification({
+      type: 'success',
+      message: 'Turno finalizado. Memoria de carga reseteada para un nuevo turno.',
+    });
   };
 
   const handleStartTimeChange = (newStartTime: string) => {
@@ -341,12 +442,53 @@ export default function DailyEntryPage() {
     setIsManualHoursMode(false);
   };
 
+  const handleCreateOperation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formClientId) {
+      setNewOpError('Seleccione un cliente primero.');
+      return;
+    }
+    const clean = newOpName.trim().toUpperCase();
+    if (!clean) {
+      setNewOpError('Ingrese el nombre del buque u operación.');
+      return;
+    }
+
+    try {
+      setCreatingOp(true);
+      setNewOpError(null);
+      const created = await createClientOperation({
+        client_id: formClientId,
+        name: clean,
+        operation_type: newOpType,
+      });
+      setClientOperations((prev) => {
+        const exists = prev.some((o) => o.id === created.id);
+        return exists ? prev : [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setFormVesselName(created.name);
+      setIsNewOpModalOpen(false);
+      setNewOpName('');
+      setNotification({
+        type: 'success',
+        message: `"${created.name}" registrado correctamente.`,
+      });
+    } catch (err: any) {
+      console.error('Error creating operation:', err);
+      setNewOpError(err.message || 'Error al registrar el buque u operación.');
+    } finally {
+      setCreatingOp(false);
+    }
+  };
+
   // Open Slideover in Edit Mode
   const handleEditEntry = (entry: FlatDailyStaffEntry) => {
     setEditingEntryId(entry.id);
     setFormWorkDate(entry.work_date);
     setFormClientId(entry.client_id);
     setFormLocationId(entry.location_id || '');
+    setFormVesselName(entry.vessel_name || '');
+    setFormIsApproved(entry.is_approved);
     setSelectedEmployeeId(entry.employee_id);
     setSelectedPositionId(entry.position_id);
     setStartTime(entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '06:00');
@@ -389,8 +531,13 @@ export default function DailyEntryPage() {
       setSubmittingEntry(true);
       setFormError(null);
 
-      // Get or create daily work log for (formWorkDate, formClientId, formLocationId)
-      const workLog = await getOrCreateDailyWorkLog(formWorkDate, formClientId, formLocationId || null);
+      // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName)
+      const workLog = await getOrCreateDailyWorkLog(
+        formWorkDate,
+        formClientId,
+        formLocationId || null,
+        formVesselName || null
+      );
 
       const reg = parseFloat(regularHours) || 0;
       const ot50 = parseFloat(ot50Hours) || 0;
@@ -416,6 +563,7 @@ export default function DailyEntryPage() {
         advance_payment_amount: advance,
         is_day_off: isDayOff,
         bonus_applied_amount: 0,
+        is_approved: formIsApproved,
       };
 
       if (editingEntryId) {
@@ -661,6 +809,16 @@ export default function DailyEntryPage() {
           <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-bold">
             👥 {totals.count} Registros
           </span>
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-bold flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            {totals.approvedCount} Aprobados
+          </span>
+          {totals.unapprovedCount > 0 && (
+            <span className="bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-md font-bold flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-amber-600" />
+              {totals.unapprovedCount} Pendientes
+            </span>
+          )}
           <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-bold">
             ⏱️ {totals.regularHours.toFixed(1)} hs Norm.
           </span>
@@ -703,14 +861,38 @@ export default function DailyEntryPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenNewEntry}
-            className="px-4 py-2 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Cargar Horas</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {formClientId && (
+              <button
+                type="button"
+                onClick={handleFinalizeShift}
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Concluir el turno actual y resetear cliente, lugar, horario y puesto"
+              >
+                <Check className="h-3.5 w-3.5 text-amber-700" />
+                <span>Finalizar Turno</span>
+              </button>
+            )}
+            {totals.unapprovedCount > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkApprove}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Aprobar todos los horarios pendientes visibles para facturación"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Aprobar {totals.unapprovedCount} Pendientes</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenNewEntry}
+              className="px-4 py-2 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Cargar Horas</span>
+            </button>
+          </div>
         </div>
 
         {loadingLogs ? (
@@ -758,6 +940,7 @@ export default function DailyEntryPage() {
                 <tr className="bg-slate-100/80 text-slate-600 font-bold text-xs uppercase tracking-wider border-b border-slate-200">
                   <th className="p-3 pl-4">Fecha</th>
                   <th className="p-3">Cliente</th>
+                  <th className="p-3">Lugar de Trabajo</th>
                   <th className="p-3">Legajo / Operario</th>
                   <th className="p-3">Puesto</th>
                   <th className="p-3 text-center">Horario</th>
@@ -769,7 +952,8 @@ export default function DailyEntryPage() {
                   <th className="p-3 text-center">Franco</th>
                   <th className="p-3 text-right">Anticipo</th>
                   <th className="p-3 text-right">Plus Delta</th>
-                  <th className="p-3 pr-4 text-center">Acciones</th>
+                  <th className="p-3 text-center">Aprobación Proforma</th>
+                  <th className="p-3 pr-4 text-center sticky right-0 bg-slate-100/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
@@ -789,9 +973,21 @@ export default function DailyEntryPage() {
                       </td>
                       <td className="p-3 font-semibold text-[#0B1C30] text-xs">
                         <div>{entry.client_name}</div>
-                        <span className="text-[11px] text-slate-400 block font-normal">
-                          {entry.location_name}
-                        </span>
+                        {entry.vessel_name && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5">
+                            🚢 {entry.vessel_name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-700 text-xs font-medium">
+                        {entry.location_name ? (
+                          <span className="inline-flex items-center gap-1 text-slate-800">
+                            <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                            {entry.location_name}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="p-3 font-semibold text-[#0B1C30]">
                         <div>{entry.employee_name}</div>
@@ -865,7 +1061,35 @@ export default function DailyEntryPage() {
                       <td className="p-3 text-right font-mono text-xs text-slate-700">
                         {entry.plus_delta_amount > 0 ? `$ ${entry.plus_delta_amount.toLocaleString('es-AR')}` : '-'}
                       </td>
-                      <td className="p-3 pr-4 text-center">
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleApproval(entry)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
+                            entry.is_approved
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                          }`}
+                          title={
+                            entry.is_approved
+                              ? 'Aprobado para proforma (Click para revocar)'
+                              : 'Pendiente de aprobación (Click para aprobar e incluir en proforma)'
+                          }
+                        >
+                          {entry.is_approved ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>Aprobado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="h-3.5 w-3.5 text-amber-500" />
+                              <span>Pendiente</span>
+                            </>
+                          )}
+                        </button>
+                      </td>
+                      <td className="p-3 pr-4 text-center sticky right-0 bg-white/95 group-hover:bg-slate-50/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleEditEntry(entry)}
@@ -889,7 +1113,7 @@ export default function DailyEntryPage() {
               </tbody>
               <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs text-[#0B1C30]">
                 <tr>
-                  <td colSpan={5} className="p-3.5 pl-4 text-right uppercase tracking-wider text-slate-600">
+                  <td colSpan={6} className="p-3.5 pl-4 text-right uppercase tracking-wider text-slate-600">
                     Totales Planilla:
                   </td>
                   <td className="p-3.5 text-center font-mono text-sm text-emerald-800 bg-slate-200/60">
@@ -914,7 +1138,10 @@ export default function DailyEntryPage() {
                   <td className="p-3.5 text-right font-mono text-sm text-slate-900">
                     $ {totals.pluses.toLocaleString('es-AR')}
                   </td>
-                  <td className="p-3.5 pr-4"></td>
+                  <td className="p-3.5 text-center text-xs font-bold text-emerald-700">
+                    {totals.approvedCount}/{totals.count} ok
+                  </td>
+                  <td className="p-3.5 pr-4 sticky right-0 bg-slate-100/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]"></td>
                 </tr>
               </tfoot>
             </table>
@@ -1028,6 +1255,75 @@ export default function DailyEntryPage() {
                         {l.name} {l.code ? `(${l.code})` : ''}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Ship className="h-3 w-3 text-[#1E5BB4]" />
+                      Buque / Operación (Opcional)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewOpError(null);
+                        setNewOpName('');
+                        setNewOpType('vessel');
+                        setIsNewOpModalOpen(true);
+                      }}
+                      className="text-[11px] font-bold text-[#1E5BB4] hover:text-[#004392] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Nuevo Buque / Op</span>
+                    </button>
+                  </div>
+                  <select
+                    value={formVesselName}
+                    onChange={(e) => setFormVesselName(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
+                  >
+                    <option value="">-- Sin buque / Operación general --</option>
+                    {formVesselName &&
+                      !clientOperations.some(
+                        (op) => op.client_id === formClientId && op.name.toUpperCase() === formVesselName.toUpperCase()
+                      ) && (
+                        <option value={formVesselName}>
+                          {formVesselName} (Histórico / Personalizado)
+                        </option>
+                      )}
+                    {clientOperations
+                      .filter((op) => op.client_id === formClientId && op.operation_type === 'vessel')
+                      .length > 0 && (
+                      <optgroup label="🚢 Buques Marítimos">
+                        {clientOperations
+                          .filter((op) => op.client_id === formClientId && op.operation_type === 'vessel')
+                          .map((op) => (
+                            <option key={op.id} value={op.name}>
+                              {op.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    {clientOperations
+                      .filter((op) => op.client_id === formClientId && op.operation_type !== 'vessel')
+                      .length > 0 && (
+                      <optgroup label="🏢 Operaciones y Sectores en Tierra">
+                        {clientOperations
+                          .filter((op) => op.client_id === formClientId && op.operation_type !== 'vessel')
+                          .map((op) => (
+                            <option key={op.id} value={op.name}>
+                              {op.name} (
+                              {op.operation_type === 'yard'
+                                ? 'Plazoleta'
+                                : op.operation_type === 'deposit'
+                                ? 'Depósito'
+                                : 'General'}
+                              )
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               </div>
@@ -1280,34 +1576,156 @@ export default function DailyEntryPage() {
                 </div>
               </div>
 
+              {/* Group 5: Aprobación para Proforma */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formIsApproved}
+                    onChange={(e) => setFormIsApproved(e.target.checked)}
+                    className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-0 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      Marcar horario como APROBADO para proforma
+                    </span>
+                    <span className="text-[11px] text-emerald-700 block">
+                      Solo los horarios que hayan sido aprobados previamente serán cargados en la proforma/liquidación del cliente.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
               {/* Submit / Cancel Buttons */}
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
+              <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setIsSlideoverOpen(false)}
-                  className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200/70 rounded-lg transition-colors cursor-pointer"
+                  onClick={handleFinalizeShift}
+                  className="px-3.5 py-2 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors cursor-pointer"
+                  title="Finaliza la carga del turno actual y limpia todos los parámetros"
+                >
+                  Finalizar Turno
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSlideoverOpen(false)}
+                    className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200/70 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingEntry}
+                    className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {submittingEntry ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : editingEntryId ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    <span>
+                      {submittingEntry
+                        ? 'Guardando...'
+                        : editingEntryId
+                        ? 'Guardar Cambios'
+                        : 'Guardar y Seguir'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Create Buque / Operación Modal */}
+      {isNewOpModalOpen && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+            onClick={() => !creatingOp && setIsNewOpModalOpen(false)}
+          />
+          <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6 z-[60] space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-sky-100 rounded-lg text-[#1E5BB4]">
+                  <Ship className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Nuevo Buque u Operación</h3>
+                  <p className="text-xs text-slate-500">
+                    Cliente: <span className="font-semibold text-slate-700">{clients.find((c) => c.id === formClientId)?.company_name || 'No seleccionado'}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsNewOpModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateOperation} className="space-y-4">
+              {newOpError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{newOpError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Tipo de Registro *</label>
+                <select
+                  value={newOpType}
+                  onChange={(e) => setNewOpType(e.target.value as any)}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:ring-2 focus:ring-[#1E5BB4] focus:outline-none"
+                >
+                  <option value="vessel">🚢 Buque Marítimo (Ro-Ro / Carga)</option>
+                  <option value="yard">🏗️ Plazoleta / Terminal</option>
+                  <option value="deposit">📦 Depósito / Almacén</option>
+                  <option value="general">⚙️ Operativa General</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">
+                  {newOpType === 'vessel' ? 'Nombre Oficial del Buque *' : 'Nombre del Sector u Operación *'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={newOpType === 'vessel' ? 'Ej: HOEGH TARGET, LAKE KIVU...' : 'Ej: SILOS DE ARROZ, CONTROL EXPO...'}
+                  value={newOpName}
+                  onChange={(e) => setNewOpName(e.target.value.toUpperCase())}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold uppercase text-[#0B1C30] focus:ring-2 focus:ring-[#1E5BB4] focus:outline-none"
+                  autoFocus
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Se registrará automáticamente en mayúsculas para evitar duplicados y desfasajes en las proformas.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  disabled={creatingOp}
+                  onClick={() => setIsNewOpModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingEntry}
-                  className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  disabled={creatingOp || !newOpName.trim()}
+                  className="px-4 py-2 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg text-xs shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 >
-                  {submittingEntry ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : editingEntryId ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  <span>
-                    {submittingEntry
-                      ? 'Guardando...'
-                      : editingEntryId
-                      ? 'Guardar Cambios'
-                      : 'Guardar Horas'}
-                  </span>
+                  {creatingOp && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                  <span>Guardar y Seleccionar</span>
                 </button>
               </div>
             </form>

@@ -198,7 +198,8 @@ export async function getDailyWorkLogs(filters?: {
 export async function getOrCreateDailyWorkLog(
   workDate: string,
   clientId: string,
-  locationId?: string | null
+  locationId?: string | null,
+  vesselName?: string | null
 ): Promise<DailyWorkLogWithEntries> {
   const supabase = createClient() as any;
 
@@ -225,6 +226,21 @@ export async function getOrCreateDailyWorkLog(
   }
 
   if (existing) {
+    const updates: Partial<DailyWorkLogInsert> = {};
+    if (vesselName && existing.vessel_name !== vesselName) {
+      updates.vessel_name = vesselName;
+      existing.vessel_name = vesselName;
+    }
+    if (locationId && existing.location_id !== locationId) {
+      updates.location_id = locationId;
+      existing.location_id = locationId;
+    }
+    if (Object.keys(updates).length > 0) {
+      await supabase
+        .from('daily_work_logs')
+        .update(updates)
+        .eq('id', existing.id);
+    }
     return existing as DailyWorkLogWithEntries;
   }
 
@@ -242,7 +258,11 @@ export async function getOrCreateDailyWorkLog(
       work_date: workDate,
       client_id: clientId,
       location_id: locationId || null,
+      vessel_name: vesselName || null,
       total_vehicles_handled: 0,
+      vehicles_discharged: 0,
+      vehicles_loaded: 0,
+      vehicles_shifted: 0,
       is_export_day: false,
       logged_by: userId,
     })
@@ -333,11 +353,88 @@ export async function updateStaffEntry(
   return data as DailyStaffEntryRow;
 }
 
+export async function updateDailyWorkLog(
+  logId: string,
+  updates: Partial<DailyWorkLogInsert>
+): Promise<DailyWorkLogRow> {
+  const supabase = createClient() as any;
+  const { data, error } = await supabase
+    .from('daily_work_logs')
+    .update(updates)
+    .eq('id', logId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error updating daily work log:', error);
+    throw new Error(error.message);
+  }
+
+  return data as DailyWorkLogRow;
+}
+
+export async function toggleStaffEntryApproval(
+  entryId: string,
+  isApproved: boolean
+): Promise<DailyStaffEntryRow> {
+  const supabase = createClient() as any;
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id || null;
+
+  const { data, error } = await supabase
+    .from('daily_staff_entries')
+    .update({
+      is_approved: isApproved,
+      approved_at: isApproved ? new Date().toISOString() : null,
+      approved_by: isApproved ? userId : null,
+    })
+    .eq('id', entryId)
+    .select(`
+      *,
+      employee:employees(id, full_name, national_id, file_number),
+      position:positions(id, name)
+    `)
+    .single();
+
+  if (error) {
+    console.error('Error toggling staff entry approval:', error);
+    throw new Error(error.message);
+  }
+
+  return data as DailyStaffEntryRow;
+}
+
+export async function bulkApproveStaffEntries(
+  entryIds: string[],
+  isApproved = true
+): Promise<void> {
+  if (!entryIds || entryIds.length === 0) return;
+  const supabase = createClient() as any;
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id || null;
+
+  const { error } = await supabase
+    .from('daily_staff_entries')
+    .update({
+      is_approved: isApproved,
+      approved_at: isApproved ? new Date().toISOString() : null,
+      approved_by: isApproved ? userId : null,
+    })
+    .in('id', entryIds);
+
+  if (error) {
+    console.error('Error bulk approving staff entries:', error);
+    throw new Error(error.message);
+  }
+}
+
 export interface ClientShiftRecordForBilling {
   id: string;
+  daily_work_log_id: string;
   work_date: string;
   client_id: string;
   client_name: string;
+  vessel_name: string | null;
   employee_id: string;
   employee_name: string;
   file_number: string | null;
@@ -355,13 +452,31 @@ export interface ClientShiftRecordForBilling {
   shuttles_count: number;
   meal_allowance_count: number;
   bonus_applied_amount: number;
+  is_export_day: boolean;
+  is_approved: boolean;
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
+export interface ClientBillingShiftsResult {
+  records: ClientShiftRecordForBilling[];
+  unapprovedCount: number;
+  totalCount: number;
+  vesselNames: string[];
+  totalVehiclesDischarged: number;
+  totalVehiclesLoaded: number;
+  totalVehiclesShifted: number;
+  totalVehiclesHandled: number;
+  totalShuttles: number;
 }
 
 export async function getStaffEntriesForClientAndPeriod(
   clientId: string,
   fromDate: string,
-  toDate: string
-): Promise<ClientShiftRecordForBilling[]> {
+  toDate: string,
+  options?: { onlyApproved?: boolean }
+): Promise<ClientBillingShiftsResult> {
+  const onlyApproved = options?.onlyApproved !== false; // Default true: only approved shifts
   const supabase = createClient() as any;
 
   const { data, error } = await supabase
@@ -370,6 +485,11 @@ export async function getStaffEntriesForClientAndPeriod(
       id,
       work_date,
       client_id,
+      vessel_name,
+      vehicles_discharged,
+      vehicles_loaded,
+      vehicles_shifted,
+      total_vehicles_handled,
       client:clients(id, company_name),
       entries:daily_staff_entries(
         id,
@@ -386,6 +506,9 @@ export async function getStaffEntriesForClientAndPeriod(
         shuttles_count,
         meal_allowance_count,
         bonus_applied_amount,
+        is_approved,
+        approved_at,
+        approved_by,
         employee:employees(id, full_name, national_id, file_number),
         position:positions(id, name)
       )
@@ -401,18 +524,50 @@ export async function getStaffEntriesForClientAndPeriod(
   }
 
   const records: ClientShiftRecordForBilling[] = [];
+  let unapprovedCount = 0;
+  let totalCount = 0;
+  let totalVehiclesDischarged = 0;
+  let totalVehiclesLoaded = 0;
+  let totalVehiclesShifted = 0;
+  let totalVehiclesHandled = 0;
+  let totalShuttles = 0;
+  const vesselNamesSet = new Set<string>();
 
   for (const log of data || []) {
+    if (log.vessel_name) {
+      vesselNamesSet.add(log.vessel_name);
+    }
+    totalVehiclesDischarged += Number(log.vehicles_discharged || 0);
+    totalVehiclesLoaded += Number(log.vehicles_loaded || 0);
+    totalVehiclesShifted += Number(log.vehicles_shifted || 0);
+    totalVehiclesHandled += Number(log.total_vehicles_handled || 0);
+
     const entries = log.entries || [];
     for (const entry of entries) {
+      totalCount++;
+      totalShuttles += Number(entry.shuttles_count || 0);
+      const isAppr = Boolean(entry.is_approved);
+
+      if (!isAppr) {
+        unapprovedCount++;
+      }
+
+      // If onlyApproved is required and this entry is not approved, skip from billing records
+      if (onlyApproved && !isAppr) {
+        continue;
+      }
+
       const reg = Number(entry.regular_hours || 0);
       const ot50 = Number(entry.overtime_50_hours || 0);
       const ot100 = Number(entry.overtime_100_hours || 0);
+
       records.push({
         id: entry.id,
+        daily_work_log_id: log.id,
         work_date: log.work_date,
         client_id: log.client_id,
         client_name: log.client?.company_name || 'Cliente',
+        vessel_name: log.vessel_name || null,
         employee_id: entry.employee_id,
         employee_name: entry.employee?.full_name || 'Personal',
         file_number: entry.employee?.file_number || null,
@@ -430,9 +585,23 @@ export async function getStaffEntriesForClientAndPeriod(
         shuttles_count: Number(entry.shuttles_count || 0),
         meal_allowance_count: Number(entry.meal_allowance_count || 0),
         bonus_applied_amount: Number(entry.bonus_applied_amount || 0),
+        is_export_day: Boolean(log.is_export_day),
+        is_approved: isAppr,
+        approved_at: entry.approved_at || null,
+        approved_by: entry.approved_by || null,
       });
     }
   }
 
-  return records;
+  return {
+    records,
+    unapprovedCount,
+    totalCount,
+    vesselNames: Array.from(vesselNamesSet),
+    totalVehiclesDischarged,
+    totalVehiclesLoaded,
+    totalVehiclesShifted,
+    totalVehiclesHandled: totalVehiclesHandled || (totalVehiclesDischarged + totalVehiclesLoaded + totalVehiclesShifted),
+    totalShuttles,
+  };
 }

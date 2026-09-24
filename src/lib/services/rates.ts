@@ -238,3 +238,65 @@ export async function deleteClientRates(
     throw new Error(error.message);
   }
 }
+
+export type ClientServiceRateRow = Database['public']['Tables']['client_service_rates']['Row'];
+export type ClientServiceRateInsert = Database['public']['Tables']['client_service_rates']['Insert'];
+
+export interface EnrichedClientServiceRate extends ClientServiceRateRow {
+  client?: ClientRow;
+}
+
+export async function getClientServiceRates(clientId?: string): Promise<EnrichedClientServiceRate[]> {
+  const supabase = createClient() as any;
+  let query = supabase
+    .from('client_service_rates')
+    .select(`
+      *,
+      client:clients(*)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (clientId) {
+    query = query.eq('client_id', clientId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error fetching client service rates:', error);
+    throw new Error(error.message);
+  }
+
+  return (data || []) as EnrichedClientServiceRate[];
+}
+
+export async function saveClientServiceRate(payload: ClientServiceRateInsert): Promise<ClientServiceRateRow> {
+  const supabase = createClient() as any;
+  const { data, error } = await supabase
+    .from('client_service_rates')
+    .upsert(payload, {
+      onConflict: 'client_id,service_code,effective_from',
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error saving client service rate:', error);
+    throw new Error(error.message);
+  }
+
+  return data as ClientServiceRateRow;
+}
+
+export async function deleteClientServiceRate(id: string): Promise<void> {
+  const supabase = createClient() as any;
+  const { error } = await supabase
+    .from('client_service_rates')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting client service rate:', error);
+    throw new Error(error.message);
+  }
+}
+

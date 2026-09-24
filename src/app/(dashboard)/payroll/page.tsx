@@ -62,11 +62,24 @@ function getCurrentWeekDates() {
   };
 }
 
+// Calculate current month bounds (1st to last day of month)
+function getCurrentMonthDates() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  return {
+    start: toISODate(start),
+    end: toISODate(end),
+  };
+}
+
 export default function PayrollPage() {
-  const weekDefaults = useMemo(() => getCurrentWeekDates(), []);
-  const [startDate, setStartDate] = useState<string>(weekDefaults.start);
-  const [endDate, setEndDate] = useState<string>(weekDefaults.end);
-  const [activePreset, setActivePreset] = useState<'week' | 'fortnight' | 'month' | 'custom'>('week');
+  const monthDefaults = useMemo(() => getCurrentMonthDates(), []);
+  const [startDate, setStartDate] = useState<string>(monthDefaults.start);
+  const [endDate, setEndDate] = useState<string>(monthDefaults.end);
+  const [activePreset, setActivePreset] = useState<'week' | 'fortnight' | 'month' | 'custom'>('month');
 
   // Dynamic payroll data state
   const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);
@@ -101,6 +114,19 @@ export default function PayrollPage() {
     if (startDate && endDate) {
       loadPayroll(startDate, endDate);
     }
+  }, [startDate, endDate, loadPayroll]);
+
+  // Auto-refresh when tab/window gains focus (e.g. after adding hours in daily entry)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (startDate && endDate) {
+        loadPayroll(startDate, endDate);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [startDate, endDate, loadPayroll]);
 
   // Quick filter presets

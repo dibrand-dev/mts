@@ -67,7 +67,7 @@ export function Sidebar() {
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed lg:static top-0 left-0 z-40 w-64 bg-[#d7e2ff] text-[#0b1c30] flex flex-col h-screen shrink-0 border-r border-[#c2c6d4] transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#d7e2ff] text-[#0b1c30] flex flex-col h-screen shrink-0 border-r border-[#c2c6d4] transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

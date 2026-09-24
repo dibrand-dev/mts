@@ -12,7 +12,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Calendar,
-  DollarSign
+  DollarSign,
+  Clock,
+  Layers
 } from 'lucide-react';
 import {
   getRates,
@@ -24,11 +26,16 @@ import {
   ClientRow,
   PositionRow,
 } from '@/lib/services/rates';
+import { ClientServiceRatesTab } from '@/components/rates/ClientServiceRatesTab';
 
 export default function RatesPage() {
   const [rates, setRates] = useState<CommercialRateGroup[]>([]);
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [positions, setPositions] = useState<PositionRow[]>([]);
+
+  // Active Tab: hourly vs services
+  const [activeTab, setActiveTab] = useState<'hourly' | 'services'>('hourly');
+  const [servicesCount, setServicesCount] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -255,15 +262,72 @@ export default function RatesPage() {
       )}
 
       {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Tarifario Comercial</h1>
-          <p className="text-slate-500 text-sm mt-1">Gestión y configuración de tarifas base y recargos para clientes.</p>
+          <p className="text-slate-500 text-sm mt-1">Gestión y configuración de tarifas base horarias y servicios complementarios para clientes.</p>
         </div>
       </header>
 
-      {/* Filters Section (Sky Blue B2B Card) */}
-      <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm">
+      {/* Tab Switcher */}
+      <div className="flex border-b border-slate-200 gap-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab('hourly')}
+          className={`flex items-center gap-2 pb-3 px-3 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'hourly'
+              ? 'border-[#1E5BB4] text-[#1E5BB4]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Clock className="h-4 w-4" />
+          <span>Tarifas Horarias por Puesto</span>
+          <span
+            className={`ml-1 text-xs px-2 py-0.5 rounded-full ${
+              activeTab === 'hourly'
+                ? 'bg-sky-100 text-sky-800 font-bold'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {rates.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('services')}
+          className={`flex items-center gap-2 pb-3 px-3 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'services'
+              ? 'border-[#1E5BB4] text-[#1E5BB4]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Layers className="h-4 w-4" />
+          <span>Servicios Complementarios</span>
+          {servicesCount !== null && (
+            <span
+              className={`ml-1 text-xs px-2 py-0.5 rounded-full ${
+                activeTab === 'services'
+                  ? 'bg-sky-100 text-sky-800 font-bold'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {servicesCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'services' ? (
+        <ClientServiceRatesTab
+          clients={clients}
+          onNotify={showNotification}
+          onCountChange={setServicesCount}
+        />
+      ) : (
+        <>
+          {/* Filters Section (Sky Blue B2B Card) */}
+          <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           {/* Search Input */}
           <div className="flex flex-col gap-1">
@@ -582,6 +646,8 @@ export default function RatesPage() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

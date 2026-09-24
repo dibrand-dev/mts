@@ -116,6 +116,13 @@ src/
 │       ├── TopNav.tsx                 # Barra superior maestra con buscador y desplegable
 │       └── Footer.tsx                 # Pie de página maestro (stitch_mts/pie-de-pagina)
 ├── lib/
+│   ├── brevo/                         # Módulo de correos con Brevo API v3 y EmailBuilder
+│   │   ├── builder.ts                 # EmailBuilder fluido con componentes B2B
+│   │   ├── client.ts                  # Cliente Brevo HTTP con mock y normalizador
+│   │   ├── index.ts                   # Barril de exportación público
+│   │   ├── service.ts                 # Servicios de alto nivel (sendEmail, sendProforma, etc.)
+│   │   ├── templates.ts               # Plantillas para proformas, cobranzas y avisos
+│   │   └── types.ts                   # Tipado estricto TS para el módulo de correo
 │   ├── services/
 │   │   ├── cash-flow.ts               # CRUD de Movimientos de Flujo de Caja
 │   │   ├── clients.ts                 # CRUD de Clientes
@@ -138,6 +145,27 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-09-22:** Implementación de ajustes operativos prioritarios:
+  1. **Tablero Principal (`/`):** Incorporación de la columna Fecha en las tablas de los acordeones *Facturas a Enviar* y *Facturas a Cobrar*, manteniendo la estructura estática solicitada.
+  2. **Carga Diaria de Horas (`/daily-entry`):** 
+     - Agregado de columna dedicada e independiente para **Lugar de Trabajo** en la tabla principal y limpieza del campo Cliente.
+     - Fijación de la columna de **Acciones** (`sticky right-0`) para evitar desbordes y ocultamiento ante zoom del navegador.
+     - **Retención estricta de variables de turno:** Se conservan automáticamente fecha, cliente, lugar, horarios y puesto al cargar múltiples operarios consecutivos con el botón *"Guardar y Seguir"*.
+     - Protección de puesto en `handleEmployeeChange` para evitar que la selección del operario sobreescriba el puesto definido para la cuadrilla.
+     - Implementación de la acción interactiva **"Finalizar Turno"** en la cabecera y en el panel lateral Slide-over para limpiar la memoria de turno.
+     - Actualización segura de `getOrCreateDailyWorkLog` para evitar violaciones de clave única `UNIQUE(work_date, client_id)`.
+  3. **Cálculo de Sueldos (`/payroll`):**
+     - Configuración del preset por defecto a **"Mes Completo"** (`getCurrentMonthDates`) para visualizar de inmediato todas las jornadas de septiembre (ej. 1 de septiembre).
+     - Incorporación de listener de auto-refresco reactivo al enfocar la ventana (`window.focus`).
+  4. **Flujo de Caja (`/cash-flow`):**
+     - Modificación de la lógica de filtrado por fecha: si el usuario especifica una fecha sin fecha de fin, se filtran **estrictamente los movimientos de esa fecha exacta**, eliminando la visualización no deseada de registros posteriores.
+- **2026-09-15:** Implementación del Módulo Transaccional de Correos con **Brevo** y **EmailBuilder**:
+  1. **Arquitectura Desacoplada y Nativa:** Implementación de `src/lib/brevo/` utilizando la API REST v3 oficial de Brevo (`POST https://api.brevo.com/v3/smtp/email`) con `fetch` nativo (sin dependencias externas pesadas, 100% compatible con Next.js 15+/16 Server Actions y Route Handlers).
+  2. **Constructor Fluido (`EmailBuilder`):** Herramienta componible para armar correos B2B en pocas líneas (`.to()`, `.subject()`, `.badge()`, `.title()`, `.paragraph()`, `.summary()`, `.callout()`, `.button()`, `.attachFromBase64()`, `.attachFromUrl()`, `.send()`).
+  3. **Plantillas Corporativas B2B:** Soporte nativo para proformas quincenales (`createProformaEmail`), recordatorios automatizados de cobranzas (`createInvoiceReminderEmail` para -3 días, hoy y vencida) y notificaciones generales (`createGenericNotificationEmail`).
+  4. **Normalización de Destinatarios:** Admisión transparente de emails individuales, arrays y cadenas separadas por coma/punto y coma (compatibilidad directa con el campo `clients.billing_email`).
+  5. **Modo Seguro de Desarrollo:** Si `BREVO_API_KEY` no está configurada, el cliente simula el envío con logs detallados en consola y retorna `mocked: true` sin interrumpir los flujos de la aplicación.
+  6. **Endpoint y Configuración:** Creación del Route Handler autenticado `src/app/api/mail/send/route.ts` y archivo `.env.example`.
 - **2026-09-03:** Implementación integral del Formulario y Módulo de Ingreso de Flujo de Caja (`/cash-flow`):
   1. **Persistencia Real en Supabase:** Creación de la migración `20260903000000_add_cash_movements.sql`, enum `cash_movement_type` (`income` | `expense`), tabla `cash_movements` con RLS para `admin` y `accounting_auditor`, y datos semilla.
   2. **Capa de Servicios Tipada:** Implementación de `src/lib/services/cash-flow.ts` (`getCashMovements`, `createCashMovement`, `updateCashMovement`, `deleteCashMovement`) y tipado estricto en `database.types.ts`.
