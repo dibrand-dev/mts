@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Download,
   Plus,
@@ -12,11 +12,8 @@ import {
   Eye,
   X,
   Printer,
-  Calendar,
-  Save,
   CheckCircle2,
   AlertCircle,
-  FileSpreadsheet
 } from 'lucide-react';
 
 interface ReportRecord {

@@ -1,18 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   Search,
   ChevronDown,
-  FileSpreadsheet,
   CheckCircle2,
   Eye,
   X,
-  Filter,
   DollarSign,
   Users,
-  Clock,
   ArrowDownRight,
   TrendingUp,
   Download,
@@ -21,11 +18,21 @@ import {
   AlertCircle,
   Briefcase
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getPayrollData,
   exportPayrollToCSV,
   PayrollRecord,
-  PayrollShiftDetail
 } from '@/lib/services/payroll';
 
 // Helper to format Date to YYYY-MM-DD
@@ -41,6 +48,14 @@ function formatDisplayDate(isoStr: string): string {
   if (!isoStr) return '';
   const [y, m, d] = isoStr.split('-');
   return `${d}/${m}/${y}`;
+}
+
+function formatCurrency(val: number) {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(val);
 }
 
 // Calculate current week bounds (Monday to Sunday)
@@ -81,10 +96,19 @@ export default function PayrollPage() {
   const [endDate, setEndDate] = useState<string>(monthDefaults.end);
   const [activePreset, setActivePreset] = useState<'week' | 'fortnight' | 'month' | 'custom'>('month');
 
-  // Dynamic payroll data state
-  const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  // Dynamic payroll data via TanStack Query
+  const {
+    data: payrollData = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.payroll.range(startDate, endDate),
+    queryFn: () => getPayrollData(startDate, endDate),
+    enabled: Boolean(startDate && endDate),
+  });
+
+  const error = queryError ? (queryError as Error).message : null;
   const [approvalSuccess, setApprovalSuccess] = useState<boolean>(false);
 
   // Search & Type Filters
@@ -94,40 +118,6 @@ export default function PayrollPage() {
   // Slideover for employee payroll detail
   const [selectedRecord, setSelectedRecord] = useState<PayrollRecord | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-
-  // Fetch dynamic payroll from Supabase
-  const loadPayroll = useCallback(async (start: string, end: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getPayrollData(start, end);
-      setPayrollData(data);
-    } catch (err: any) {
-      console.error('Error fetching dynamic payroll:', err);
-      setError(err?.message || 'No se pudo cargar la liquidación del período.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (startDate && endDate) {
-      loadPayroll(startDate, endDate);
-    }
-  }, [startDate, endDate, loadPayroll]);
-
-  // Auto-refresh when tab/window gains focus (e.g. after adding hours in daily entry)
-  useEffect(() => {
-    const handleFocus = () => {
-      if (startDate && endDate) {
-        loadPayroll(startDate, endDate);
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [startDate, endDate, loadPayroll]);
 
   // Quick filter presets
   const handleSetPreset = (preset: 'week' | 'fortnight' | 'month') => {
@@ -207,18 +197,168 @@ export default function PayrollPage() {
     );
   }, [filteredData]);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      maximumFractionDigits: 0,
-    }).format(val);
-  };
-
   const handleOpenDetail = (record: PayrollRecord) => {
     setSelectedRecord(record);
     setIsDetailOpen(true);
   };
+
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 25,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchTerm, typeFilter, startDate, endDate]);
+
+  const columns = useMemo<ColumnDef<PayrollRecord>[]>(
+    () => [
+      {
+        accessorKey: 'fileNumber',
+        header: 'Legajo',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-slate-600 font-semibold whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'fullName',
+        header: 'Empleado',
+        cell: ({ getValue }) => (
+          <span className="font-semibold text-[#0B1C30] whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'position',
+        header: 'Puesto / Función',
+        cell: ({ getValue }) => (
+          <span className="text-slate-600 text-xs whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'contractType',
+        header: 'Régimen',
+        cell: ({ getValue }) => (
+          <span className="bg-slate-100 text-slate-700 text-xs px-2.5 py-0.5 rounded-full border border-slate-200 font-medium whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'shiftsCount',
+        header: () => <span className="block text-center">Turnos</span>,
+        cell: ({ getValue }) => {
+          const count = Number(getValue());
+          return (
+            <div className="text-center font-mono text-xs whitespace-nowrap">
+              {count > 0 ? (
+                <span className="bg-blue-50 text-[#1E5BB4] font-bold px-2 py-0.5 rounded border border-blue-200">
+                  {count} {count === 1 ? 'turno' : 'turnos'}
+                </span>
+              ) : (
+                <span className="text-slate-400">0</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'regularHours',
+        header: () => <span className="block text-right">Hs. Norm.</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs whitespace-nowrap">
+              {val > 0 ? `${val}h` : <span className="text-slate-400">0h</span>}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'overtime50Hours',
+        header: () => <span className="block text-right">Hs. Ext. 50%</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs whitespace-nowrap">
+              {val > 0 ? (
+                <span className="text-amber-700 font-semibold">{val}h</span>
+              ) : (
+                <span className="text-slate-400">0h</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'overtime100Hours',
+        header: () => <span className="block text-right">Hs. Ext. 100%</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs whitespace-nowrap">
+              {val > 0 ? (
+                <span className="text-purple-700 font-semibold">{val}h</span>
+              ) : (
+                <span className="text-slate-400">0h</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'advancesAmount',
+        header: () => <span className="block text-right">Anticipos</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs text-red-600 font-semibold whitespace-nowrap">
+              {val > 0 ? `-${formatCurrency(val)}` : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'netAmount',
+        header: () => <span className="block text-right">Total Neto</span>,
+        cell: ({ getValue }) => (
+          <div className="text-right font-mono font-bold text-[#1E5BB4] whitespace-nowrap">
+            {formatCurrency(Number(getValue()))}
+          </div>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center pr-2">Acciones</span>,
+        cell: ({ row }) => (
+          <div className="text-center pr-2 whitespace-nowrap">
+            <button
+              onClick={() => handleOpenDetail(row.original)}
+              className="text-[#1E5BB4] hover:text-[#004392] p-1.5 rounded-full hover:bg-blue-50 transition-colors cursor-pointer"
+              title="Ver Detalle de Liquidación"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredData,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   const handleExport = () => {
     if (filteredData.length === 0) return;
@@ -406,7 +546,7 @@ export default function PayrollPage() {
             )}
             <button
               type="button"
-              onClick={() => loadPayroll(startDate, endDate)}
+              onClick={() => refetch()}
               disabled={loading}
               title="Recalcular haberes"
               className="p-1 hover:bg-white/20 rounded-md transition-colors text-white"
@@ -428,7 +568,7 @@ export default function PayrollPage() {
             </div>
           </div>
           <button
-            onClick={() => loadPayroll(startDate, endDate)}
+            onClick={() => refetch()}
             className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 rounded font-semibold text-xs transition-colors"
           >
             Reintentar
@@ -502,84 +642,36 @@ export default function PayrollPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead className="bg-slate-50 border-b-2 border-[#0F2547] text-[#0F2547] text-xs uppercase font-bold tracking-wider">
-                <tr>
-                  <th className="py-3 px-4 pl-6 whitespace-nowrap">Legajo</th>
-                  <th className="py-3 px-4 whitespace-nowrap">Empleado</th>
-                  <th className="py-3 px-4 whitespace-nowrap">Puesto / Función</th>
-                  <th className="py-3 px-4 whitespace-nowrap">Régimen</th>
-                  <th className="py-3 px-4 text-center whitespace-nowrap">Turnos</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Norm.</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Ext. 50%</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Hs. Ext. 100%</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Anticipos</th>
-                  <th className="py-3 px-4 text-right whitespace-nowrap">Total Neto</th>
-                  <th className="py-3 px-4 pr-6 text-center whitespace-nowrap">Acciones</th>
-                </tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className="py-3 px-4 whitespace-nowrap"
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredData.map((rec) => (
-                  <tr key={rec.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 pl-6 font-mono text-xs text-slate-600 font-semibold whitespace-nowrap">
-                      {rec.fileNumber}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-[#0B1C30] whitespace-nowrap">
-                      {rec.fullName}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 text-xs whitespace-nowrap">
-                      {rec.position}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="bg-slate-100 text-slate-700 text-xs px-2.5 py-0.5 rounded-full border border-slate-200 font-medium">
-                        {rec.contractType}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center font-mono text-xs whitespace-nowrap">
-                      {rec.shiftsCount > 0 ? (
-                        <span className="bg-blue-50 text-[#1E5BB4] font-bold px-2 py-0.5 rounded border border-blue-200">
-                          {rec.shiftsCount} {rec.shiftsCount === 1 ? 'turno' : 'turnos'}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">0</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap">
-                      {rec.regularHours > 0 ? `${rec.regularHours}h` : <span className="text-slate-400">0h</span>}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap">
-                      {rec.overtime50Hours > 0 ? (
-                        <span className="text-amber-700 font-semibold">{rec.overtime50Hours}h</span>
-                      ) : (
-                        <span className="text-slate-400">0h</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap">
-                      {rec.overtime100Hours > 0 ? (
-                        <span className="text-purple-700 font-semibold">{rec.overtime100Hours}h</span>
-                      ) : (
-                        <span className="text-slate-400">0h</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-xs text-red-600 font-semibold whitespace-nowrap">
-                      {rec.advancesAmount > 0 ? `-${formatCurrency(rec.advancesAmount)}` : '-'}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-[#1E5BB4] whitespace-nowrap">
-                      {formatCurrency(rec.netAmount)}
-                    </td>
-                    <td className="py-3 px-4 pr-6 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenDetail(rec)}
-                        className="text-[#1E5BB4] hover:text-[#004392] p-1.5 rounded-full hover:bg-blue-50 transition-colors cursor-pointer"
-                        title="Ver Detalle de Liquidación"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                    </td>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="py-3 px-4">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        {!loading && filteredData.length > 0 && <DataTablePagination table={table} />}
       </section>
 
       {/* Slide-over: Detalle de Liquidación de Empleado */}

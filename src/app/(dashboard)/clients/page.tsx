@@ -11,11 +11,19 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Building2,
   Mail,
-  Phone,
-  Clock
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getClients,
   createClientService,
@@ -25,10 +33,15 @@ import {
 } from '@/lib/services/clients';
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState<ClientRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const {
+    data: clients = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: queryKeys.clients.all,
+    queryFn: getClients,
+  });
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -36,6 +49,12 @@ export default function ClientsPage() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // '' | 'active' | 'inactive'
+
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
 
   // Slide-over state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
@@ -57,6 +76,46 @@ export default function ClientsPage() {
   // Email tooltip / popover state for mobile click & desktop hover
   const [activeEmailTooltipId, setActiveEmailTooltipId] = useState<string | null>(null);
 
+  const createMutation = useMutation({
+    mutationFn: createClientService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.all });
+      showNotification('Nuevo cliente creado correctamente.');
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Error al guardar la información del cliente.');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, client }: { id: string; client: any }) => updateClientService(id, client),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.all });
+      showNotification('Cliente actualizado correctamente.');
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Error al actualizar el cliente.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteClientService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.all });
+      showNotification('Cliente eliminado con éxito.');
+      setIsDeleteModalOpen(false);
+      setClientToDelete(null);
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Error al eliminar el cliente.');
+    },
+  });
+
+  const saving = createMutation.isPending || updateMutation.isPending;
+  const deleting = deleteMutation.isPending;
+
   useEffect(() => {
     const handleClickOutside = () => {
       setActiveEmailTooltipId(null);
@@ -65,24 +124,9 @@ export default function ClientsPage() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Load clients data
-  const loadClients = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getClients();
-      setClients(data);
-    } catch (err: any) {
-      console.error('Error loading clients:', err);
-      setError(err.message || 'Error al cargar la lista de clientes.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadClients();
-  }, []);
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchTerm, statusFilter]);
 
   const showNotification = (msg: string) => {
     setSuccessMsg(msg);
@@ -201,37 +245,27 @@ export default function ClientsPage() {
 
     const billingEmailString = currentEmails.join(',');
 
-    try {
-      setSaving(true);
-      if (editingClient) {
-        await updateClientService(editingClient.id, {
+    if (editingClient) {
+      updateMutation.mutate({
+        id: editingClient.id,
+        client: {
           company_name: companyName.trim(),
           tax_id: taxId.trim(),
           billing_email: billingEmailString,
           phone_number: phoneNumber.trim() || null,
           payment_due_days: Number(paymentDueDays),
           is_active: isActive,
-        });
-        showNotification('Cliente actualizado correctamente.');
-      } else {
-        await createClientService({
-          company_name: companyName.trim(),
-          tax_id: taxId.trim(),
-          billing_email: billingEmailString,
-          phone_number: phoneNumber.trim() || null,
-          payment_due_days: Number(paymentDueDays),
-          is_active: isActive,
-        });
-        showNotification('Nuevo cliente creado correctamente.');
-      }
-
-      setIsSlideoverOpen(false);
-      await loadClients();
-    } catch (err: any) {
-      console.error('Error saving client:', err);
-      setError(err.message || 'Error al guardar la información del cliente.');
-    } finally {
-      setSaving(false);
+        },
+      });
+    } else {
+      createMutation.mutate({
+        company_name: companyName.trim(),
+        tax_id: taxId.trim(),
+        billing_email: billingEmailString,
+        phone_number: phoneNumber.trim() || null,
+        payment_due_days: Number(paymentDueDays),
+        is_active: isActive,
+      });
     }
   };
 
@@ -240,23 +274,9 @@ export default function ClientsPage() {
     setIsDeleteModalOpen(true);
   };
 
-  const ConfirmDelete = async () => {
+  const ConfirmDelete = () => {
     if (!clientToDelete) return;
-
-    try {
-      setDeleting(true);
-      setError(null);
-      await deleteClientService(clientToDelete.id);
-      setIsDeleteModalOpen(false);
-      setClientToDelete(null);
-      await loadClients();
-      showNotification('Cliente eliminado con éxito.');
-    } catch (err: any) {
-      console.error('Error deleting client:', err);
-      setError(err.message || 'Error al eliminar el cliente.');
-    } finally {
-      setDeleting(false);
-    }
+    deleteMutation.mutate(clientToDelete.id);
   };
 
   // Filtered clients list
@@ -275,6 +295,182 @@ export default function ClientsPage() {
       return matchSearch && matchStatus;
     });
   }, [clients, searchTerm, statusFilter]);
+
+  const renderEmailCell = (client: ClientRow) => {
+    const emailList = client.billing_email
+      ? client.billing_email.split(',').map((e) => e.trim()).filter(Boolean)
+      : [];
+    if (emailList.length === 0) return <span className="text-slate-400">-</span>;
+    if (emailList.length === 1) {
+      return (
+        <span className="truncate block max-w-[240px] text-[#0B1C30]" title={emailList[0]}>
+          {emailList[0]}
+        </span>
+      );
+    }
+
+    const primaryEmail = emailList[0];
+    const additionalEmails = emailList.slice(1);
+    const isTooltipOpen = activeEmailTooltipId === client.id;
+
+    return (
+      <div className="flex items-center gap-1.5 relative">
+        <span className="truncate max-w-[170px] text-[#0B1C30]" title={primaryEmail}>
+          {primaryEmail}
+        </span>
+
+        {/* Badge with Click (Mobile) and Hover (Desktop) Popover */}
+        <div
+          className="relative inline-flex items-center"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveEmailTooltipId(isTooltipOpen ? null : client.id);
+          }}
+          onMouseEnter={() => setActiveEmailTooltipId(client.id)}
+          onMouseLeave={() => setActiveEmailTooltipId(null)}
+        >
+          <button
+            type="button"
+            className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold transition-all cursor-pointer shadow-xs ${
+              isTooltipOpen
+                ? 'bg-[#1E5BB4] text-white ring-2 ring-[#1E5BB4]/30'
+                : 'bg-[#1E5BB4]/10 text-[#1E5BB4] border border-[#1E5BB4]/30 hover:bg-[#1E5BB4] hover:text-white'
+            }`}
+            aria-label={`Ver ${additionalEmails.length} emails adicionales`}
+          >
+            +{additionalEmails.length}
+          </button>
+
+          {/* Tooltip / Popover Content rendered downwards */}
+          {isTooltipOpen && (
+            <div
+              className="absolute top-full left-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 flex flex-col bg-[#0B1C30] text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs w-max min-w-[210px] max-w-xs z-50 transition-all duration-150 animate-in fade-in zoom-in-95"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute bottom-full left-4 sm:left-1/2 sm:-translate-x-1/2 -mb-px border-4 border-transparent border-b-[#0B1C30]"></div>
+
+              <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-700/60 pb-1.5 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                  <span>
+                    {additionalEmails.length === 1
+                      ? '1 Email adicional'
+                      : `${additionalEmails.length} Emails adicionales`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {additionalEmails.map((em, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 text-slate-200 font-mono text-[11px] bg-slate-850 bg-slate-900/60 px-2 py-1 rounded-md border border-slate-700/50"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+                    <span className="select-all break-all">{em}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const columns = useMemo<ColumnDef<ClientRow>[]>(
+    () => [
+      {
+        accessorKey: 'tax_id',
+        header: 'CUIT',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-slate-600 font-medium whitespace-nowrap">
+            {row.original.tax_id}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'company_name',
+        header: 'Razón Social',
+        cell: ({ row }) => (
+          <span className="font-semibold text-[#0B1C30] whitespace-nowrap">
+            {row.original.company_name}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'billing_email',
+        header: 'Email Facturación',
+        cell: ({ row }) => renderEmailCell(row.original),
+      },
+      {
+        accessorKey: 'phone_number',
+        header: 'Teléfono',
+        cell: ({ row }) => (
+          <span className="text-slate-600 font-mono text-xs whitespace-nowrap">
+            {row.original.phone_number || '-'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'payment_due_days',
+        header: 'Plazo Pago',
+        cell: ({ row }) => (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200 font-mono whitespace-nowrap">
+            {row.original.payment_due_days} Días
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'is_active',
+        header: 'Estado',
+        cell: ({ row }) =>
+          row.original.is_active ? (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+              Activo
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+              Inactivo
+            </span>
+          ),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Acciones</div>,
+        cell: ({ row }) => (
+          <div className="text-right space-x-1 whitespace-nowrap">
+            <button
+              onClick={() => handleOpenSlideover(row.original)}
+              className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Editar Cliente"
+            >
+              <Edit2 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleOpenDeleteModal(row.original)}
+              className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+              title="Eliminar Cliente"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [activeEmailTooltipId]
+  );
+
+  const table = useReactTable({
+    data: filteredClients,
+    columns,
+    state: {
+      pagination,
+    },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
@@ -366,142 +562,43 @@ export default function ClientsPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4 pl-6 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">CUIT</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Razón Social</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Email Facturación</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Teléfono</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Plazo Pago</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Estado</th>
-                  <th className="py-3 px-4 pr-6 text-xs font-bold text-slate-600 uppercase tracking-wider text-right whitespace-nowrap">Acciones</th>
-                </tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className={`py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap ${
+                          header.index === 0 ? 'pl-6' : ''
+                        } ${header.index === headerGroup.headers.length - 1 ? 'pr-6 text-right' : ''}`}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredClients.map((client) => (
-                  <tr key={client.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 pl-6 font-mono text-xs text-slate-600 font-medium whitespace-nowrap">
-                      {client.tax_id}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-[#0B1C30] whitespace-nowrap">
-                      {client.company_name}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 font-medium">
-                      {(() => {
-                        const emailList = client.billing_email
-                          ? client.billing_email.split(',').map((e) => e.trim()).filter(Boolean)
-                          : [];
-                        if (emailList.length === 0) return <span className="text-slate-400">-</span>;
-                        if (emailList.length === 1) {
-                          return (
-                            <span className="truncate block max-w-[240px] text-[#0B1C30]" title={emailList[0]}>
-                              {emailList[0]}
-                            </span>
-                          );
-                        }
-                        
-                        const primaryEmail = emailList[0];
-                        const additionalEmails = emailList.slice(1);
-                        const isTooltipOpen = activeEmailTooltipId === client.id;
-
-                        return (
-                          <div className="flex items-center gap-1.5 relative">
-                            <span className="truncate max-w-[170px] text-[#0B1C30]" title={primaryEmail}>
-                              {primaryEmail}
-                            </span>
-                            
-                            {/* Badge with Click (Mobile) and Hover (Desktop) Popover */}
-                            <div 
-                              className="relative inline-flex items-center"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveEmailTooltipId(isTooltipOpen ? null : client.id);
-                              }}
-                              onMouseEnter={() => setActiveEmailTooltipId(client.id)}
-                              onMouseLeave={() => setActiveEmailTooltipId(null)}
-                            >
-                              <button
-                                type="button"
-                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold transition-all cursor-pointer shadow-xs ${
-                                  isTooltipOpen
-                                    ? 'bg-[#1E5BB4] text-white ring-2 ring-[#1E5BB4]/30'
-                                    : 'bg-[#1E5BB4]/10 text-[#1E5BB4] border border-[#1E5BB4]/30 hover:bg-[#1E5BB4] hover:text-white'
-                                }`}
-                                aria-label={`Ver ${additionalEmails.length} emails adicionales`}
-                              >
-                                +{additionalEmails.length}
-                              </button>
-
-                              {/* Tooltip / Popover Content rendered downwards */}
-                              {isTooltipOpen && (
-                                <div 
-                                  className="absolute top-full left-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 flex flex-col bg-[#0B1C30] text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs w-max min-w-[210px] max-w-xs z-50 transition-all duration-150 animate-in fade-in zoom-in-95"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {/* Arrow pointing up towards badge */}
-                                  <div className="absolute bottom-full left-4 sm:left-1/2 sm:-translate-x-1/2 -mb-px border-4 border-transparent border-b-[#0B1C30]"></div>
-
-                                  <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-sky-400 border-b border-slate-700/60 pb-1.5 mb-2">
-                                    <div className="flex items-center gap-1.5">
-                                      <Mail className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-                                      <span>{additionalEmails.length === 1 ? '1 Email adicional' : `${additionalEmails.length} Emails adicionales`}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                    {additionalEmails.map((em, idx) => (
-                                      <div key={idx} className="flex items-center gap-2 text-slate-200 font-mono text-[11px] bg-slate-850 bg-slate-900/60 px-2 py-1 rounded-md border border-slate-700/50">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
-                                        <span className="select-all break-all">{em}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 font-mono text-xs whitespace-nowrap">
-                      {client.phone_number || '-'}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
-                        {client.payment_due_days} Días
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {client.is_active ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                          Activo
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
-                          Inactivo
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 pr-6 text-right space-x-1 whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenSlideover(client)}
-                        className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="Editar Cliente"
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className={`py-3 px-4 ${
+                          cell.column.id === 'tax_id' ? 'pl-6' : ''
+                        } ${cell.column.id === 'actions' ? 'pr-6 text-right' : ''}`}
                       >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleOpenDeleteModal(client)}
-                        className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                        title="Eliminar Cliente"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+
+        {!loading && filteredClients.length > 0 && (
+          <DataTablePagination table={table} />
         )}
       </section>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   Calendar,
@@ -12,11 +12,9 @@ import {
   AlertCircle,
   FileText,
   Clock,
-  CheckCircle2,
   Wallet,
   TrendingUp,
   CreditCard,
-  Building,
   Landmark,
 } from 'lucide-react';
 

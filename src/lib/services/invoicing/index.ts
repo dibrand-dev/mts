@@ -9,7 +9,7 @@ import {
   ProformaCalculationContext,
   ProformaCalculationResult,
 } from './types';
-import { getStrategy, getAllStrategies, getDefaultStrategyForClient } from './registry';
+import { getStrategy } from './registry';
 
 export * from './types';
 export * from './registry';

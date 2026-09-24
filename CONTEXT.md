@@ -102,6 +102,7 @@ src/
 │   │   ├── invoicing/                 # /invoicing (page.tsx, layout.tsx) - Proformas automáticas 100% transaccionales
 │   │   ├── locations/                 # /locations (page.tsx, layout.tsx)
 │   │   ├── payroll/                   # /payroll (page.tsx, layout.tsx)
+│   │   ├── positions/                 # /positions (page.tsx, layout.tsx) - CRUD de Puestos, asignación de personal y tarifas
 │   │   ├── rates/                     # /rates (page.tsx, layout.tsx)
 │   │   ├── reports/                   # /reports (page.tsx, layout.tsx)
 │   │   └── settings/                  # /settings (page.tsx, layout.tsx)
@@ -130,6 +131,7 @@ src/
 │   │   ├── employees.ts               # CRUD de Empleados y auditoría de horas
 │   │   ├── invoicing.ts               # Proformas, facturación y cruce de tarifas
 │   │   ├── locations.ts               # CRUD de Lugares de Trabajo
+│   │   ├── positions.ts               # CRUD de Puestos de Trabajo, asignación de personal y tarifas
 │   │   └── rates.ts                   # CRUD de Tarifario Comercial y tipos de hora
 │   └── supabase/
 │       ├── client.ts                  # createBrowserClient (@supabase/ssr)
@@ -145,6 +147,24 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-09-24:** Implementación integral del CRUD de Puestos de Trabajo (`/positions`), Asignación de Personal y Vinculación al Tarifario Comercial por Cliente:
+  1. **Capa de Servicios (`src/lib/services/positions.ts`):** 
+     - Funciones tipadas para lectura enriquecida (`getPositionsWithDetails`), creación (`createPosition`), actualización (`updatePosition`) y eliminación segura (`deletePosition` con protección contra borrado si el puesto ya cuenta con turnos en `daily_staff_entries`).
+     - Asignación masiva y desasignación de colaboradores (`bulkAssignEmployeesToPosition`, `getAllEmployeesForPositionAssignment`).
+     - Gestión directa de tarifas horarias por cliente desde el puesto (`assignPositionClientRate`, `removePositionClientRate`).
+  2. **Interfaz de Gestión de Puestos de Trabajo (`/positions`):**
+     - Métricas KPI superiores (*Puestos Totales*, *Personal Asignado*, *Plus Vehicular CCT*, *Tarifas Activas en Clientes*).
+     - Barra de búsqueda y filtros rápidos por aplicación de Plus Vehicular y estado de asignación de personal en tarjeta Celeste B2B (`#0EA5E9`).
+     - Panel lateral *Slide-over* para creación y edición de puestos con toggle explicativo de Bonificación por Vehículos (CCT).
+     - Modal interactivo de **Asignación de Personal** con buscador en tiempo real de colaboradores por Nombre/DNI/Legajo, badges de puesto actual y asignación por checkbox.
+     - Modal de **Tarifario Comercial por Cliente** para visualizar tarifas horarias activas (Normal, Extra 50%, Extra 100%) y formulario rápido para cargar/actualizar tarifas por cliente con cálculo automático de horas extras.
+     - Modal de confirmación de eliminación con advertencias de colaboradores y tarifas dependientes.
+  3. **Integración con Navegación y Vistas Existentes:**
+     - Agregado del ítem **Puestos de Trabajo** con icono `Briefcase` en `Sidebar.tsx`.
+     - En **Tarifario Comercial (`/rates`)**: Botón de acceso directo a *Gestionar Puestos de Trabajo* y filtro desplegable por *Puesto Operativo* en la barra de búsqueda.
+     - En **Gestión de Personal (`/employees`)**: Botón de acceso a *Puestos de Trabajo* en la cabecera y badges distintivos para el puesto asignado en la grilla de colaboradores.
+  4. **Base de Datos y Rendimiento:**
+     - Creación de la migración `20260924000000_positions_management.sql` con índices en `positions(name)`, `employees(default_position_id)` y `client_position_rates(position_id)`.
 - **2026-09-22:** Implementación de ajustes operativos prioritarios:
   1. **Tablero Principal (`/`):** Incorporación de la columna Fecha en las tablas de los acordeones *Facturas a Enviar* y *Facturas a Cobrar*, manteniendo la estructura estática solicitada.
   2. **Carga Diaria de Horas (`/daily-entry`):** 

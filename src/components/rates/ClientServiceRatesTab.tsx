@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   ChevronDown,
@@ -11,21 +11,30 @@ import {
   Loader2,
   AlertCircle,
   Tag,
-  DollarSign,
   Car,
   Truck,
   Utensils,
   CalendarCheck,
   Percent,
-  HelpCircle,
-  Briefcase
+  Briefcase,
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getClientServiceRates,
   saveClientServiceRate,
   deleteClientServiceRate,
   EnrichedClientServiceRate,
-  ClientRow
+  ClientRow,
 } from '@/lib/services/rates';
 
 interface ClientServiceRatesTabProps {
@@ -105,16 +114,38 @@ const SERVICE_PRESETS: ServicePreset[] = [
 ];
 
 export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: ClientServiceRatesTabProps) {
-  const [rates, setRates] = useState<EnrichedClientServiceRate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const {
+    data: rates = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: queryKeys.rates.services,
+    queryFn: () => getClientServiceRates(),
+  });
+
+  useEffect(() => {
+    if (onCountChange) {
+      onCountChange(rates.length);
+    }
+  }, [rates.length, onCountChange]);
+
   const [error, setError] = useState<string | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchTerm, clientFilter, categoryFilter]);
 
   // Slideover & Modal states
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
@@ -131,26 +162,39 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
   const [formRateValue, setFormRateValue] = useState('');
   const [formEffectiveFrom, setFormEffectiveFrom] = useState('');
 
-  const fetchServiceRates = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getClientServiceRates();
-      setRates(data);
-      if (onCountChange) {
-        onCountChange(data.length);
-      }
-    } catch (err: any) {
-      console.error('Error fetching client service rates:', err);
-      setError(err.message || 'Error al cargar las tarifas de servicios complementarios.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const saveMutation = useMutation({
+    mutationFn: saveClientServiceRate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rates.services });
+      setIsSlideoverOpen(false);
+      onNotify(
+        editingRate
+          ? 'Servicio complementario actualizado con éxito.'
+          : 'Nuevo servicio complementario registrado correctamente.'
+      );
+    },
+    onError: (err: any) => {
+      console.error('Error saving client service rate:', err);
+      setError(err.message || 'Error al guardar el servicio complementario.');
+    },
+  });
 
-  useEffect(() => {
-    fetchServiceRates();
-  }, []);
+  const deleteMutation = useMutation({
+    mutationFn: deleteClientServiceRate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rates.services });
+      setIsDeleteModalOpen(false);
+      setRateToDelete(null);
+      onNotify('Servicio complementario eliminado con éxito.');
+    },
+    onError: (err: any) => {
+      console.error('Error deleting client service rate:', err);
+      setError(err.message || 'Error al eliminar el servicio complementario.');
+    },
+  });
+
+  const saving = saveMutation.isPending;
+  const deleting = deleteMutation.isPending;
 
   const handleOpenSlideover = (item?: EnrichedClientServiceRate) => {
     setError(null);
@@ -195,7 +239,7 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -222,34 +266,18 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
       return;
     }
 
-    try {
-      setSaving(true);
-      await saveClientServiceRate({
-        id: editingRate?.id,
-        client_id: formClientId,
-        service_code: formServiceCode.trim().toUpperCase(),
-        description: formDescription.trim(),
-        rate_value: numericValue,
-        effective_from: formEffectiveFrom,
-        metadata: {
-          category: formCategory,
-          ...(editingRate?.metadata || {})
-        }
-      });
-
-      setIsSlideoverOpen(false);
-      await fetchServiceRates();
-      onNotify(
-        editingRate
-          ? 'Servicio complementario actualizado con éxito.'
-          : 'Nuevo servicio complementario registrado correctamente.'
-      );
-    } catch (err: any) {
-      console.error('Error saving client service rate:', err);
-      setError(err.message || 'Error al guardar el servicio complementario.');
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate({
+      id: editingRate?.id,
+      client_id: formClientId,
+      service_code: formServiceCode.trim().toUpperCase(),
+      description: formDescription.trim(),
+      rate_value: numericValue,
+      effective_from: formEffectiveFrom,
+      metadata: {
+        category: formCategory,
+        ...(editingRate?.metadata || {}),
+      },
+    });
   };
 
   const handleOpenDeleteModal = (item: EnrichedClientServiceRate) => {
@@ -257,23 +285,9 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
     setIsDeleteModalOpen(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!rateToDelete) return;
-
-    try {
-      setDeleting(true);
-      setError(null);
-      await deleteClientServiceRate(rateToDelete.id);
-      setIsDeleteModalOpen(false);
-      setRateToDelete(null);
-      await fetchServiceRates();
-      onNotify('Servicio complementario eliminado con éxito.');
-    } catch (err: any) {
-      console.error('Error deleting client service rate:', err);
-      setError(err.message || 'Error al eliminar el servicio complementario.');
-    } finally {
-      setDeleting(false);
-    }
+    deleteMutation.mutate(rateToDelete.id);
   };
 
   // Filtered rates list
@@ -361,6 +375,94 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
         );
     }
   };
+
+  const columns = useMemo<ColumnDef<EnrichedClientServiceRate>[]>(
+    () => [
+      {
+        id: 'client_name',
+        header: 'Cliente',
+        cell: ({ row }) => (
+          <span className="font-semibold whitespace-nowrap">
+            {row.original.client?.company_name || 'Cliente no asignado'}
+          </span>
+        ),
+      },
+      {
+        id: 'category',
+        header: 'Categoría',
+        cell: ({ row }) => getCategoryBadge(row.original.metadata?.category),
+      },
+      {
+        accessorKey: 'service_code',
+        header: 'Código',
+        cell: ({ getValue }) => (
+          <span className="font-mono font-medium text-xs text-slate-700 whitespace-nowrap bg-slate-100 px-2 py-0.5 rounded text-[#0F2547] border border-slate-200">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'description',
+        header: 'Concepto / Descripción',
+        cell: ({ getValue }) => (
+          <span className="font-medium text-slate-800">{String(getValue())}</span>
+        ),
+      },
+      {
+        accessorKey: 'rate_value',
+        header: () => <span className="block text-right">Tarifa / Valor</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
+            {formatValueDisplay(row.original.rate_value, row.original.metadata?.category)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'effective_from',
+        header: 'Vigencia',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-slate-500 whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center pr-2">Acciones</span>,
+        cell: ({ row }) => {
+          const item = row.original;
+          return (
+            <div className="text-center space-x-1 whitespace-nowrap pr-2">
+              <button
+                onClick={() => handleOpenSlideover(item)}
+                className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Editar Servicio"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => handleOpenDeleteModal(item)}
+                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+                title="Eliminar Servicio"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredRates,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   return (
     <div className="space-y-6">
@@ -464,66 +566,43 @@ export function ClientServiceRatesTab({ clients, onNotify, onCountChange }: Clie
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[850px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4 pl-6 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Cliente</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Categoría</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Código</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Concepto / Descripción</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider text-right whitespace-nowrap">Tarifa / Valor</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Vigencia</th>
-                  <th className="py-3 px-4 pr-6 text-xs font-bold text-slate-600 uppercase tracking-wider text-center whitespace-nowrap">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredRates.map((item) => {
-                  const cat = item.metadata?.category || 'other';
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4 pl-6 font-semibold whitespace-nowrap">
-                        {item.client?.company_name || 'Cliente no asignado'}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        {getCategoryBadge(cat)}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-medium text-xs text-slate-700 whitespace-nowrap">
-                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[#0F2547] border border-slate-200">
-                          {item.service_code}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-800">
-                        {item.description}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
-                        {formatValueDisplay(item.rate_value, cat)}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-xs text-slate-500 whitespace-nowrap">
-                        {item.effective_from}
-                      </td>
-                      <td className="py-3 px-4 pr-6 text-center space-x-1 whitespace-nowrap">
-                        <button
-                          onClick={() => handleOpenSlideover(item)}
-                          className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Editar Servicio"
+          <>
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[850px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className="py-3 px-4 first:pl-6 last:pr-6 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap"
                         >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenDeleteModal(item)}
-                          className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Eliminar Servicio"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
+                  {table.getRowModel().rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="py-3 px-4 first:pl-6 last:pr-6 whitespace-nowrap"
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <DataTablePagination table={table} />
+          </>
         )}
       </section>
 

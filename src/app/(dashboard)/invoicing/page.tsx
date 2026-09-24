@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -11,11 +11,19 @@ import {
   Clock,
   AlertCircle,
   Eye,
-  Calendar,
-  Building2,
-  Check,
 } from 'lucide-react';
-import { getClients, ClientRow } from '@/lib/services/clients';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
+import { getClients } from '@/lib/services/clients';
 import {
   getInvoicingRecords,
   createTaxInvoiceService,
@@ -36,9 +44,29 @@ const PROFORMA_TYPE_BADGES: Record<string, { label: string; color: string }> = {
 };
 
 export default function InvoicingPage() {
-  const [records, setRecords] = useState<InvoicingRecord[]>([]);
-  const [clients, setClients] = useState<ClientRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const {
+    data: mainData,
+    isLoading: loading,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.invoicing.records,
+    queryFn: async () => {
+      const [recordsData, clientsData] = await Promise.all([
+        getInvoicingRecords(),
+        getClients(),
+      ]);
+      return {
+        records: recordsData,
+        clients: clientsData,
+      };
+    },
+  });
+
+  const records = mainData?.records || [];
+  const clients = mainData?.clients || [];
+
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -47,6 +75,16 @@ export default function InvoicingPage() {
   const [toDateFilter, setToDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchQuery, fromDateFilter, toDateFilter, statusFilter]);
+
   // Modals & Slide-overs
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -54,27 +92,45 @@ export default function InvoicingPage() {
   const [selectedProforma, setSelectedProforma] = useState<InvoicingRecord | null>(null);
   const [selectedProformaDetails, setSelectedProformaDetails] = useState<InvoicingRecord | null>(null);
   const [invoiceNumberInput, setInvoiceNumberInput] = useState('');
-  const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const createInvoiceMutation = useMutation({
+    mutationFn: createTaxInvoiceService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoicing.records });
+      setIsInvoiceModalOpen(false);
+      setSelectedProforma(null);
+      setInvoiceNumberInput('');
+    },
+    onError: (err: any) => {
+      alert(`Error al emitir factura: ${err.message}`);
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: InvoicingRecord['status'] }) =>
+      updateProformaStatusService(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoicing.records });
+    },
+    onError: (err: any) => {
+      alert(`Error al actualizar estado: ${err.message}`);
+    },
+  });
+
+  const deleteProformaMutation = useMutation({
+    mutationFn: deleteProformaService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoicing.records });
+    },
+    onError: (err: any) => {
+      alert(`Error al eliminar: ${err.message}`);
+    },
+  });
+
+  const isSubmittingInvoice = createInvoiceMutation.isPending;
 
   const loadData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [recordsData, clientsData] = await Promise.all([
-        getInvoicingRecords(),
-        getClients(),
-      ]);
-      setRecords(recordsData);
-      setClients(clientsData);
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar datos de facturación');
-    } finally {
-      setLoading(false);
-    }
+    await refetch();
   };
 
   const handleOpenDetailsModal = async (record: InvoicingRecord) => {
@@ -88,72 +144,237 @@ export default function InvoicingPage() {
     }
   };
 
-  const handleGenerateInvoice = async (e: React.FormEvent) => {
+  const handleGenerateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProforma || !invoiceNumberInput.trim()) {
       alert('Por favor ingresa un número de factura válido.');
       return;
     }
 
-    setIsSubmittingInvoice(true);
-    try {
-      await createTaxInvoiceService({
-        proforma_id: selectedProforma.id,
-        invoice_number: invoiceNumberInput.trim(),
-        invoiced_amount: selectedProforma.total,
-        status: 'pending',
-        pdf_storage_path: '',
-        invoice_date: new Date().toISOString().split('T')[0],
-      });
-
-      setIsInvoiceModalOpen(false);
-      setSelectedProforma(null);
-      setInvoiceNumberInput('');
-      await loadData();
-    } catch (err: any) {
-      alert(`Error al emitir factura: ${err.message}`);
-    } finally {
-      setIsSubmittingInvoice(false);
-    }
+    createInvoiceMutation.mutate({
+      proforma_id: selectedProforma.id,
+      invoice_number: invoiceNumberInput.trim(),
+      invoiced_amount: selectedProforma.total,
+      status: 'pending',
+      pdf_storage_path: '',
+      invoice_date: new Date().toISOString().split('T')[0],
+    });
   };
 
-  const handleStatusChange = async (record: InvoicingRecord, newStatus: InvoicingRecord['status']) => {
-    try {
-      await updateProformaStatusService(record.id, newStatus);
-      if (selectedProformaDetails && selectedProformaDetails.id === record.id) {
-        setSelectedProformaDetails({
-          ...selectedProformaDetails,
-          status: newStatus,
-        });
+  const handleStatusChange = (record: InvoicingRecord, newStatus: InvoicingRecord['status']) => {
+    updateStatusMutation.mutate(
+      { id: record.id, status: newStatus },
+      {
+        onSuccess: () => {
+          if (selectedProformaDetails && selectedProformaDetails.id === record.id) {
+            setSelectedProformaDetails({
+              ...selectedProformaDetails,
+              status: newStatus,
+            });
+          }
+        },
       }
-      await loadData();
-    } catch (err: any) {
-      alert(`Error al actualizar estado: ${err.message}`);
-    }
+    );
   };
 
-  const handleDeleteProforma = async (id: string) => {
+  const handleDeleteProforma = (id: string) => {
     if (!confirm('¿Estás seguro de que deseas eliminar esta proforma/factura?')) return;
-    try {
-      await deleteProformaService(id);
-      await loadData();
-    } catch (err: any) {
-      alert(`Error al eliminar: ${err.message}`);
-    }
+    deleteProformaMutation.mutate(id);
   };
 
   // Filtered records logic
-  const filteredRecords = records.filter((rec) => {
-    const matchesQuery =
-      rec.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rec.proforma_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (rec.invoice?.invoice_number && rec.invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredRecords = useMemo(() => {
+    return records.filter((rec) => {
+      const matchesQuery =
+        rec.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        rec.proforma_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (rec.invoice?.invoice_number && rec.invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesStatus = !statusFilter || rec.status === statusFilter;
-    const matchesFromDate = !fromDateFilter || rec.issue_date >= fromDateFilter;
-    const matchesToDate = !toDateFilter || rec.issue_date <= toDateFilter;
+      const matchesStatus = !statusFilter || rec.status === statusFilter;
+      const matchesFromDate = !fromDateFilter || rec.issue_date >= fromDateFilter;
+      const matchesToDate = !toDateFilter || rec.issue_date <= toDateFilter;
 
-    return matchesQuery && matchesStatus && matchesFromDate && matchesToDate;
+      return matchesQuery && matchesStatus && matchesFromDate && matchesToDate;
+    });
+  }, [records, searchQuery, statusFilter, fromDateFilter, toDateFilter]);
+
+  const columns = useMemo<ColumnDef<InvoicingRecord>[]>(
+    () => [
+      {
+        id: 'client_model',
+        header: 'Cliente y Modelo',
+        cell: ({ row }) => {
+          const rec = row.original;
+          const typeBadge = PROFORMA_TYPE_BADGES[rec.proforma_type] || {
+            label: rec.proforma_type || 'General',
+            color: 'bg-slate-100 text-slate-700 border-slate-300',
+          };
+          return (
+            <div>
+              <div className="font-semibold">{rec.client_name}</div>
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <span className={`inline-flex text-[11px] font-bold px-2 py-0.5 rounded border ${typeBadge.color}`}>
+                  {typeBadge.label}
+                </span>
+                {rec.vessel_name && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-2 py-0.5 rounded">
+                    🚢 {rec.vessel_name}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'proforma_number',
+        header: 'Nro. Proforma',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-slate-500">{String(getValue())}</span>
+        ),
+      },
+      {
+        id: 'invoice_number',
+        header: 'Nro. Factura',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs font-semibold text-[#1E5BB4]">
+            {row.original.invoice?.invoice_number || <span className="text-slate-400 font-normal">Sin Factura</span>}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'fortnight_period',
+        header: 'Período',
+        cell: ({ getValue }) => (
+          <span className="text-slate-600 text-xs">{String(getValue())}</span>
+        ),
+      },
+      {
+        accessorKey: 'subtotal',
+        header: () => <span className="block text-right">Subtotal</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono text-slate-500">
+            $ {Number(getValue()).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'total',
+        header: () => <span className="block text-right">Total (con IVA)</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono font-bold text-[#0B1C30]">
+            $ {Number(getValue()).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Estado',
+        cell: ({ getValue }) => {
+          const status = getValue();
+          if (status === 'paid') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Cobrada
+              </span>
+            );
+          }
+          if (status === 'invoiced') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-blue-100 text-blue-800 items-center gap-1">
+                <FileText className="h-3 w-3" /> Facturada
+              </span>
+            );
+          }
+          if (status === 'approved') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                Aprobada
+              </span>
+            );
+          }
+          if (status === 'sent') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-sky-100 text-sky-800">
+                Enviada
+              </span>
+            );
+          }
+          if (status === 'draft') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-slate-100 text-slate-700 items-center gap-1">
+                <Clock className="h-3 w-3" /> Borrador
+              </span>
+            );
+          }
+          if (status === 'overdue') {
+            return (
+              <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-rose-100 text-rose-800 items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Vencida
+              </span>
+            );
+          }
+          return null;
+        },
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center pr-2">Acciones</span>,
+        cell: ({ row }) => {
+          const rec = row.original;
+          return (
+            <div className="text-center space-x-1 whitespace-nowrap pr-2">
+              <button
+                onClick={() => handleOpenDetailsModal(rec)}
+                className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-blue-50 transition-colors inline-block cursor-pointer"
+                title="Ver Desglose de Cálculo"
+              >
+                <Eye className="h-4 w-4" />
+              </button>
+
+              {!rec.invoice && (
+                <button
+                  onClick={() => {
+                    setSelectedProforma(rec);
+                    setIsInvoiceModalOpen(true);
+                  }}
+                  className="bg-[#1E5BB4] hover:bg-[#004392] text-white text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer"
+                  title="Emitir Factura Fiscal"
+                >
+                  Facturar
+                </button>
+              )}
+              {rec.status !== 'paid' && (
+                <button
+                  onClick={() => handleStatusChange(rec, 'paid')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2 py-1 rounded font-medium transition-colors cursor-pointer"
+                  title="Marcar como Cobrada"
+                >
+                  Cobrada
+                </button>
+              )}
+              <button
+                onClick={() => handleDeleteProforma(rec.id)}
+                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors inline-block cursor-pointer"
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredRecords,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
   return (
@@ -257,128 +478,36 @@ export default function InvoicingPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider pl-6">Cliente y Modelo</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Nro. Proforma</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Nro. Factura</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Período</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider text-right">Subtotal</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider text-right">Total (con IVA)</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Estado</th>
-                  <th className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider text-center pr-6">Acciones</th>
-                </tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider"
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredRecords.map((rec) => {
-                  const typeBadge = PROFORMA_TYPE_BADGES[rec.proforma_type] || {
-                    label: rec.proforma_type || 'General',
-                    color: 'bg-slate-100 text-slate-700 border-slate-300',
-                  };
-
-                  return (
-                    <tr key={rec.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 pl-6 font-semibold">
-                        <div>{rec.client_name}</div>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className={`inline-flex text-[11px] font-bold px-2 py-0.5 rounded border ${typeBadge.color}`}>
-                            {typeBadge.label}
-                          </span>
-                          {rec.vessel_name && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-2 py-0.5 rounded">
-                              🚢 {rec.vessel_name}
-                            </span>
-                          )}
-                        </div>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-6 py-4">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
-                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{rec.proforma_number}</td>
-                      <td className="px-6 py-4 font-mono text-xs font-semibold text-[#1E5BB4]">
-                        {rec.invoice?.invoice_number || <span className="text-slate-400 font-normal">Sin Factura</span>}
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 text-xs">{rec.fortnight_period}</td>
-                      <td className="px-6 py-4 text-right font-mono text-slate-500">
-                        $ {rec.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4 text-right font-mono font-bold text-[#0B1C30]">
-                        $ {rec.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4">
-                        {rec.status === 'paid' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> Cobrada
-                          </span>
-                        )}
-                        {rec.status === 'invoiced' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-blue-100 text-blue-800 items-center gap-1">
-                            <FileText className="h-3 w-3" /> Facturada
-                          </span>
-                        )}
-                        {rec.status === 'approved' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                            Aprobada
-                          </span>
-                        )}
-                        {rec.status === 'sent' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-sky-100 text-sky-800">
-                            Enviada
-                          </span>
-                        )}
-                        {rec.status === 'draft' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-slate-100 text-slate-700 items-center gap-1">
-                            <Clock className="h-3 w-3" /> Borrador
-                          </span>
-                        )}
-                        {rec.status === 'overdue' && (
-                          <span className="px-2.5 py-0.5 inline-flex text-xs font-semibold rounded-full bg-rose-100 text-rose-800 items-center gap-1">
-                            <AlertCircle className="h-3 w-3" /> Vencida
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 pr-6 text-center space-x-1 whitespace-nowrap">
-                        {/* Ver Desglose */}
-                        <button
-                          onClick={() => handleOpenDetailsModal(rec)}
-                          className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-blue-50 transition-colors inline-block cursor-pointer"
-                          title="Ver Desglose de Cálculo"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-
-                        {!rec.invoice && (
-                          <button
-                            onClick={() => {
-                              setSelectedProforma(rec);
-                              setIsInvoiceModalOpen(true);
-                            }}
-                            className="bg-[#1E5BB4] hover:bg-[#004392] text-white text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer"
-                            title="Emitir Factura Fiscal"
-                          >
-                            Facturar
-                          </button>
-                        )}
-                        {rec.status !== 'paid' && (
-                          <button
-                            onClick={() => handleStatusChange(rec, 'paid')}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2 py-1 rounded font-medium transition-colors cursor-pointer"
-                            title="Marcar como Cobrada"
-                          >
-                            Cobrada
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteProforma(rec.id)}
-                          className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors inline-block cursor-pointer"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
+        {!loading && filteredRecords.length > 0 && <DataTablePagination table={table} />}
       </section>
 
       {/* Modal: Desglose Polimórfico */}

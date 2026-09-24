@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Search,
   ChevronDown,
@@ -13,17 +14,21 @@ import {
   Calendar,
   Clock,
   Printer,
-  Sparkles,
   Layers,
-  FileCheck2,
-  CheckCircle2,
-  Eye,
-  Building2,
-  MapPin,
   Briefcase,
-  User,
   Filter,
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getEmployees,
   getPositions,
@@ -33,15 +38,27 @@ import {
   getEmployeeAuditShifts,
   getAllEmployeesHoursSummary,
   EmployeeRow,
-  PositionRow,
   EmployeeHoursSummary,
 } from '@/lib/services/employees';
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
-  const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const {
+    data: mainData,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.employees.all,
+    queryFn: async () => {
+      const [empData, posData] = await Promise.all([getEmployees(), getPositions()]);
+      return { employees: empData, positions: posData };
+    },
+  });
+
+  const employees = mainData?.employees || [];
+  const positions = mainData?.positions || [];
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,11 +68,22 @@ export default function EmployeesPage() {
   const [toDate, setToDate] = useState('');
   const [activeDatePreset, setActiveDatePreset] = useState<'none' | 'q1' | 'q2' | 'month'>('none');
 
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchQuery, selectedPositionId, selectedStatus, fromDate, toDate]);
+
   // Hours summary by employee (for the active date range)
-  const [hoursSummaryMap, setHoursSummaryMap] = useState<
-    Record<string, { total_hours: number; regular_hours: number; ot50_hours: number; ot100_hours: number; shifts_count: number }>
-  >({});
-  const [loadingHoursSummary, setLoadingHoursSummary] = useState(false);
+  const { data: hoursSummaryMap = {}, isLoading: loadingHoursSummary } = useQuery({
+    queryKey: queryKeys.employees.withHours(fromDate, toDate),
+    queryFn: () => getAllEmployeesHoursSummary(fromDate, toDate),
+    enabled: Boolean(fromDate && toDate),
+  });
 
   // Audit Modal State
   const [auditEmployee, setAuditEmployee] = useState<EmployeeRow | null>(null);
@@ -67,12 +95,10 @@ export default function EmployeesPage() {
   // Form & Modal state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Delete modal state
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRow | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -85,44 +111,41 @@ export default function EmployeesPage() {
     status: 'active' as 'active' | 'inactive' | 'on_leave',
   });
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const [empData, posData] = await Promise.all([getEmployees(), getPositions()]);
-      setEmployees(empData);
-      setPositions(posData);
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar los datos');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const createMutation = useMutation({
+    mutationFn: createEmployee,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees.all });
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setFormError(err.message || 'Error al guardar el empleado');
+    },
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => updateEmployee(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees.all });
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setFormError(err.message || 'Error al guardar el empleado');
+    },
+  });
 
-  // Fetch hours summary for all employees when fromDate or toDate changes
-  useEffect(() => {
-    if (fromDate || toDate) {
-      loadHoursSummary();
-    } else {
-      setHoursSummaryMap({});
-    }
-  }, [fromDate, toDate]);
+  const deleteMutation = useMutation({
+    mutationFn: deleteEmployee,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees.all });
+      setDeletingEmployee(null);
+    },
+    onError: (err: any) => {
+      alert(`Error al eliminar: ${err.message}`);
+    },
+  });
 
-  const loadHoursSummary = async () => {
-    try {
-      setLoadingHoursSummary(true);
-      const summary = await getAllEmployeesHoursSummary(fromDate, toDate);
-      setHoursSummaryMap(summary);
-    } catch (err: any) {
-      console.error('Error loading employees hours summary:', err);
-    } finally {
-      setLoadingHoursSummary(false);
-    }
-  };
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
 
   // Preset Date range helpers
   const handleSetPreset = (preset: 'q1' | 'q2' | 'month' | 'clear') => {
@@ -223,48 +246,28 @@ export default function EmployeesPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      setFormError(null);
+    setFormError(null);
 
-      const payload = {
-        full_name: formData.full_name.trim(),
-        national_id: formData.national_id.trim(),
-        file_number: formData.file_number.trim() || null,
-        tax_id: formData.tax_id.trim() || null,
-        default_position_id: formData.default_position_id || null,
-        phone_number: formData.phone_number.trim() || null,
-        status: formData.status,
-      };
+    const payload = {
+      full_name: formData.full_name.trim(),
+      national_id: formData.national_id.trim(),
+      file_number: formData.file_number.trim() || null,
+      tax_id: formData.tax_id.trim() || null,
+      default_position_id: formData.default_position_id || null,
+      phone_number: formData.phone_number.trim() || null,
+      status: formData.status,
+    };
 
-      if (editingEmployee) {
-        const updated = await updateEmployee(editingEmployee.id, payload);
-        setEmployees((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      } else {
-        const created = await createEmployee(payload);
-        setEmployees((prev) => [created, ...prev]);
-      }
-
-      setIsSlideoverOpen(false);
-    } catch (err: any) {
-      setFormError(err.message || 'Ocurrió un error al guardar el empleado');
-    } finally {
-      setIsSubmitting(false);
+    if (editingEmployee) {
+      updateMutation.mutate({ id: editingEmployee.id, payload });
+    } else {
+      createMutation.mutate(payload);
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!deletingEmployee) return;
-    try {
-      setIsDeleting(true);
-      await deleteEmployee(deletingEmployee.id);
-      setEmployees((prev) => prev.filter((item) => item.id !== deletingEmployee.id));
-      setDeletingEmployee(null);
-    } catch (err: any) {
-      alert(`Error al eliminar: ${err.message}`);
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(deletingEmployee.id);
   };
 
   // Filtered List
@@ -314,6 +317,137 @@ export default function EmployeesPage() {
 
   const isDateRangeActive = Boolean(fromDate || toDate);
 
+  const columns = useMemo<ColumnDef<EmployeeRow>[]>(() => {
+    const cols: ColumnDef<EmployeeRow>[] = [
+      {
+        accessorKey: 'national_id',
+        header: 'DNI',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-[#0F2547] font-semibold">
+            {getValue<string>()}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'full_name',
+        header: 'Nombre Completo',
+        cell: ({ getValue }) => <span className="font-semibold">{getValue<string>()}</span>,
+      },
+      {
+        id: 'file_tax',
+        header: 'Legajo / CUIL',
+        cell: ({ row }) => (
+          <span className="text-xs text-slate-500 font-mono">
+            {row.original.file_number ? `Leg: ${row.original.file_number}` : '-'}
+            {row.original.tax_id ? ` / CUIL: ${row.original.tax_id}` : ''}
+          </span>
+        ),
+      },
+      {
+        id: 'position',
+        header: 'Puesto',
+        cell: ({ row }) =>
+          row.original.default_position?.name ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#004392] border border-blue-200">
+              <Briefcase className="h-3 w-3 text-[#1E5BB4]" />
+              {row.original.default_position.name}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400 italic">Sin puesto asignado</span>
+          ),
+      },
+    ];
+
+    if (isDateRangeActive) {
+      cols.push({
+        id: 'periodHours',
+        header: () => (
+          <span className="text-center block text-[#1E5BB4]">Hs. en Período</span>
+        ),
+        cell: ({ row }) => {
+          const empSummary = hoursSummaryMap[row.original.id];
+          return (
+            <div className="text-center">
+              {empSummary && empSummary.total_hours > 0 ? (
+                <div className="inline-flex flex-col items-center">
+                  <span className="font-mono font-bold text-xs text-[#1E5BB4]">
+                    {empSummary.total_hours} hs
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    ({empSummary.shifts_count} turnos)
+                  </span>
+                </div>
+              ) : (
+                <span className="text-slate-400 text-xs">-</span>
+              )}
+            </div>
+          );
+        },
+      });
+    }
+
+    cols.push(
+      {
+        accessorKey: 'phone_number',
+        header: 'Teléfono',
+        cell: ({ getValue }) => (
+          <span className="text-slate-500 font-mono text-xs">
+            {getValue<string>() || '-'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Estado',
+        cell: ({ getValue }) => getStatusBadge(getValue<string>()),
+      },
+      {
+        id: 'actions',
+        header: () => <span className="text-right block pr-2">Acciones</span>,
+        cell: ({ row }) => {
+          const emp = row.original;
+          return (
+            <div className="text-right space-x-1 whitespace-nowrap pr-2">
+              <button
+                onClick={() => handleOpenAudit(emp)}
+                className="bg-sky-50 text-[#1E5BB4] hover:bg-[#1E5BB4] hover:text-white p-1.5 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
+                title="Auditar turnos y horas registradas para liquidación quincenal"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Auditar Horas</span>
+              </button>
+              <button
+                onClick={() => handleOpenEdit(emp)}
+                className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Editar"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setDeletingEmployee(emp)}
+                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      }
+    );
+
+    return cols;
+  }, [isDateRangeActive, hoursSummaryMap]);
+
+  const table = useReactTable({
+    data: filteredEmployees,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
+
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
       {/* Header */}
@@ -324,23 +458,32 @@ export default function EmployeesPage() {
             Administración de empleados, auditoría de horas quincenales y cotejo de liquidación con operarios.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="bg-[#1E5BB4] text-white font-bold text-sm px-5 py-2.5 rounded-lg hover:bg-[#004392] transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Nuevo Empleado</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/positions"
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+          >
+            <Briefcase className="h-4 w-4 text-[#1E5BB4]" />
+            <span>Puestos de Trabajo</span>
+          </Link>
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="bg-[#1E5BB4] text-white font-bold text-sm px-5 py-2.5 rounded-lg hover:bg-[#004392] transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Nuevo Empleado</span>
+          </button>
+        </div>
       </header>
 
       {/* Error alert */}
-      {error && (
+      {queryError && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3 text-red-700 text-sm">
           <AlertCircle className="h-5 w-5 shrink-0" />
-          <span>{error}</span>
+          <span>{(queryError as any).message}</span>
           <button
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="ml-auto underline text-xs font-semibold hover:text-red-900 cursor-pointer"
           >
             Reintentar
@@ -522,109 +665,46 @@ export default function EmployeesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[850px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider pl-6 whitespace-nowrap">
-                    DNI
-                  </th>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                    Nombre Completo
-                  </th>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                    Legajo / CUIL
-                  </th>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                    Puesto
-                  </th>
-                  {isDateRangeActive && (
-                    <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider text-center bg-blue-50/50 text-[#1E5BB4] whitespace-nowrap">
-                      Hs. en Período
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                    Teléfono
-                  </th>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                    Estado
-                  </th>
-                  <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider text-right pr-6 whitespace-nowrap">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredEmployees.map((emp, index) => {
-                  const empSummary = hoursSummaryMap[emp.id];
-                  return (
+          <>
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[850px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider first:pl-6 last:pr-6 whitespace-nowrap"
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
+                  {table.getRowModel().rows.map((row, index) => (
                     <tr
-                      key={emp.id}
+                      key={row.id}
                       className={`hover:bg-slate-50 transition-colors ${index % 2 === 0 ? 'bg-slate-50/50' : ''}`}
                     >
-                      <td className="px-4 py-3 pl-6 whitespace-nowrap font-mono text-xs text-[#0F2547] font-semibold">
-                        {emp.national_id}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-semibold">{emp.full_name}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500 font-mono">
-                        {emp.file_number ? `Leg: ${emp.file_number}` : '-'}
-                        {emp.tax_id ? ` / CUIL: ${emp.tax_id}` : ''}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
-                        {emp.default_position?.name || 'Sin especificar'}
-                      </td>
-                      {isDateRangeActive && (
-                        <td className="px-4 py-3 text-center whitespace-nowrap bg-blue-50/20">
-                          {empSummary && empSummary.total_hours > 0 ? (
-                            <div className="inline-flex flex-col items-center">
-                              <span className="font-mono font-bold text-xs text-[#1E5BB4]">
-                                {empSummary.total_hours} hs
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                ({empSummary.shifts_count} turnos)
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 text-xs">-</span>
-                          )}
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="px-4 py-3 first:pl-6 last:pr-6 whitespace-nowrap"
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
-                      )}
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-mono text-xs">
-                        {emp.phone_number || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">{getStatusBadge(emp.status)}</td>
-                      <td className="px-4 py-3 pr-6 text-right whitespace-nowrap space-x-1">
-                        {/* Botón Auditoría de Horas */}
-                        <button
-                          onClick={() => handleOpenAudit(emp)}
-                          className="bg-sky-50 text-[#1E5BB4] hover:bg-[#1E5BB4] hover:text-white p-1.5 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
-                          title="Auditar turnos y horas registradas para liquidación quincenal"
-                        >
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>Auditar Horas</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleOpenEdit(emp)}
-                          className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Editar"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeletingEmployee(emp)}
-                          className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <DataTablePagination table={table} />
+          </>
         )}
       </section>
 

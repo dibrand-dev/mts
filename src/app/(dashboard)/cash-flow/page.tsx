@@ -5,29 +5,45 @@ import {
   Plus,
   Edit2,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   X,
   CheckCircle2,
   AlertCircle,
   TrendingUp,
   TrendingDown,
   Wallet,
-  Loader2
+  Loader2,
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getCashMovements,
   createCashMovement,
   updateCashMovement,
   deleteCashMovement,
-  CashMovementRow
+  CashMovementRow,
 } from '@/lib/services/cash-flow';
 
+type CashMovementWithBalance = CashMovementRow & { balanceAfter: number };
+
 export default function CashFlowPage() {
-  const [movements, setMovements] = useState<CashMovementRow[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const queryClient = useQueryClient();
+
+  const {
+    data: movements = [],
+    isLoading,
+  } = useQuery({
+    queryKey: queryKeys.cashFlow.all,
+    queryFn: getCashMovements,
+  });
 
   // Notifications
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -37,6 +53,16 @@ export default function CashFlowPage() {
   const [toDate, setToDate] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense'>('all');
+
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [fromDate, toDate, selectedArea, selectedType]);
 
   // Slideover & Form state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
@@ -54,35 +80,56 @@ export default function CashFlowPage() {
   // Base balance for ledger calculation
   const initialBaseBalance = 0;
 
-  // Load data from Supabase on mount
-  useEffect(() => {
-    let isCancelled = false;
-
-    getCashMovements()
-      .then((data) => {
-        if (!isCancelled) {
-          setMovements(data);
-          setIsLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!isCancelled) {
-          console.error('Error loading cash movements:', err);
-          const msg = err instanceof Error ? err.message : 'Error al conectar con la base de datos de flujo de caja.';
-          setNotification({ type: 'error', message: msg });
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
+
+  const createMutation = useMutation({
+    mutationFn: createCashMovement,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
+      showNotification('success', `Nuevo ${formType === 'income' ? 'ingreso' : 'egreso'} registrado exitosamente.`);
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: unknown) => {
+      console.error('Error creating movement:', err);
+      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
+      setFormError(msg);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateCashMovement>[1] }) =>
+      updateCashMovement(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
+      showNotification('success', 'Movimiento de caja actualizado correctamente.');
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: unknown) => {
+      console.error('Error updating movement:', err);
+      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
+      setFormError(msg);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCashMovement,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
+      showNotification('success', 'Movimiento eliminado correctamente.');
+      setMovementToDelete(null);
+    },
+    onError: (err: unknown) => {
+      console.error('Error deleting movement:', err);
+      const msg = err instanceof Error ? err.message : 'Error al eliminar el movimiento.';
+      showNotification('error', msg);
+    },
+  });
+
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
 
   // KPIs Totals
   const { totalIncome, totalExpense, netBalance } = useMemo(() => {
@@ -166,7 +213,7 @@ export default function CashFlowPage() {
     setIsSlideoverOpen(true);
   };
 
-  const handleSaveMovement = async (e: React.FormEvent) => {
+  const handleSaveMovement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formDate) {
       setFormError('Por favor ingresa la fecha del movimiento.');
@@ -186,70 +233,145 @@ export default function CashFlowPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      setFormError(null);
+    setFormError(null);
 
-      if (editingMovement) {
-        const updated = await updateCashMovement(editingMovement.id, {
+    if (editingMovement) {
+      updateMutation.mutate({
+        id: editingMovement.id,
+        payload: {
           movement_date: formDate,
           type: formType,
           area: formArea,
           detail: formDetail.trim(),
           amount: parsedAmount,
-        });
-
-        setMovements((prev) =>
-          prev.map((m) => (m.id === editingMovement.id ? updated : m))
-        );
-        showNotification('success', 'Movimiento de caja actualizado correctamente.');
-      } else {
-        const newRecord = await createCashMovement({
-          movement_date: formDate,
-          type: formType,
-          area: formArea,
-          detail: formDetail.trim(),
-          amount: parsedAmount,
-        });
-
-        setMovements((prev) => [newRecord, ...prev]);
-        showNotification(
-          'success',
-          `Nuevo ${formType === 'income' ? 'ingreso' : 'egreso'} registrado exitosamente.`
-        );
-      }
-
-      setIsSlideoverOpen(false);
-    } catch (err: unknown) {
-      console.error('Error saving movement:', err);
-      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
-      setFormError(msg);
-    } finally {
-      setIsSubmitting(false);
+        },
+      });
+    } else {
+      createMutation.mutate({
+        movement_date: formDate,
+        type: formType,
+        area: formArea,
+        detail: formDetail.trim(),
+        amount: parsedAmount,
+      });
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!movementToDelete) return;
-
-    try {
-      setIsDeleting(true);
-      await deleteCashMovement(movementToDelete.id);
-      setMovements((prev) => prev.filter((m) => m.id !== movementToDelete.id));
-      showNotification('success', 'Movimiento eliminado correctamente.');
-      setMovementToDelete(null);
-    } catch (err: unknown) {
-      console.error('Error deleting movement:', err);
-      const msg = err instanceof Error ? err.message : 'Error al eliminar el movimiento.';
-      showNotification('error', msg);
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(movementToDelete.id);
   };
 
   const formatCurrency = (val: number) => {
     return `$ ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
+  const columns = useMemo<ColumnDef<CashMovementWithBalance>[]>(
+    () => [
+      {
+        accessorKey: 'movement_date',
+        header: 'Fecha',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-slate-600">
+            {String(getValue()).split('-').reverse().join('/')}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'type',
+        header: 'Tipo',
+        cell: ({ getValue }) => {
+          const isIngreso = getValue() === 'income';
+          return (
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                isIngreso
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {isIngreso ? 'Ingreso' : 'Egreso'}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: 'area',
+        header: 'Área',
+        cell: ({ getValue }) => (
+          <span className="font-medium text-slate-700">{String(getValue())}</span>
+        ),
+      },
+      {
+        accessorKey: 'detail',
+        header: 'Detalle',
+        cell: ({ getValue }) => (
+          <span className="font-medium text-[#0B1C30]">{String(getValue())}</span>
+        ),
+      },
+      {
+        accessorKey: 'amount',
+        header: () => <span className="block text-right">Importe</span>,
+        cell: ({ row }) => {
+          const isIngreso = row.original.type === 'income';
+          const amt = Number(row.original.amount);
+          return (
+            <span
+              className={`block text-right font-mono font-bold whitespace-nowrap ${
+                isIngreso ? 'text-emerald-700' : 'text-red-600'
+              }`}
+            >
+              {isIngreso ? `+${formatCurrency(amt)}` : `-${formatCurrency(amt)}`}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: 'balanceAfter',
+        header: () => <span className="block text-right">Saldo</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
+            {formatCurrency(Number(getValue()))}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center pr-2">Acciones</span>,
+        cell: ({ row }) => {
+          const m = row.original;
+          return (
+            <div className="text-center whitespace-nowrap space-x-1 pr-2">
+              <button
+                onClick={() => handleOpenEdit(m)}
+                className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Editar"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setMovementToDelete(m)}
+                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: movementsWithBalance,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 pb-10">
@@ -440,131 +562,59 @@ export default function CashFlowPage() {
 
       {/* Data Table Section */}
       <section className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto w-full">
-          <table className="w-full text-left border-collapse min-w-[750px]">
-            <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
-              <tr>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap pl-6">
-                  Fecha
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">
-                  Tipo
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">
-                  Área
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider">
-                  Detalle
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">
-                  Importe
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">
-                  Saldo
-                </th>
-                <th className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-center whitespace-nowrap pr-6">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="h-6 w-6 animate-spin text-[#1E5BB4]" />
-                      <span>Cargando movimientos de flujo de caja...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : movementsWithBalance.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                    No se encontraron movimientos registrados con los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                movementsWithBalance.map((m, index) => {
-                  const isIngreso = m.type === 'income';
-                  return (
+        {isLoading ? (
+          <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-[#1E5BB4]" />
+            <span>Cargando movimientos de flujo de caja...</span>
+          </div>
+        ) : movementsWithBalance.length === 0 ? (
+          <div className="p-12 text-center text-slate-500">
+            No se encontraron movimientos registrados con los filtros seleccionados.
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[750px]">
+                <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className="px-4 py-3 text-xs font-bold text-[#0F2547] uppercase tracking-wider first:pl-6 last:pr-6 whitespace-nowrap"
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
+                  {table.getRowModel().rows.map((row, index) => (
                     <tr
-                      key={m.id}
+                      key={row.id}
                       className={`hover:bg-slate-50 transition-colors ${
                         index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
                       }`}
                     >
-                      <td className="px-4 py-3 pl-6 whitespace-nowrap font-mono text-xs text-slate-600">
-                        {m.movement_date.split('-').reverse().join('/')}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                            isIngreso
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="px-4 py-3 first:pl-6 last:pr-6 whitespace-nowrap"
                         >
-                          {isIngreso ? 'Ingreso' : 'Egreso'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap text-slate-700">{m.area}</td>
-                      <td className="px-4 py-3 font-medium text-[#0B1C30]">{m.detail}</td>
-                      <td
-                        className={`px-4 py-3 text-right font-mono font-bold whitespace-nowrap ${
-                          isIngreso ? 'text-emerald-700' : 'text-red-600'
-                        }`}
-                      >
-                        {isIngreso ? `+${formatCurrency(Number(m.amount))}` : `-${formatCurrency(Number(m.amount))}`}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
-                        {formatCurrency(m.balanceAfter)}
-                      </td>
-                      <td className="px-4 py-3 pr-6 text-center whitespace-nowrap space-x-1">
-                        <button
-                          onClick={() => handleOpenEdit(m)}
-                          className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Editar"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setMovementToDelete(m)}
-                          className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Footer */}
-        <div className="px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs sm:text-sm bg-slate-50/50">
-          <span>
-            Mostrando {movementsWithBalance.length} de {movements.length} movimientos
-          </span>
-          <div className="flex gap-2">
-            <button
-              className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1"
-              disabled
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Anterior</span>
-            </button>
-            <button
-              className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-1"
-              disabled
-            >
-              <span>Siguiente</span>
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <DataTablePagination table={table} />
+          </>
+        )}
       </section>
 
       {/* Slideover (Overlay + Panel) */}

@@ -1,17 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Sparkles,
   Calculator,
-  Calendar,
   Building2,
   Ship,
   Percent,
   Check,
   AlertCircle,
-  Clock,
   Layers,
 } from 'lucide-react';
 import { ClientRow } from '@/lib/services/clients';
@@ -21,7 +19,6 @@ import {
   getAllStrategies,
   getDefaultStrategyForClient,
   ProformaCalculationResult,
-  ProformaStrategy,
 } from '@/lib/services/invoicing';
 import {
   getClientOperations,

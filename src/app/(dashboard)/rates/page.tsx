@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Search,
   ChevronDown,
@@ -11,11 +12,21 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Calendar,
-  DollarSign,
   Clock,
-  Layers
+  Layers,
+  Briefcase
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getRates,
   getClients,
@@ -23,23 +34,38 @@ import {
   upsertClientRates,
   deleteClientRates,
   CommercialRateGroup,
-  ClientRow,
-  PositionRow,
 } from '@/lib/services/rates';
 import { ClientServiceRatesTab } from '@/components/rates/ClientServiceRatesTab';
 
 export default function RatesPage() {
-  const [rates, setRates] = useState<CommercialRateGroup[]>([]);
-  const [clients, setClients] = useState<ClientRow[]>([]);
-  const [positions, setPositions] = useState<PositionRow[]>([]);
+  const queryClient = useQueryClient();
+
+  const {
+    data: mainData,
+    isLoading: loading,
+  } = useQuery({
+    queryKey: queryKeys.rates.commercial,
+    queryFn: async () => {
+      const [ratesData, clientsData, positionsData] = await Promise.all([
+        getRates(),
+        getClients(),
+        getPositions(),
+      ]);
+      return {
+        rates: ratesData,
+        clients: clientsData,
+        positions: positionsData,
+      };
+    },
+  });
+
+  const rates = mainData?.rates || [];
+  const clients = mainData?.clients || [];
+  const positions = mainData?.positions || [];
 
   // Active Tab: hourly vs services
   const [activeTab, setActiveTab] = useState<'hourly' | 'services'>('hourly');
   const [servicesCount, setServicesCount] = useState<number | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -47,6 +73,17 @@ export default function RatesPage() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentDueFilter, setPaymentDueFilter] = useState('');
+  const [positionFilter, setPositionFilter] = useState('');
+
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchTerm, paymentDueFilter, positionFilter]);
 
   // Slide-over state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
@@ -65,35 +102,45 @@ export default function RatesPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<CommercialRateGroup | null>(null);
 
-  // Load initial data
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [ratesData, clientsData, positionsData] = await Promise.all([
-        getRates(),
-        getClients(),
-        getPositions(),
-      ]);
-      setRates(ratesData);
-      setClients(clientsData);
-      setPositions(positionsData);
-    } catch (err: any) {
-      console.error('Error fetching rates page data:', err);
-      setError(err.message || 'Error al cargar los datos del tarifario.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const showNotification = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
+
+  const saveMutation = useMutation({
+    mutationFn: upsertClientRates,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rates.commercial });
+      setIsSlideoverOpen(false);
+      showNotification(
+        editingGroup
+          ? 'Tarifa actualizada correctamente.'
+          : 'Nueva tarifa registrada correctamente.'
+      );
+    },
+    onError: (err: any) => {
+      console.error('Error saving rate:', err);
+      setError(err.message || 'Error al guardar la tarifa.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ clientId, positionId, effectiveFrom }: { clientId: string; positionId: string; effectiveFrom: string }) =>
+      deleteClientRates(clientId, positionId, effectiveFrom),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.rates.commercial });
+      setIsDeleteModalOpen(false);
+      setGroupToDelete(null);
+      showNotification('Tarifa eliminada con éxito.');
+    },
+    onError: (err: any) => {
+      console.error('Error deleting rate:', err);
+      setError(err.message || 'Error al eliminar la tarifa.');
+    },
+  });
+
+  const saving = saveMutation.isPending;
+  const deleting = deleteMutation.isPending;
 
   const handleOpenSlideover = (group?: CommercialRateGroup) => {
     setError(null);
@@ -134,7 +181,7 @@ export default function RatesPage() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -168,30 +215,14 @@ export default function RatesPage() {
       return;
     }
 
-    try {
-      setSaving(true);
-      await upsertClientRates({
-        client_id: clientId,
-        position_id: positionId,
-        effective_from: effectiveFrom,
-        rate_regular: reg,
-        rate_overtime_50: ot50,
-        rate_overtime_100: ot100,
-      });
-
-      setIsSlideoverOpen(false);
-      await fetchData();
-      showNotification(
-        editingGroup
-          ? 'Tarifa actualizada correctamente.'
-          : 'Nueva tarifa registrada correctamente.'
-      );
-    } catch (err: any) {
-      console.error('Error saving rate:', err);
-      setError(err.message || 'Error al guardar la tarifa.');
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate({
+      client_id: clientId,
+      position_id: positionId,
+      effective_from: effectiveFrom,
+      rate_regular: reg,
+      rate_overtime_50: ot50,
+      rate_overtime_100: ot100,
+    });
   };
 
   const handleOpenDeleteModal = (group: CommercialRateGroup) => {
@@ -199,27 +230,13 @@ export default function RatesPage() {
     setIsDeleteModalOpen(true);
   };
 
-  const ConfirmDelete = async () => {
+  const ConfirmDelete = () => {
     if (!groupToDelete) return;
-
-    try {
-      setDeleting(true);
-      setError(null);
-      await deleteClientRates(
-        groupToDelete.client_id,
-        groupToDelete.position_id,
-        groupToDelete.effective_from
-      );
-      setIsDeleteModalOpen(false);
-      setGroupToDelete(null);
-      await fetchData();
-      showNotification('Tarifa eliminada con éxito.');
-    } catch (err: any) {
-      console.error('Error deleting rate:', err);
-      setError(err.message || 'Error al eliminar la tarifa.');
-    } finally {
-      setDeleting(false);
-    }
+    deleteMutation.mutate({
+      clientId: groupToDelete.client_id,
+      positionId: groupToDelete.position_id,
+      effectiveFrom: groupToDelete.effective_from,
+    });
   };
 
   // Filtered rates list
@@ -232,9 +249,12 @@ export default function RatesPage() {
       const matchPaymentDue =
         !paymentDueFilter || item.client.payment_due_days.toString() === paymentDueFilter;
 
-      return matchSearch && matchPaymentDue;
+      const matchPosition =
+        !positionFilter || item.position_id === positionFilter;
+
+      return matchSearch && matchPaymentDue && matchPosition;
     });
-  }, [rates, searchTerm, paymentDueFilter]);
+  }, [rates, searchTerm, paymentDueFilter, positionFilter]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -243,6 +263,105 @@ export default function RatesPage() {
       minimumFractionDigits: 2,
     }).format(val);
   };
+
+  const columns = useMemo<ColumnDef<CommercialRateGroup>[]>(
+    () => [
+      {
+        accessorKey: 'client.company_name',
+        header: 'Cliente',
+        cell: ({ row }) => (
+          <span className="font-semibold">{row.original.client.company_name}</span>
+        ),
+      },
+      {
+        accessorKey: 'position.name',
+        header: 'Puesto / Servicio',
+        cell: ({ row }) => (
+          <span className="font-medium text-slate-700">{row.original.position.name}</span>
+        ),
+      },
+      {
+        accessorKey: 'rate_regular',
+        header: () => <span className="block text-right">Valor Hora Norm.</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono font-medium">
+            {formatCurrency(Number(getValue()))}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'rate_overtime_50',
+        header: () => <span className="block text-right">Valor Hora 50%</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono text-slate-600">
+            {formatCurrency(Number(getValue()))}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'rate_overtime_100',
+        header: () => <span className="block text-right">Valor Hora 100%</span>,
+        cell: ({ getValue }) => (
+          <span className="block text-right font-mono font-bold text-[#0B1C30]">
+            {formatCurrency(Number(getValue()))}
+          </span>
+        ),
+      },
+      {
+        id: 'payment_due',
+        header: 'Cond. Pago',
+        cell: ({ row }) => (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200 font-mono">
+            {row.original.client.payment_due_days} Días
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'effective_from',
+        header: 'Vigencia',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-slate-500 whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center pr-2">Acciones</span>,
+        cell: ({ row }) => {
+          const group = row.original;
+          return (
+            <div className="text-center space-x-1 whitespace-nowrap pr-2">
+              <button
+                onClick={() => handleOpenSlideover(group)}
+                className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Editar Tarifa"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => handleOpenDeleteModal(group)}
+                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+                title="Eliminar Tarifa"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredRates,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
@@ -267,6 +386,13 @@ export default function RatesPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Tarifario Comercial</h1>
           <p className="text-slate-500 text-sm mt-1">Gestión y configuración de tarifas base horarias y servicios complementarios para clientes.</p>
         </div>
+        <Link
+          href="/positions"
+          className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-lg flex items-center gap-2 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+        >
+          <Briefcase className="h-4 w-4 text-[#1E5BB4]" />
+          <span>Gestionar Puestos de Trabajo</span>
+        </Link>
       </header>
 
       {/* Tab Switcher */}
@@ -328,7 +454,7 @@ export default function RatesPage() {
         <>
           {/* Filters Section (Sky Blue B2B Card) */}
           <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           {/* Search Input */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase tracking-wider text-white" htmlFor="search">Buscar</label>
@@ -339,13 +465,32 @@ export default function RatesPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por cliente o servicio..."
+                placeholder="Buscar por cliente o puesto..."
                 className="w-full pl-9 pr-3 py-2 bg-white border border-[#0F2547] rounded-lg text-sm text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4]"
               />
             </div>
           </div>
 
-          {/* Dropdown */}
+          {/* Position Filter Dropdown */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-white" htmlFor="pos-filter">Puesto Operativo</label>
+            <div className="relative w-full">
+              <select
+                id="pos-filter"
+                value={positionFilter}
+                onChange={(e) => setPositionFilter(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-sm text-[#0B1C30] appearance-none focus:outline-none focus:border-[#1E5BB4]"
+              >
+                <option value="">Todos los Puestos</option>
+                {positions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#0F2547]" />
+            </div>
+          </div>
+
+          {/* Dropdown Plazo */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase tracking-wider text-white" htmlFor="plazo">Condición de Pago</label>
             <div className="relative w-full">
@@ -393,55 +538,43 @@ export default function RatesPage() {
             <p className="text-sm mt-1 text-slate-400">Intente modificar los filtros o registre una nueva tarifa comercial.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4 pl-6 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Cliente</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Puesto / Servicio</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider text-right whitespace-nowrap">Valor Hora Norm.</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider text-right whitespace-nowrap">Valor Hora 50%</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider text-right whitespace-nowrap">Valor Hora 100%</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Cond. Pago</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Vigencia</th>
-                  <th className="py-3 px-4 pr-6 text-xs font-bold text-slate-600 uppercase tracking-wider text-center whitespace-nowrap">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredRates.map((group) => (
-                  <tr key={`${group.client_id}_${group.position_id}_${group.effective_from}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 pl-6 font-semibold">{group.client.company_name}</td>
-                    <td className="py-3 px-4 font-medium text-slate-700">{group.position.name}</td>
-                    <td className="py-3 px-4 text-right font-mono font-medium">{formatCurrency(group.rate_regular)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(group.rate_overtime_50)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-[#0B1C30]">{formatCurrency(group.rate_overtime_100)}</td>
-                    <td className="py-3 px-4 font-mono text-xs">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
-                        {group.client.payment_due_days} Días
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-500 whitespace-nowrap">{group.effective_from}</td>
-                    <td className="py-3 px-4 pr-6 text-center space-x-1 whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenSlideover(group)}
-                        className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="Editar Tarifa"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleOpenDeleteModal(group)}
-                        className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                        title="Eliminar Tarifa"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          className="py-3 px-4 first:pl-6 last:pr-6 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap"
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
+                  {table.getRowModel().rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="py-3 px-4 first:pl-6 last:pr-6 whitespace-nowrap"
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <DataTablePagination table={table} />
+          </>
         )}
       </section>
 

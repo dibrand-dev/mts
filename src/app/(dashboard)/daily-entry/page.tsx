@@ -26,14 +26,24 @@ import {
   XCircle,
   Ship,
 } from 'lucide-react';
-import { getClients, ClientRow } from '@/lib/services/clients';
-import { getLocations, LocationRow } from '@/lib/services/locations';
-import { getEmployees, EmployeeRow } from '@/lib/services/employees';
-import { getPositions, PositionRow } from '@/lib/services/rates';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
+import { getClients } from '@/lib/services/clients';
+import { getLocations } from '@/lib/services/locations';
+import { getEmployees } from '@/lib/services/employees';
+import { getPositions } from '@/lib/services/rates';
 import {
   getClientOperations,
   createClientOperation,
-  ClientOperationRow,
 } from '@/lib/services/client-operations';
 import {
   getDailyWorkLogs,
@@ -44,7 +54,6 @@ import {
   calculateShiftHours,
   toggleStaffEntryApproval,
   bulkApproveStaffEntries,
-  DailyWorkLogWithEntries,
 } from '@/lib/services/daily-entries';
 
 interface FlatDailyStaffEntry {
@@ -81,11 +90,29 @@ interface FlatDailyStaffEntry {
 }
 
 export default function DailyEntryPage() {
-  // Catalogs
-  const [clients, setClients] = useState<ClientRow[]>([]);
-  const [locations, setLocations] = useState<LocationRow[]>([]);
-  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
-  const [positions, setPositions] = useState<PositionRow[]>([]);
+  const queryClient = useQueryClient();
+
+  // Catalogs via TanStack Query
+  const { data: clients = [] } = useQuery({
+    queryKey: queryKeys.clients.all,
+    queryFn: () => getClients(),
+  });
+  const { data: locations = [] } = useQuery({
+    queryKey: queryKeys.locations.all,
+    queryFn: () => getLocations(),
+  });
+  const { data: employees = [] } = useQuery({
+    queryKey: queryKeys.employees.all,
+    queryFn: () => getEmployees(),
+  });
+  const { data: positions = [] } = useQuery({
+    queryKey: queryKeys.positions.all,
+    queryFn: () => getPositions(),
+  });
+  const { data: clientOperations = [] } = useQuery({
+    queryKey: ['client-operations'],
+    queryFn: () => getClientOperations(),
+  });
 
   // Filter Bar State (Optional Filters for the Table)
   const [filterDate, setFilterDate] = useState<string>('');
@@ -93,14 +120,29 @@ export default function DailyEntryPage() {
   const [filterLocationId, setFilterLocationId] = useState<string>('');
   const [tableSearch, setTableSearch] = useState<string>('');
 
-  // Loaded Work Logs & Flattened Entries State
-  const [workLogs, setWorkLogs] = useState<DailyWorkLogWithEntries[]>([]);
-  const [, setLoadingCatalogs] = useState<boolean>(true);
-  const [loadingLogs, setLoadingLogs] = useState<boolean>(false);
+  // Loaded Work Logs via TanStack Query
+  const {
+    data: workLogs = [],
+    isLoading: loadingLogs,
+  } = useQuery({
+    queryKey: queryKeys.dailyEntries.workLogs(filterDate, filterClientId),
+    queryFn: () =>
+      getDailyWorkLogs({
+        date: filterDate || undefined,
+        clientId: filterClientId || undefined,
+      }),
+  });
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['daily-entries'] });
+    queryClient.invalidateQueries({ queryKey: ['employees'] });
+    queryClient.invalidateQueries({ queryKey: ['payroll'] });
+    queryClient.invalidateQueries({ queryKey: ['invoicing'] });
+  };
+
   const [submittingEntry, setSubmittingEntry] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [slideoverSuccess, setSlideoverSuccess] = useState<string | null>(null);
 
   // Slideover & Form State
   const [isSlideoverOpen, setIsSlideoverOpen] = useState<boolean>(false);
@@ -111,7 +153,6 @@ export default function DailyEntryPage() {
   const [formClientId, setFormClientId] = useState<string>('');
   const [formLocationId, setFormLocationId] = useState<string>('');
   const [formVesselName, setFormVesselName] = useState<string>('');
-  const [clientOperations, setClientOperations] = useState<ClientOperationRow[]>([]);
   const [isNewOpModalOpen, setIsNewOpModalOpen] = useState<boolean>(false);
   const [newOpName, setNewOpName] = useState<string>('');
   const [newOpType, setNewOpType] = useState<'vessel' | 'yard' | 'deposit' | 'general'>('vessel');
@@ -140,6 +181,25 @@ export default function DailyEntryPage() {
   const [isDayOff, setIsDayOff] = useState<boolean>(false);
   const [advancePaymentAmount, setAdvancePaymentAmount] = useState<string>('0');
   const [plusDeltaAmount, setPlusDeltaAmount] = useState<string>('0');
+
+  // Set catalog defaults for form
+  useEffect(() => {
+    if (clients.length > 0 && !formClientId) {
+      setFormClientId(clients[0].id);
+    }
+  }, [clients, formClientId]);
+
+  useEffect(() => {
+    if (locations.length > 0 && !formLocationId) {
+      setFormLocationId(locations[0].id);
+    }
+  }, [locations, formLocationId]);
+
+  useEffect(() => {
+    if (positions.length > 0 && !selectedPositionId) {
+      setSelectedPositionId(positions[0].id);
+    }
+  }, [positions, selectedPositionId]);
 
   // Auto-detect overnight shift if endTime < startTime
   useEffect(() => {
@@ -183,64 +243,6 @@ export default function DailyEntryPage() {
     }
   }, [liveCalculation, isManualHoursMode]);
 
-  // Load catalogs on mount
-  useEffect(() => {
-    loadCatalogs();
-  }, []);
-
-  // Whenever filters change, reload work logs from Supabase
-  useEffect(() => {
-    loadLogs();
-  }, [filterDate, filterClientId]);
-
-  const loadCatalogs = async () => {
-    try {
-      setLoadingCatalogs(true);
-      const [clientsData, locationsData, employeesData, positionsData, operationsData] = await Promise.all([
-        getClients(),
-        getLocations(),
-        getEmployees(),
-        getPositions(),
-        getClientOperations(),
-      ]);
-
-      setClients(clientsData);
-      setLocations(locationsData);
-      setEmployees(employeesData);
-      setPositions(positionsData);
-      setClientOperations(operationsData);
-
-      if (clientsData.length > 0 && !formClientId) {
-        setFormClientId(clientsData[0].id);
-      }
-      if (locationsData.length > 0 && !formLocationId) {
-        setFormLocationId(locationsData[0].id);
-      }
-      if (positionsData.length > 0 && !selectedPositionId) {
-        setSelectedPositionId(positionsData[0].id);
-      }
-    } catch (err: any) {
-      console.error('Error loading catalogs:', err);
-      setNotification({ type: 'error', message: err.message || 'Error al cargar catálogos.' });
-    } finally {
-      setLoadingCatalogs(false);
-    }
-  };
-
-  const loadLogs = async () => {
-    try {
-      setLoadingLogs(true);
-      const logs = await getDailyWorkLogs({
-        date: filterDate || undefined,
-        clientId: filterClientId || undefined,
-      });
-      setWorkLogs(logs);
-    } catch (err: any) {
-      console.error('Error loading daily work logs:', err);
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
 
   // Flatten all entries from all loaded logs for the table
   const allEntries = useMemo(() => {
@@ -339,7 +341,7 @@ export default function DailyEntryPage() {
           ? `Horario de ${entry.employee_name} aprobado para proforma.`
           : `Horario de ${entry.employee_name} marcado como pendiente.`,
       });
-      await loadLogs();
+      invalidateAll();
     } catch (err: any) {
       setNotification({
         type: 'error',
@@ -358,7 +360,7 @@ export default function DailyEntryPage() {
         type: 'success',
         message: `¡Se aprobaron exitosamente ${unapprovedEntries.length} horarios de personal para facturación!`,
       });
-      await loadLogs();
+      invalidateAll();
     } catch (err: any) {
       setNotification({
         type: 'error',
@@ -425,7 +427,6 @@ export default function DailyEntryPage() {
     setIsManualHoursMode(false);
     setEditingEntryId(null);
     setIsSlideoverOpen(false);
-    setSlideoverSuccess(null);
     setNotification({
       type: 'success',
       message: 'Turno finalizado. Memoria de carga reseteada para un nuevo turno.',
@@ -462,10 +463,7 @@ export default function DailyEntryPage() {
         name: clean,
         operation_type: newOpType,
       });
-      setClientOperations((prev) => {
-        const exists = prev.some((o) => o.id === created.id);
-        return exists ? prev : [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
-      });
+      queryClient.invalidateQueries({ queryKey: ['client-operations'] });
       setFormVesselName(created.name);
       setIsNewOpModalOpen(false);
       setNewOpName('');
@@ -573,7 +571,6 @@ export default function DailyEntryPage() {
           type: 'success',
           message: successMsg,
         });
-        setSlideoverSuccess(successMsg);
         setEditingEntryId(null);
         setSelectedEmployeeId('');
         setEmployeeSearchTerm('');
@@ -587,12 +584,10 @@ export default function DailyEntryPage() {
         await addStaffEntryToWorkLog(workLog.id, payload);
         const empObj = employees.find((e) => e.id === selectedEmployeeId);
         const empName = empObj ? empObj.full_name : 'Personal';
-        const successMsg = `¡Horas cargadas exitosamente para ${empName}! Puedes continuar cargando otro personal.`;
         setNotification({
           type: 'success',
           message: `Horas cargadas exitosamente para ${empName}.`,
         });
-        setSlideoverSuccess(successMsg);
 
         // Reset employee fields & keep slideover open for next employee
         setSelectedEmployeeId('');
@@ -605,7 +600,7 @@ export default function DailyEntryPage() {
         setIsManualHoursMode(false);
       }
 
-      await loadLogs();
+      invalidateAll();
     } catch (err: any) {
       console.error('Error saving staff entry:', err);
       setFormError(`Error al guardar: ${err.message}`);
@@ -619,7 +614,7 @@ export default function DailyEntryPage() {
     try {
       await deleteStaffEntry(entryId);
       setNotification({ type: 'success', message: 'Registro eliminado correctamente.' });
-      await loadLogs();
+      invalidateAll();
     } catch (err: any) {
       console.error('Error deleting entry:', err);
       setNotification({ type: 'error', message: `Error al eliminar: ${err.message}` });
@@ -632,6 +627,289 @@ export default function DailyEntryPage() {
     setFilterLocationId('');
     setTableSearch('');
   };
+
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 25,
+  });
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [filterDate, filterClientId, filterLocationId, tableSearch]);
+
+  const columns = useMemo<ColumnDef<FlatDailyStaffEntry>[]>(
+    () => [
+      {
+        accessorKey: 'work_date',
+        header: 'Fecha',
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs font-bold text-slate-700 whitespace-nowrap">
+            {String(getValue())}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'client_name',
+        header: 'Cliente',
+        cell: ({ row }) => (
+          <div className="font-semibold text-[#0B1C30] text-xs">
+            <div>{row.original.client_name}</div>
+            {row.original.vessel_name && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5">
+                🚢 {row.original.vessel_name}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'location_name',
+        header: 'Lugar de Trabajo',
+        cell: ({ getValue }) => {
+          const loc = String(getValue());
+          return (
+            <div className="text-slate-700 text-xs font-medium">
+              {loc && loc !== '-' ? (
+                <span className="inline-flex items-center gap-1 text-slate-800">
+                  <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                  {loc}
+                </span>
+              ) : (
+                <span className="text-slate-400">-</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'employee_name',
+        header: 'Legajo / Operario',
+        cell: ({ row }) => (
+          <div className="font-semibold text-[#0B1C30]">
+            <div>{row.original.employee_name}</div>
+            <span className="text-[11px] font-mono text-slate-400 block font-normal">
+              {row.original.employee_file_number ? `Leg. ${row.original.employee_file_number}` : ''}
+              {row.original.employee_national_id ? ` (DNI ${row.original.employee_national_id})` : ''}
+            </span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'position_name',
+        header: 'Puesto',
+        cell: ({ getValue }) => (
+          <div className="text-slate-600 text-xs font-medium">
+            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
+              {String(getValue())}
+            </span>
+          </div>
+        ),
+      },
+      {
+        id: 'shift_time',
+        header: () => <span className="block text-center">Horario</span>,
+        cell: ({ row }) => {
+          const entry = row.original;
+          const isCrossDate =
+            entry.shift_start_date &&
+            entry.shift_end_date &&
+            entry.shift_start_date !== entry.shift_end_date;
+          return (
+            <div className="text-center font-mono text-xs font-semibold text-slate-700 whitespace-nowrap">
+              <span>{entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '-'}</span>
+              <span className="text-slate-400 mx-1">a</span>
+              <span>{entry.shift_end_time ? entry.shift_end_time.slice(0, 5) : '-'}</span>
+              {isCrossDate && (
+                <span className="text-[10px] text-amber-600 font-bold ml-1" title="Finaliza al día siguiente">
+                  (+1)
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'regular_hours',
+        header: () => <span className="block text-center text-emerald-800">Hs. Norm</span>,
+        cell: ({ getValue }) => (
+          <div className="text-center font-mono font-bold text-emerald-700">
+            {Number(getValue()).toFixed(1)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'overtime_50_hours',
+        header: () => <span className="block text-center text-sky-800">Hs. 50%</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-center font-mono font-bold text-sky-700">
+              {val > 0 ? val.toFixed(1) : <span className="text-slate-300 font-normal">0.0</span>}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'overtime_100_hours',
+        header: () => <span className="block text-center text-amber-800">Hs. 100%</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-center font-mono font-bold text-amber-700">
+              {val > 0 ? val.toFixed(1) : <span className="text-slate-300 font-normal">0.0</span>}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'shuttles_count',
+        header: () => <span className="block text-center">Remises</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-center font-mono text-xs">
+              {val > 0 ? (
+                <span className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200">
+                  {val}
+                </span>
+              ) : (
+                <span className="text-slate-300">0</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'meal_allowance_count',
+        header: () => <span className="block text-center">Viandas</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-center font-mono text-xs">
+              {val > 0 ? (
+                <span className="bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200">
+                  {val}
+                </span>
+              ) : (
+                <span className="text-slate-300">0</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'is_day_off',
+        header: () => <span className="block text-center">Franco</span>,
+        cell: ({ getValue }) => (
+          <div className="text-center text-xs">
+            {getValue() ? (
+              <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                Sí
+              </span>
+            ) : (
+              <span className="text-slate-300">No</span>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'advance_payment_amount',
+        header: () => <span className="block text-right">Anticipo</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs text-slate-700">
+              {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'plus_delta_amount',
+        header: () => <span className="block text-right">Plus Delta</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs text-slate-700">
+              {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'is_approved',
+        header: () => <span className="block text-center">Aprobación Proforma</span>,
+        cell: ({ row }) => {
+          const entry = row.original;
+          return (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => handleToggleApproval(entry)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
+                  entry.is_approved
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                }`}
+                title={
+                  entry.is_approved
+                    ? 'Aprobado para proforma (Click para revocar)'
+                    : 'Pendiente de aprobación (Click para aprobar e incluir en proforma)'
+                }
+              >
+                {entry.is_approved ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Aprobado</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span>Pendiente</span>
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'actions',
+        header: () => <span className="block text-center">Acciones</span>,
+        cell: ({ row }) => {
+          const entry = row.original;
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <button
+                onClick={() => handleEditEntry(entry)}
+                className="p-1.5 text-slate-400 hover:text-[#1E5BB4] hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                title="Editar operario"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteEntry(entry.id)}
+                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                title="Eliminar registro"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredTableEntries,
+    columns,
+    state: { pagination },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
   // Filtered employees for slideover search
   const filteredEmployeesForSelect = useMemo(() => {
@@ -937,179 +1215,56 @@ export default function DailyEntryPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
-                <tr className="bg-slate-100/80 text-slate-600 font-bold text-xs uppercase tracking-wider border-b border-slate-200">
-                  <th className="p-3 pl-4">Fecha</th>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Lugar de Trabajo</th>
-                  <th className="p-3">Legajo / Operario</th>
-                  <th className="p-3">Puesto</th>
-                  <th className="p-3 text-center">Horario</th>
-                  <th className="p-3 text-center bg-slate-50 text-emerald-800">Hs. Norm</th>
-                  <th className="p-3 text-center bg-slate-50 text-sky-800">Hs. 50%</th>
-                  <th className="p-3 text-center bg-slate-50 text-amber-800">Hs. 100%</th>
-                  <th className="p-3 text-center">Remises</th>
-                  <th className="p-3 text-center">Viandas</th>
-                  <th className="p-3 text-center">Franco</th>
-                  <th className="p-3 text-right">Anticipo</th>
-                  <th className="p-3 text-right">Plus Delta</th>
-                  <th className="p-3 text-center">Aprobación Proforma</th>
-                  <th className="p-3 pr-4 text-center sticky right-0 bg-slate-100/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">Acciones</th>
-                </tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr
+                    key={headerGroup.id}
+                    className="bg-slate-100/80 text-slate-600 font-bold text-xs uppercase tracking-wider border-b border-slate-200"
+                  >
+                    {headerGroup.headers.map((header) => {
+                      const isFirstCol = header.column.id === 'work_date';
+                      const isLastCol = header.column.id === 'actions';
+                      return (
+                        <th
+                          key={header.id}
+                          className={`p-3 ${isFirstCol ? 'pl-4' : ''} ${
+                            isLastCol
+                              ? 'pr-4 text-center sticky right-0 bg-slate-100/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]'
+                              : ''
+                          }`}
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredTableEntries.map((entry) => {
-                  const isCrossDate =
-                    entry.shift_start_date &&
-                    entry.shift_end_date &&
-                    entry.shift_start_date !== entry.shift_end_date;
-
-                  return (
-                    <tr
-                      key={entry.id}
-                      className="hover:bg-slate-50/80 transition-colors group"
-                    >
-                      <td className="p-3 pl-4 font-mono text-xs font-bold text-slate-700 whitespace-nowrap">
-                        {entry.work_date}
-                      </td>
-                      <td className="p-3 font-semibold text-[#0B1C30] text-xs">
-                        <div>{entry.client_name}</div>
-                        {entry.vessel_name && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5">
-                            🚢 {entry.vessel_name}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 text-slate-700 text-xs font-medium">
-                        {entry.location_name ? (
-                          <span className="inline-flex items-center gap-1 text-slate-800">
-                            <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                            {entry.location_name}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="p-3 font-semibold text-[#0B1C30]">
-                        <div>{entry.employee_name}</div>
-                        <span className="text-[11px] font-mono text-slate-400 block font-normal">
-                          {entry.employee_file_number ? `Leg. ${entry.employee_file_number}` : ''}
-                          {entry.employee_national_id ? ` (DNI ${entry.employee_national_id})` : ''}
-                        </span>
-                      </td>
-                      <td className="p-3 text-slate-600 text-xs font-medium">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
-                          {entry.position_name}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center font-mono text-xs font-semibold text-slate-700 whitespace-nowrap">
-                        <span>{entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '-'}</span>
-                        <span className="text-slate-400 mx-1">a</span>
-                        <span>{entry.shift_end_time ? entry.shift_end_time.slice(0, 5) : '-'}</span>
-                        {isCrossDate && (
-                          <span className="text-[10px] text-amber-600 font-bold ml-1" title="Finaliza al día siguiente">
-                            (+1)
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold bg-slate-50/50 text-emerald-700">
-                        {entry.regular_hours.toFixed(1)}
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold bg-slate-50/50 text-sky-700">
-                        {entry.overtime_50_hours > 0 ? (
-                          entry.overtime_50_hours.toFixed(1)
-                        ) : (
-                          <span className="text-slate-300 font-normal">0.0</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold bg-slate-50/50 text-amber-700">
-                        {entry.overtime_100_hours > 0 ? (
-                          entry.overtime_100_hours.toFixed(1)
-                        ) : (
-                          <span className="text-slate-300 font-normal">0.0</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center font-mono text-xs">
-                        {entry.shuttles_count > 0 ? (
-                          <span className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200">
-                            {entry.shuttles_count}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">0</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center font-mono text-xs">
-                        {entry.meal_allowance_count > 0 ? (
-                          <span className="bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200">
-                            {entry.meal_allowance_count}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">0</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center text-xs">
-                        {entry.is_day_off ? (
-                          <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                            Sí
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">No</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-right font-mono text-xs text-slate-700">
-                        {entry.advance_payment_amount > 0 ? `$ ${entry.advance_payment_amount.toLocaleString('es-AR')}` : '-'}
-                      </td>
-                      <td className="p-3 text-right font-mono text-xs text-slate-700">
-                        {entry.plus_delta_amount > 0 ? `$ ${entry.plus_delta_amount.toLocaleString('es-AR')}` : '-'}
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleApproval(entry)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
-                            entry.is_approved
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                              : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                {table.getRowModel().rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="hover:bg-slate-50/80 transition-colors group"
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      const isFirstCol = cell.column.id === 'work_date';
+                      const isLastCol = cell.column.id === 'actions';
+                      return (
+                        <td
+                          key={cell.id}
+                          className={`p-3 ${isFirstCol ? 'pl-4' : ''} ${
+                            isLastCol
+                              ? 'pr-4 text-center sticky right-0 bg-white/95 group-hover:bg-slate-50/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]'
+                              : ''
                           }`}
-                          title={
-                            entry.is_approved
-                              ? 'Aprobado para proforma (Click para revocar)'
-                              : 'Pendiente de aprobación (Click para aprobar e incluir en proforma)'
-                          }
                         >
-                          {entry.is_approved ? (
-                            <>
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              <span>Aprobado</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="h-3.5 w-3.5 text-amber-500" />
-                              <span>Pendiente</span>
-                            </>
-                          )}
-                        </button>
-                      </td>
-                      <td className="p-3 pr-4 text-center sticky right-0 bg-white/95 group-hover:bg-slate-50/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleEditEntry(entry)}
-                            className="p-1.5 text-slate-400 hover:text-[#1E5BB4] hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
-                            title="Editar operario"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEntry(entry.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                            title="Eliminar registro"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
               </tbody>
               <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs text-[#0B1C30]">
                 <tr>
@@ -1147,6 +1302,7 @@ export default function DailyEntryPage() {
             </table>
           </div>
         )}
+        {!loadingLogs && filteredTableEntries.length > 0 && <DataTablePagination table={table} />}
       </section>
 
       {/* Slideover (Drawer Lateral de Carga / Edición de Personal) */}

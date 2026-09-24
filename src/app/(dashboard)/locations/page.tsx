@@ -2,6 +2,17 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, Plus, Edit2, Trash2, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  ColumnDef,
+  PaginationState,
+} from '@tanstack/react-table';
+import { queryKeys } from '@/lib/queries/queryKeys';
+import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getLocations,
   createLocation,
@@ -11,24 +22,43 @@ import {
 } from '@/lib/services/locations';
 
 export default function LocationsPage() {
-  const [locations, setLocations] = useState<LocationRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const {
+    data: locations = [],
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.locations.all,
+    queryFn: getLocations,
+  });
+
+  const error = queryError ? (queryError as any).message : null;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const showNotification = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
 
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
   // Form & Modal state
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<LocationRow | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Delete modal state
   const [deletingLocation, setDeletingLocation] = useState<LocationRow | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -38,27 +68,48 @@ export default function LocationsPage() {
     status: 'active' as 'active' | 'maintenance' | 'inactive',
   });
 
-  const showNotification = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
-  };
+  const createMutation = useMutation({
+    mutationFn: createLocation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all });
+      showNotification('Nuevo lugar de trabajo creado correctamente.');
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setFormError(err.message || 'Ocurrió un error al guardar el lugar de trabajo');
+    },
+  });
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await getLocations();
-      setLocations(data);
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar los lugares de trabajo');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => updateLocation(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all });
+      showNotification('Lugar de trabajo actualizado correctamente.');
+      setIsSlideoverOpen(false);
+    },
+    onError: (err: any) => {
+      setFormError(err.message || 'Ocurrió un error al guardar el lugar de trabajo');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteLocation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all });
+      showNotification('Lugar de trabajo eliminado con éxito.');
+      setDeletingLocation(null);
+    },
+    onError: (err: any) => {
+      alert(`Error al eliminar: ${err.message}`);
+    },
+  });
+
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [searchQuery, selectedStatus]);
 
   const handleOpenCreate = () => {
     setEditingLocation(null);
@@ -99,48 +150,23 @@ export default function LocationsPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      setFormError(null);
+    const payload = {
+      code: formData.code.trim(),
+      name: formData.name.trim(),
+      port_city: formData.port_city.trim(),
+      status: formData.status,
+    };
 
-      const payload = {
-        code: formData.code.trim(),
-        name: formData.name.trim(),
-        port_city: formData.port_city.trim(),
-        status: formData.status,
-      };
-
-      if (editingLocation) {
-        const updated = await updateLocation(editingLocation.id, payload);
-        setLocations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-        showNotification('Lugar de trabajo actualizado correctamente.');
-      } else {
-        const created = await createLocation(payload);
-        setLocations((prev) => [created, ...prev]);
-        showNotification('Nuevo lugar de trabajo creado correctamente.');
-      }
-
-      setIsSlideoverOpen(false);
-    } catch (err: any) {
-      setFormError(err.message || 'Ocurrió un error al guardar el lugar de trabajo');
-    } finally {
-      setIsSubmitting(false);
+    if (editingLocation) {
+      updateMutation.mutate({ id: editingLocation.id, payload });
+    } else {
+      createMutation.mutate(payload);
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!deletingLocation) return;
-    try {
-      setIsDeleting(true);
-      await deleteLocation(deletingLocation.id);
-      setLocations((prev) => prev.filter((item) => item.id !== deletingLocation.id));
-      setDeletingLocation(null);
-      showNotification('Lugar de trabajo eliminado con éxito.');
-    } catch (err: any) {
-      alert(`Error al eliminar: ${err.message}`);
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(deletingLocation.id);
   };
 
   // Filtered List
@@ -185,6 +211,77 @@ export default function LocationsPage() {
     }
   };
 
+  const columns = useMemo<ColumnDef<LocationRow>[]>(
+    () => [
+      {
+        accessorKey: 'code',
+        header: 'Código',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-[#0F2547] font-semibold">
+            {row.original.code}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'name',
+        header: 'Nombre del Lugar',
+        cell: ({ row }) => (
+          <span className="font-semibold text-[#0B1C30]">
+            {row.original.name}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'port_city',
+        header: 'Puerto / Ciudad',
+        cell: ({ row }) => (
+          <span className="text-slate-700">
+            {row.original.port_city}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Estado',
+        cell: ({ row }) => getStatusBadge(row.original.status),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Acciones</div>,
+        cell: ({ row }) => (
+          <div className="text-right space-x-1 whitespace-nowrap">
+            <button
+              onClick={() => handleOpenEdit(row.original)}
+              className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Editar Lugar de Trabajo"
+            >
+              <Edit2 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setDeletingLocation(row.original)}
+              className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
+              title="Eliminar Lugar de Trabajo"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredLocations,
+    columns,
+    state: {
+      pagination,
+    },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
+
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 relative pb-10">
       {/* Notifications */}
@@ -209,7 +306,7 @@ export default function LocationsPage() {
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
           <button
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="ml-auto underline text-xs font-semibold hover:text-red-900 cursor-pointer"
           >
             Reintentar
@@ -285,53 +382,46 @@ export default function LocationsPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
-                <tr>
-                  <th className="py-3 px-4 pl-6 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Código</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Nombre del Lugar</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Puerto / Ciudad</th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap">Estado</th>
-                  <th className="py-3 px-4 pr-6 text-xs font-bold text-[#0F2547] uppercase tracking-wider text-right whitespace-nowrap">Acciones</th>
-                </tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className={`py-3 px-4 text-xs font-bold text-[#0F2547] uppercase tracking-wider whitespace-nowrap ${
+                          header.index === 0 ? 'pl-6' : ''
+                        } ${header.index === headerGroup.headers.length - 1 ? 'pr-6 text-right' : ''}`}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-[#0B1C30]">
-                {filteredLocations.map((loc, index) => (
+                {table.getRowModel().rows.map((row, index) => (
                   <tr
-                    key={loc.id}
+                    key={row.id}
                     className={`hover:bg-slate-50 transition-colors ${index % 2 === 1 ? 'bg-slate-50/50' : ''}`}
                   >
-                    <td className="py-3 px-4 pl-6 font-mono text-xs text-[#0F2547] font-semibold">
-                      {loc.code}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-[#0B1C30]">
-                      {loc.name}
-                    </td>
-                    <td className="py-3 px-4 text-slate-700">
-                      {loc.port_city}
-                    </td>
-                    <td className="py-3 px-4">
-                      {getStatusBadge(loc.status)}
-                    </td>
-                    <td className="py-3 px-4 pr-6 text-right space-x-1 whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenEdit(loc)}
-                        className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="Editar Lugar de Trabajo"
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className={`py-3 px-4 ${cell.column.id === 'code' ? 'pl-6' : ''} ${
+                          cell.column.id === 'actions' ? 'pr-6 text-right' : ''
+                        }`}
                       >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeletingLocation(loc)}
-                        className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                        title="Eliminar Lugar de Trabajo"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+
+        {!isLoading && filteredLocations.length > 0 && (
+          <DataTablePagination table={table} />
         )}
       </section>
 

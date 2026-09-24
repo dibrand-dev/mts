@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 import "./globals.css";
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   description: "Plataforma integral de gestión operativa, facturación y liquidación para MTS Logística",
 };
 
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,7 +37,9 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
         />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }

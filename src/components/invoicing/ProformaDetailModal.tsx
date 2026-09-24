@@ -1,17 +1,14 @@
 'use client';
 
-import React from 'react';
 import {
   X,
   Check,
   FileText,
   Printer,
   Calendar,
-  Building2,
   Clock,
   CheckCircle2,
   Ship,
-  Layers,
 } from 'lucide-react';
 import { InvoicingRecord } from '@/lib/services/invoicing';
 import { VesselViewer } from './viewers/VesselViewer';

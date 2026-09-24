@@ -15,7 +15,8 @@ import {
   Menu,
   X,
   PlusCircle,
-  Settings
+  Settings,
+  Briefcase
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -28,6 +29,7 @@ const navItems = [
   { name: 'Tarifario Comercial', href: '/rates', icon: FileSpreadsheet },
   { name: 'Ingreso de Caja y Flujo de Caja', href: '/cash-flow', icon: Wallet },
   { name: 'Gestión de Personal', href: '/employees', icon: Users },
+  { name: 'Puestos de Trabajo', href: '/positions', icon: Briefcase },
   { name: 'Gestión de Lugares de Trabajo', href: '/locations', icon: MapPin },
   { name: 'Gestión de Clientes', href: '/clients', icon: Building2 },
   { name: 'Centro de Reportes', href: '/reports', icon: FileSpreadsheet },
