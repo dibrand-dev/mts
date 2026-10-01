@@ -40,7 +40,7 @@ INTERNAL_API_SECRET="zztest-internal-secret-token-2026"
 ```
 
 > [!CAUTION]
-> **REGLA DE SEGURIDAD N° 1:** `BREVO_API_KEY` **DEBE permanecer vacía**. Con esta variable vacía, [`src/lib/brevo/client.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/brevo/client.ts#L97) intercepta cualquier intento de envío, emite un aviso por consola y retorna `{ success: true, mocked: true }` sin conectar con los servidores de Brevo.
+> **REGLA DE SEGURIDAD N° 1:** `BREVO_API_KEY` **DEBE permanecer vacía**. Con esta variable vacía, [`src/lib/brevo/client.ts`](src/lib/brevo/client.ts#L97) intercepta cualquier intento de envío, emite un aviso por consola y retorna `{ success: true, mocked: true }` sin conectar con los servidores de Brevo.
 
 ---
 
@@ -191,7 +191,7 @@ npx tsx scripts/test-cleanup.ts
 
 ## 7. Disparo Manual de APIs y Crons
 
-Dado que los cron jobs no están configurados como endpoints automáticos en `/api/cron/*` (ver [DISCREPANCIAS.md](file:///home/carluis/Work/dibrand/mts/docs/test-cases/DISCREPANCIAS.md)), se documenta cómo probar los flujos asociados manualmente:
+Dado que los cron jobs no están configurados como endpoints automáticos en `/api/cron/*` (ver [DISCREPANCIAS.md](docs/test-cases/DISCREPANCIAS.md)), se documenta cómo probar los flujos asociados manualmente:
 
 ### A) Enviar Notificación de Proforma por API
 ```bash
@@ -257,7 +257,7 @@ curl -X POST http://localhost:3000/api/mail/send \
 
 **Regla:** En días de semana (lunes a viernes), las primeras 8 horas son normales (`regular_hours`), y todo exceso es hora extra al 50% (`overtime_50_hours`). No se genera overtime al 100%.
 
-**Código:** [`daily-entries.ts` L138-150](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L138-L150)
+**Código:** [`daily-entries.ts` L138-150](src/lib/services/daily-entries.ts#L138-L150)
 ```typescript
 // Weekday (Monday - Friday)
 const regular_hours = Math.min(8, total_hours);
@@ -275,7 +275,7 @@ const overtime_100_hours = 0;
 
 **Regla:** Los turnos que empiezan un sábado se dividen usando las 13:00 como corte. Las horas antes de 13:00 siguen la regla de 8hs normales + exceso 50%, y todo lo que quede después de las 13:00 es 100%.
 
-**Código:** [`daily-entries.ts` L113-136](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L113-L136)
+**Código:** [`daily-entries.ts` L113-136](src/lib/services/daily-entries.ts#L113-L136)
 ```typescript
 if (startDayOfWeek === 6) {
   const satCutoff = new Date(`${startDateStr}T13:00:00`).getTime();
@@ -296,7 +296,7 @@ if (startDayOfWeek === 6) {
 
 **Regla:** Todo turno que comienza en domingo se paga al 100%.
 
-**Código:** [`daily-entries.ts` L101-110](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L101-L110)
+**Código:** [`daily-entries.ts` L101-110](src/lib/services/daily-entries.ts#L101-L110)
 ```typescript
 if (isStartSunday) {
   return {
@@ -317,7 +317,7 @@ if (isStartSunday) {
 
 **Regla:** Si `isHoliday` es `true`, todo el turno es al 100%.
 
-**Código:** [`daily-entries.ts` L91-99](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L91-L99)
+**Código:** [`daily-entries.ts` L91-99](src/lib/services/daily-entries.ts#L91-L99)
 ```typescript
 if (isHoliday) {
   return {
@@ -340,7 +340,7 @@ if (isHoliday) {
 
 **Regla:** Si la hora de fin es menor o igual a la hora de inicio y las fechas son iguales, se avanza `endDt` 24 horas.
 
-**Código:** [`daily-entries.ts` L68-71](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L68-L71)
+**Código:** [`daily-entries.ts` L68-71](src/lib/services/daily-entries.ts#L68-L71)
 ```typescript
 if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
   endDt = new Date(endDt.getTime() + 24 * 60 * 60 * 1000);
@@ -355,7 +355,7 @@ if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
 
 **Regla:** Se puede cargar turnos superpuestos para el mismo operario en el mismo día.
 
-**Código:** [`daily-entries.ts` L292-317](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L292-L317) — `addStaffEntryToWorkLog` no tiene validación de solapamiento. Simplemente inserta.
+**Código:** [`daily-entries.ts` L292-317](src/lib/services/daily-entries.ts#L292-L317) — `addStaffEntryToWorkLog` no tiene validación de solapamiento. Simplemente inserta.
 
 **Estado:** ✅ Implementado (por omisión de validación).
 
@@ -367,7 +367,7 @@ if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
 
 **Regla:** Al guardar un turno con "Guardar y Seguir", se retienen fecha, cliente, ubicación, horarios y puesto; solo se limpia el selector de empleado. "Finalizar Turno" resetea todo.
 
-**Código:** [`daily-entry/page.tsx` L372-434](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/daily-entry/page.tsx#L372-L434) — `handleSaveAndContinue` retiene `shiftDate`, `selectedClientId`, `selectedLocationId`, `shiftStartTime`, `shiftEndTime`, `selectedPositionId`. Limpia `selectedEmployeeId`, `employeeSearchTerm`.
+**Código:** [`daily-entry/page.tsx` L372-434](src/app/%28dashboard%29/daily-entry/page.tsx#L372-L434) — `handleSaveAndContinue` retiene `shiftDate`, `selectedClientId`, `selectedLocationId`, `shiftStartTime`, `shiftEndTime`, `selectedPositionId`. Limpia `selectedEmployeeId`, `employeeSearchTerm`.
 
 **Estado:** ✅ Implementado.
 
@@ -389,11 +389,11 @@ if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
 
 **Regla:** Solo puede existir un parte diario por combinación de fecha + cliente.
 
-**Código:** [`initial_schema.sql` L138](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L138)
+**Código:** [`initial_schema.sql` L138](supabase/migrations/20260801000000_initial_schema.sql#L138)
 ```sql
 UNIQUE(work_date, client_id)
 ```
-y [`daily-entries.ts` L206-244](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L206-L244) — `getOrCreateDailyWorkLog` hace upsert controlado.
+y [`daily-entries.ts` L206-244](src/lib/services/daily-entries.ts#L206-L244) — `getOrCreateDailyWorkLog` hace upsert controlado.
 
 **Estado:** ✅ Implementado.
 
@@ -403,12 +403,12 @@ y [`daily-entries.ts` L206-244](file:///home/carluis/Work/dibrand/mts/src/lib/se
 
 **Regla:** Los estados posibles son: `draft`, `sent`, `approved`, `invoiced`, `paid`, `overdue`.
 
-**Código:** [`initial_schema.sql` L4](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L4)
+**Código:** [`initial_schema.sql` L4](supabase/migrations/20260801000000_initial_schema.sql#L4)
 ```sql
 CREATE TYPE public.proforma_status AS ENUM ('draft', 'sent', 'approved', 'invoiced', 'paid', 'overdue');
 ```
 
-⚠️ **No hay validación de transiciones en el código.** [`invoicing/index.ts` L226-243](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/index.ts#L226-L243) — `updateProformaStatusService` acepta cualquier status sin verificar el estado actual. Se puede pasar de `draft` a `paid` directamente. Ver **D-03** en DISCREPANCIAS.
+⚠️ **No hay validación de transiciones en el código.** [`invoicing/index.ts` L226-243](src/lib/services/invoicing/index.ts#L226-L243) — `updateProformaStatusService` acepta cualquier status sin verificar el estado actual. Se puede pasar de `draft` a `paid` directamente. Ver **D-03** en DISCREPANCIAS.
 
 **Estado:** ✅ Enum implementado. ❌ Validación de transiciones NO implementada.
 
@@ -442,7 +442,7 @@ CREATE TYPE public.proforma_status AS ENUM ('draft', 'sent', 'approved', 'invoic
 
 **Regla:** Al emitir una factura fiscal (`tax_invoices` INSERT), la proforma padre pasa a estado `invoiced`.
 
-**Código:** [`invoicing/index.ts` L272-276](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/index.ts#L272-L276)
+**Código:** [`invoicing/index.ts` L272-276](src/lib/services/invoicing/index.ts#L272-L276)
 ```typescript
 // Auto-update parent proforma to 'invoiced'
 await supabase
@@ -459,7 +459,7 @@ await supabase
 
 **Regla:** Si `BREVO_API_KEY` no está configurada, el envío de mail retorna `{ success: true, mocked: true }` sin llamar a la API real.
 
-**Código:** [`brevo/client.ts` L97-112](file:///home/carluis/Work/dibrand/mts/src/lib/brevo/client.ts#L97-L112)
+**Código:** [`brevo/client.ts` L97-112](src/lib/brevo/client.ts#L97-L112)
 ```typescript
 if (!apiKey) {
   // ...
@@ -479,7 +479,7 @@ if (!apiKey) {
 
 **Regla:** El endpoint requiere sesión de usuario O un bearer token `INTERNAL_API_SECRET`.
 
-**Código:** [`api/mail/send/route.ts` L11-29](file:///home/carluis/Work/dibrand/mts/src/app/api/mail/send/route.ts#L11-L29) — Verifica `supabase.auth.getUser()`, y si falla, verifica `Authorization: Bearer ${INTERNAL_API_SECRET}`. Sin ninguno, devuelve 401.
+**Código:** [`api/mail/send/route.ts` L11-29](src/app/api/mail/send/route.ts#L11-L29) — Verifica `supabase.auth.getUser()`, y si falla, verifica `Authorization: Bearer ${INTERNAL_API_SECRET}`. Sin ninguno, devuelve 401.
 
 **Estado:** ✅ Implementado.
 
@@ -490,7 +490,7 @@ if (!apiKey) {
 **Regla:** El rol `admin` tiene `FOR ALL` en todas las tablas. El rol `accounting_auditor` tiene `FOR SELECT` en: `daily_work_logs`, `daily_staff_entries`, `employees`, `proformas`, `proforma_details`, `tax_invoices`, `clients`, `client_operations`, `cash_movements`.
 
 **Código:** Verificado en migraciones:
-- [`initial_schema.sql` L216-276](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L216-L276)
+- [`initial_schema.sql` L216-276](supabase/migrations/20260801000000_initial_schema.sql#L216-L276)
 - `20260804010000_fix_employees_rls.sql` — Auditor read employees
 - `20260804020000_add_locations_rls.sql` — Auditor read locations
 - `20260804030000_add_rates_rls.sql` — Auditor read rates
@@ -515,7 +515,7 @@ if (!apiKey) {
 2. **Tab 2 — Encargado a Bordo:** Horas encargado + plus con markup + descuento 3%.
 3. **Tab 3 — Compensación:** Horas corridas acordadas con CAT + descuento 3%.
 
-**Código:** [`vessel.strategy.ts` L5-287](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/strategies/vessel.strategy.ts#L5-L287)
+**Código:** [`vessel.strategy.ts` L5-287](src/lib/services/invoicing/strategies/vessel.strategy.ts#L5-L287)
 
 **Estado:** ✅ Implementado.
 
@@ -529,7 +529,7 @@ if (!apiKey) {
 
 **Regla:** Liquidación quincenal con 3% bonificación en horas, shuttle por viajes, y EXPO con factor 0.90.
 
-**Código:** [`fiscal-yard.strategy.ts` L5-226](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/strategies/fiscal-yard.strategy.ts#L5-L226)
+**Código:** [`fiscal-yard.strategy.ts` L5-226](src/lib/services/invoicing/strategies/fiscal-yard.strategy.ts#L5-L226)
 
 **Estado:** ✅ Implementado. Factor EXPO hardcodeado a 0.90 (L90).
 
@@ -539,7 +539,7 @@ if (!apiKey) {
 
 **Regla:** Tarifa mensual fija dividida por quincena + horas extras 50%/100% + transporte por tramos.
 
-**Código:** [`fixed-deposit.strategy.ts` L5-188](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/strategies/fixed-deposit.strategy.ts#L5-L188)
+**Código:** [`fixed-deposit.strategy.ts` L5-188](src/lib/services/invoicing/strategies/fixed-deposit.strategy.ts#L5-L188)
 
 **Estado:** ✅ Implementado.
 
@@ -549,7 +549,7 @@ if (!apiKey) {
 
 **Regla:** El cliente paga un porcentaje (default 10%) de las horas totales del servicio.
 
-**Código:** [`shared-expo.strategy.ts` L17](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/strategies/shared-expo.strategy.ts#L17)
+**Código:** [`shared-expo.strategy.ts` L17](src/lib/services/invoicing/strategies/shared-expo.strategy.ts#L17)
 ```typescript
 const factor = inputFactor !== undefined ? inputFactor : configuredFactor ?? 0.10;
 ```
@@ -597,7 +597,7 @@ shiftNet = shiftGross - advance
 netAmount = max(0, grossAmount - advancesAmount)
 ```
 
-**Código:** [`payroll.ts` L182-189, L235](file:///home/carluis/Work/dibrand/mts/src/lib/services/payroll.ts#L182-L235)
+**Código:** [`payroll.ts` L182-189, L235](src/lib/services/payroll.ts#L182-L235)
 
 **Estado:** ✅ Implementado.
 
@@ -610,7 +610,7 @@ netAmount = max(0, grossAmount - advancesAmount)
 - Puesto contiene "administrativo" o "jefe" → `Mensual`
 - Resto → `Jornal`
 
-**Código:** [`payroll.ts` L239-244](file:///home/carluis/Work/dibrand/mts/src/lib/services/payroll.ts#L239-L244)
+**Código:** [`payroll.ts` L239-244](src/lib/services/payroll.ts#L239-L244)
 
 **Estado:** ✅ Implementado, pero es una heurística. No existe campo `contract_type` en la tabla `employees`.
 
@@ -621,7 +621,7 @@ netAmount = max(0, grossAmount - advancesAmount)
 **Regla:** Si no hay tarifas configuradas para un cliente+puesto, se usan fallbacks:
 - REGULAR: 10000, OVERTIME_50: 15000, OVERTIME_100: 20000
 
-**Código:** [`payroll.ts` L164-169](file:///home/carluis/Work/dibrand/mts/src/lib/services/payroll.ts#L164-L169)
+**Código:** [`payroll.ts` L164-169](src/lib/services/payroll.ts#L164-L169)
 
 **Estado:** ✅ Implementado. Son valores hardcodeados de fallback.
 
@@ -631,7 +631,7 @@ netAmount = max(0, grossAmount - advancesAmount)
 
 **Regla:** No se puede eliminar un puesto que tenga registros en `daily_staff_entries`.
 
-**Código:** [`positions.ts` L239-257](file:///home/carluis/Work/dibrand/mts/src/lib/services/positions.ts#L239-L257)
+**Código:** [`positions.ts` L239-257](src/lib/services/positions.ts#L239-L257)
 ```typescript
 if (shiftEntries && shiftEntries.length > 0) {
   throw new Error('No se puede eliminar este puesto porque cuenta con turnos...');
@@ -647,8 +647,8 @@ if (shiftEntries && shiftEntries.length > 0) {
 **Regla:** No pueden existir dos puestos con el mismo nombre.
 
 **Código:**
-- [`initial_schema.sql` L82](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L82): `name TEXT NOT NULL UNIQUE`
-- [`positions.ts` L193-194](file:///home/carluis/Work/dibrand/mts/src/lib/services/positions.ts#L193-L194): Manejo de error 23505
+- [`initial_schema.sql` L82](supabase/migrations/20260801000000_initial_schema.sql#L82): `name TEXT NOT NULL UNIQUE`
+- [`positions.ts` L193-194](src/lib/services/positions.ts#L193-L194): Manejo de error 23505
 
 **Estado:** ✅ Implementado.
 
@@ -658,7 +658,7 @@ if (shiftEntries && shiftEntries.length > 0) {
 
 **Regla:** `national_id` (DNI), `file_number` (Legajo) y `tax_id` (CUIL) son UNIQUE en la tabla.
 
-**Código:** [`initial_schema.sql` L117-121](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L117-L121)
+**Código:** [`initial_schema.sql` L117-121](supabase/migrations/20260801000000_initial_schema.sql#L117-L121)
 ```sql
 national_id VARCHAR(20) UNIQUE NOT NULL,
 file_number VARCHAR(20) UNIQUE,
@@ -673,7 +673,7 @@ tax_id VARCHAR(13) UNIQUE,
 
 **Regla:** `tax_id` (CUIT) es UNIQUE en la tabla clients.
 
-**Código:** [`initial_schema.sql` L56](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L56): `tax_id VARCHAR(13) UNIQUE NOT NULL`
+**Código:** [`initial_schema.sql` L56](supabase/migrations/20260801000000_initial_schema.sql#L56): `tax_id VARCHAR(13) UNIQUE NOT NULL`
 
 **Estado:** ✅ Implementado.
 
@@ -683,7 +683,7 @@ tax_id VARCHAR(13) UNIQUE,
 
 **Regla:** `code` es UNIQUE en la tabla locations.
 
-**Código:** [`initial_schema.sql` L45](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L45): `code VARCHAR(20) UNIQUE NOT NULL`
+**Código:** [`initial_schema.sql` L45](supabase/migrations/20260801000000_initial_schema.sql#L45): `code VARCHAR(20) UNIQUE NOT NULL`
 
 **Estado:** ✅ Implementado.
 
@@ -705,7 +705,7 @@ tax_id VARCHAR(13) UNIQUE,
 
 **Regla:** La pantalla de cambio de contraseña NO llama a Supabase Auth. Usa `setTimeout` para simular el guardado.
 
-**Código:** [`change-password/page.tsx` L73-79](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/change-password/page.tsx#L73-L79) — Confirmado con `setTimeout`.
+**Código:** [`change-password/page.tsx` L73-79](src/app/%28dashboard%29/change-password/page.tsx#L73-L79) — Confirmado con `setTimeout`.
 
 **Estado:** ⚠️ Funcionalidad simulada. Ver **D-08** en DISCREPANCIAS.
 
@@ -716,8 +716,8 @@ tax_id VARCHAR(13) UNIQUE,
 **Regla:** Las pantallas `/reports` y `/settings` usan datos mock estáticos, no consultan la base de datos.
 
 **Código:**
-- [`reports/page.tsx` L28-69](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/reports/page.tsx#L28-L69): `INITIAL_REPORTS` hardcoded.
-- [`settings/page.tsx` L28-61](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/settings/page.tsx#L28-L61): `INITIAL_VARIABLES` hardcoded, save es `setTimeout`.
+- [`reports/page.tsx` L28-69](src/app/%28dashboard%29/reports/page.tsx#L28-L69): `INITIAL_REPORTS` hardcoded.
+- [`settings/page.tsx` L28-61](src/app/%28dashboard%29/settings/page.tsx#L28-L61): `INITIAL_VARIABLES` hardcoded, save es `setTimeout`.
 
 **Estado:** ⚠️ Funcionalidades simuladas. Existen tablas `company_settings` y `master_variables` en BD pero no se usan.
 
@@ -727,7 +727,7 @@ tax_id VARCHAR(13) UNIQUE,
 
 **Regla:** El dashboard principal usa datos de prueba estáticos para los KPIs (Saldo Banco, Total Facturado, etc.) y los acordeones (Proformas a Enviar, Facturas a Cobrar).
 
-**Código:** [`page.tsx` (dashboard)](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/page.tsx) — Datos hardcoded.
+**Código:** [`page.tsx` (dashboard)](src/app/%28dashboard%29/page.tsx) — Datos hardcoded.
 
 **Estado:** ⚠️ Funcionalidad de demostración.
 
@@ -742,7 +742,7 @@ tax_id VARCHAR(13) UNIQUE,
 - "cat" → `vessel`
 - Cualquier otro → `vessel` (default)
 
-**Código:** [`registry.ts` L38-55](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/registry.ts#L38-L55)
+**Código:** [`registry.ts` L38-55](src/lib/services/invoicing/registry.ts#L38-L55)
 
 **Estado:** ✅ Implementado.
 
@@ -758,7 +758,7 @@ tax_id VARCHAR(13) UNIQUE,
 Para apuntador:
 - REGULAR: 16254.43, OVERTIME_50: 22919.57, OVERTIME_100: 29749.58
 
-**Código:** [`helpers.ts` L54-55](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/helpers.ts#L54-L55)
+**Código:** [`helpers.ts` L54-55](src/lib/services/invoicing/helpers.ts#L54-L55)
 
 **Estado:** ✅ Implementado como defaults.
 
@@ -768,7 +768,7 @@ Para apuntador:
 
 **Regla:** `proforma_number` tiene constraint `UNIQUE NOT NULL` en la tabla proformas.
 
-**Código:** [`initial_schema.sql` L163](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L163)
+**Código:** [`initial_schema.sql` L163](supabase/migrations/20260801000000_initial_schema.sql#L163)
 
 **Estado:** ✅ Implementado. Pero no hay validación en el servicio antes de insertar — la BD rechazaría un duplicado con error 23505.
 
@@ -778,7 +778,7 @@ Para apuntador:
 
 **Regla:** Solo puede existir una factura fiscal por proforma.
 
-**Código:** [`initial_schema.sql` L188](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L188): `proforma_id UUID NOT NULL UNIQUE`
+**Código:** [`initial_schema.sql` L188](supabase/migrations/20260801000000_initial_schema.sql#L188): `proforma_id UUID NOT NULL UNIQUE`
 
 **Estado:** ✅ Implementado en BD.
 
@@ -788,7 +788,7 @@ Para apuntador:
 
 **Regla:** Cualquier ruta que no sea `/login` redirige a `/login` si no hay sesión.
 
-**Código:** [`middleware.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/supabase/middleware.ts#L40-L44)
+**Código:** [`middleware.ts`](src/lib/supabase/middleware.ts#L40-L44)
 
 **Estado:** ✅ Implementado.
 
@@ -798,7 +798,7 @@ Para apuntador:
 
 **Regla:** Solo existen `admin` y `accounting_auditor`.
 
-**Código:** [`initial_schema.sql` L2](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L2): `CREATE TYPE public.app_role AS ENUM ('admin', 'accounting_auditor');`
+**Código:** [`initial_schema.sql` L2](supabase/migrations/20260801000000_initial_schema.sql#L2): `CREATE TYPE public.app_role AS ENUM ('admin', 'accounting_auditor');`
 
 **Estado:** ✅ Implementado.
 
@@ -846,7 +846,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Acción QA:** La lógica de plantillas de correo (`createInvoiceReminderEmail`) existe en `src/lib/brevo/templates.ts`, y el endpoint genérico `/api/mail/send` acepta `type: "invoice_reminder"`, pero no existe el disparador automático. Se excluye el cron automático de la suite UI y se prueba la API de forma aislada.
 
 ### 2.3. Catálogo / Selector de Días Feriados en Carga Diaria
-- **Realidad en Código:** La función `calculateShiftHours` en [`daily-entries.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L23-L44) acepta un parámetro booleano `isHoliday`. Sin embargo, en el formulario de la UI (`daily-entry/page.tsx`), **no existe ningún checkbox, selector ni campo para indicar que el día es feriado**. Tampoco existe tabla de feriados nacionales en la base de datos.
+- **Realidad en Código:** La función `calculateShiftHours` en [`daily-entries.ts`](src/lib/services/daily-entries.ts#L23-L44) acepta un parámetro booleano `isHoliday`. Sin embargo, en el formulario de la UI (`daily-entry/page.tsx`), **no existe ningún checkbox, selector ni campo para indicar que el día es feriado**. Tampoco existe tabla de feriados nacionales en la base de datos.
 - **Acción QA:** Los casos de feriado solo pueden probarse como caso `SCRIPT` ejecutando la función de servicio o simulando el cálculo directamente, no a través de la pantalla actual.
 
 ### 2.4. Pantalla de Gestión de Usuarios y Asignación de Roles
@@ -858,7 +858,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 ## 3. Bugs y Comportamientos Inesperados en el Código
 
 ### D-01 · Cálculo de Turnos Nocturnos que Cruzan a Fin de Semana (`calculateShiftHours`)
-- **Archivo:** [`src/lib/services/daily-entries.ts` (L86-150)](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L86-L150)
+- **Archivo:** [`src/lib/services/daily-entries.ts` (L86-150)](src/lib/services/daily-entries.ts#L86-L150)
 - **Comportamiento Anómalo:** La función clasifica las horas basándose **únicamente en el día de inicio del turno** (`startDt.getDay()`):
   ```typescript
   const startDayOfWeek = startDt.getDay();
@@ -877,7 +877,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Los casos de prueba deben reflejar el resultado exacto que el código arroja actualmente, señalando esta discrepancia con la legislación laboral argentina (CCT).
 
 ### D-02 · Máquina de Estados de Proformas sin Validación
-- **Archivo:** [`src/lib/services/invoicing/index.ts` (L226-244)](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/index.ts#L226-L244)
+- **Archivo:** [`src/lib/services/invoicing/index.ts` (L226-244)](src/lib/services/invoicing/index.ts#L226-L244)
 - **Comportamiento Anómalo:** `updateProformaStatusService` ejecuta un simple `UPDATE proformas SET status = $1 WHERE id = $2`. No existe validación de transiciones permitidas ni en frontend ni en backend. Desde la UI o API se puede marcar una proforma `draft` directamente como `paid`, o revertir una proforma `paid` a `draft`.
 - **Impacto QA:** Se crean pruebas negativas a nivel SCRIPT/API para documentar que la API no rechaza transiciones inválidas, alertando a desarrollo.
 
@@ -897,7 +897,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Casos específicos de permisos deben verificar este fallo exacto de lectura para documentar el defecto en el reporte.
 
 ### D-04 · Exposición Pública Insegura de Proformas (`anon` RLS Policy)
-- **Archivo:** [`supabase/migrations/20260801000000_initial_schema.sql` (L267-276)](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L267-L276)
+- **Archivo:** [`supabase/migrations/20260801000000_initial_schema.sql` (L267-276)](supabase/migrations/20260801000000_initial_schema.sql#L267-L276)
 - **Comportamiento Anómalo:**
   ```sql
   CREATE POLICY "Public read proforma via token" ON public.proformas 
@@ -907,7 +907,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Se registra como vulnerabilidad de seguridad P0 en el caso de prueba SCRIPT correspondiente.
 
 ### D-05 · Nombre de Usuario Hardcodeado en Menú Móvil
-- **Archivo:** [`src/components/layout/TopNav.tsx` (L140-143)](file:///home/carluis/Work/dibrand/mts/src/components/layout/TopNav.tsx#L140-L143)
+- **Archivo:** [`src/components/layout/TopNav.tsx` (L140-143)](src/components/layout/TopNav.tsx#L140-L143)
 - **Comportamiento:** En resoluciones móviles (`sm:hidden`), el desplegable del perfil tiene el texto fijo `"Jorge Caetano"` y `"Admin"`, ignorando la sesión real cargada desde Supabase Auth. En escritorio sí renderiza `{userName}`.
 - **Impacto QA:** Si un agente de pruebas corre en viewport móvil con el usuario auditor, verá "Jorge Caetano" en lugar del nombre del auditor.
 
@@ -918,13 +918,13 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 Los siguientes módulos de la interfaz no interactúan con Supabase:
 
 1. **Modificación de Contraseña (`/change-password`):**
-   - [`change-password/page.tsx` L73-79](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/change-password/page.tsx#L73-L79): La función `handleSave` ejecuta un `setTimeout(..., 1000)` simulando el cambio. No realiza ninguna llamada a `supabase.auth.updateUser()`. La contraseña real nunca cambia.
+   - [`change-password/page.tsx` L73-79](src/app/%28dashboard%29/change-password/page.tsx#L73-L79): La función `handleSave` ejecuta un `setTimeout(..., 1000)` simulando el cambio. No realiza ninguna llamada a `supabase.auth.updateUser()`. La contraseña real nunca cambia.
 2. **Configuración del Sistema (`/settings`):**
-   - [`settings/page.tsx` L28-61, L85-92](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/settings/page.tsx#L28-L61): Carga el array estático `INITIAL_VARIABLES` en memoria. Al guardar ejecuta `setTimeout`. Las tablas `company_settings` y `master_variables` no son leídas ni actualizadas.
+   - [`settings/page.tsx` L28-61, L85-92](src/app/%28dashboard%29/settings/page.tsx#L28-L61): Carga el array estático `INITIAL_VARIABLES` en memoria. Al guardar ejecuta `setTimeout`. Las tablas `company_settings` y `master_variables` no son leídas ni actualizadas.
 3. **Centro de Reportes (`/reports`):**
-   - [`reports/page.tsx` L28-69](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/reports/page.tsx#L28-L69): Lista estática `INITIAL_REPORTS`. La descarga simula un retardo.
+   - [`reports/page.tsx` L28-69](src/app/%28dashboard%29/reports/page.tsx#L28-L69): Lista estática `INITIAL_REPORTS`. La descarga simula un retardo.
 4. **Tablero Principal (`/`):**
-   - [`page.tsx` (dashboard)](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/page.tsx): Las tarjetas KPI (*Saldo Banco*, *Total Facturado*, *Total Sueldos*, etc.) y los acordeones (*Proformas a Enviar*, *Facturas a Cobrar*) muestran datos constantes de ejemplo, no agregaciones de la base de datos.
+   - [`page.tsx` (dashboard)](src/app/%28dashboard%29/page.tsx): Las tarjetas KPI (*Saldo Banco*, *Total Facturado*, *Total Sueldos*, etc.) y los acordeones (*Proformas a Enviar*, *Facturas a Cobrar*) muestran datos constantes de ejemplo, no agregaciones de la base de datos.
 
 ---
 
@@ -934,7 +934,7 @@ Los siguientes módulos de la interfaz no interactúan con Supabase:
 
 | Vía Posible | ¿Existe en el Repo? | Estado / Análisis | ¿Riesgo de Envío Real? |
 | :--- | :--- | :--- | :--- |
-| **Brevo REST API (`/api/mail/send`)** | Sí ([`src/lib/brevo/client.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/brevo/client.ts)) | Si `BREVO_API_KEY` está vacía o ausente, retorna `{ success: true, mocked: true }` y loguea a consola. No contacta a api.brevo.com. | 🟢 **NULO** si `BREVO_API_KEY=""` en `.env.test`. |
+| **Brevo REST API (`/api/mail/send`)** | Sí ([`src/lib/brevo/client.ts`](src/lib/brevo/client.ts)) | Si `BREVO_API_KEY` está vacía o ausente, retorna `{ success: true, mocked: true }` y loguea a consola. No contacta a api.brevo.com. | 🟢 **NULO** si `BREVO_API_KEY=""` en `.env.test`. |
 | **Triggers de Base de Datos (pg_net / http)** | No | Se revisaron las 16 migraciones SQL en `supabase/migrations/`. No se utiliza `pg_net` ni extensiones HTTP en triggers. | 🟢 **NULO**. |
 | **Supabase Edge Functions** | No | No existe directorio `supabase/functions/` en el proyecto. | 🟢 **NULO**. |
 | **Supabase Auth Emails (Confirmación / Reset)** | Sí (Infraestructura Supabase) | Si se crea un usuario usando `supabase.auth.signUp()`, Supabase intentará enviar el correo de confirmación a menos que se use `supabase.auth.admin.createUser({ email_confirm: true })` con `service_role`. | 🟡 **MITIGADO**: Las cuentas de test deben crearse exclusivamente vía `service_role` con `email_confirm: true` y dominio `@example.com`. |
@@ -966,7 +966,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 1. Módulo: Autenticación (`/login`)
-**Archivo:** [`src/app/login/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/login/page.tsx)
+**Archivo:** [`src/app/login/page.tsx`](src/app/login/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -980,8 +980,8 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 
 ## 2. Layout Global: Navegación y Encabezado
 **Archivos:**
-- [`src/components/layout/Sidebar.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/layout/Sidebar.tsx)
-- [`src/components/layout/TopNav.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/layout/TopNav.tsx)
+- [`src/components/layout/Sidebar.tsx`](src/components/layout/Sidebar.tsx)
+- [`src/components/layout/TopNav.tsx`](src/components/layout/TopNav.tsx)
 
 | data-testid | Elemento HTML | Ubicación | Propósito / Descripción |
 |---|---|---|---|
@@ -1007,7 +1007,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 3. Módulo: Carga Diaria de Horas (`/daily-entry`)
-**Archivo:** [`src/app/(dashboard)/daily-entry/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/daily-entry/page.tsx)
+**Archivo:** [`src/app/(dashboard)/daily-entry/page.tsx`](src/app/%28dashboard%29/daily-entry/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1039,8 +1039,8 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 
 ## 4. Módulo: Facturación y Proformas (`/invoicing`)
 **Archivos:**
-- [`src/app/(dashboard)/invoicing/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/invoicing/page.tsx)
-- [`src/components/invoicing/CreateProformaSlideover.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/invoicing/CreateProformaSlideover.tsx)
+- [`src/app/(dashboard)/invoicing/page.tsx`](src/app/%28dashboard%29/invoicing/page.tsx)
+- [`src/components/invoicing/CreateProformaSlideover.tsx`](src/components/invoicing/CreateProformaSlideover.tsx)
 
 | data-testid | Elemento HTML | Ubicación | Propósito / Descripción |
 |---|---|---|---|
@@ -1064,7 +1064,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 5. Módulo: Liquidación de Sueldos (`/payroll`)
-**Archivo:** [`src/app/(dashboard)/payroll/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/payroll/page.tsx)
+**Archivo:** [`src/app/(dashboard)/payroll/page.tsx`](src/app/%28dashboard%29/payroll/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1080,7 +1080,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 6. Módulo: Tarifario Comercial (`/rates`)
-**Archivo:** [`src/app/(dashboard)/rates/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/rates/page.tsx)
+**Archivo:** [`src/app/(dashboard)/rates/page.tsx`](src/app/%28dashboard%29/rates/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1099,7 +1099,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 7. Módulo: Puestos y Funciones (`/positions`)
-**Archivo:** [`src/app/(dashboard)/positions/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/positions/page.tsx)
+**Archivo:** [`src/app/(dashboard)/positions/page.tsx`](src/app/%28dashboard%29/positions/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1115,7 +1115,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 8. Módulo: Gestión de Empleados (`/employees`)
-**Archivo:** [`src/app/(dashboard)/employees/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/employees/page.tsx)
+**Archivo:** [`src/app/(dashboard)/employees/page.tsx`](src/app/%28dashboard%29/employees/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1135,7 +1135,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 9. Módulo: Gestión de Clientes (`/clients`)
-**Archivo:** [`src/app/(dashboard)/clients/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/clients/page.tsx)
+**Archivo:** [`src/app/(dashboard)/clients/page.tsx`](src/app/%28dashboard%29/clients/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1153,7 +1153,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 10. Módulo: Lugares de Trabajo (`/locations`)
-**Archivo:** [`src/app/(dashboard)/locations/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/locations/page.tsx)
+**Archivo:** [`src/app/(dashboard)/locations/page.tsx`](src/app/%28dashboard%29/locations/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -1169,7 +1169,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 11. Módulo: Flujo de Caja (`/cash-flow`)
-**Archivo:** [`src/app/(dashboard)/cash-flow/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/cash-flow/page.tsx)
+**Archivo:** [`src/app/(dashboard)/cash-flow/page.tsx`](src/app/%28dashboard%29/cash-flow/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|

@@ -29,7 +29,7 @@ INTERNAL_API_SECRET="zztest-internal-secret-token-2026"
 ```
 
 > [!CAUTION]
-> **REGLA DE SEGURIDAD N° 1:** `BREVO_API_KEY` **DEBE permanecer vacía**. Con esta variable vacía, [`src/lib/brevo/client.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/brevo/client.ts#L97) intercepta cualquier intento de envío, emite un aviso por consola y retorna `{ success: true, mocked: true }` sin conectar con los servidores de Brevo.
+> **REGLA DE SEGURIDAD N° 1:** `BREVO_API_KEY` **DEBE permanecer vacía**. Con esta variable vacía, [`src/lib/brevo/client.ts`](src/lib/brevo/client.ts#L97) intercepta cualquier intento de envío, emite un aviso por consola y retorna `{ success: true, mocked: true }` sin conectar con los servidores de Brevo.
 
 ---
 
@@ -180,7 +180,7 @@ npx tsx scripts/test-cleanup.ts
 
 ## 7. Disparo Manual de APIs y Crons
 
-Dado que los cron jobs no están configurados como endpoints automáticos en `/api/cron/*` (ver [DISCREPANCIAS.md](file:///home/carluis/Work/dibrand/mts/docs/test-cases/DISCREPANCIAS.md)), se documenta cómo probar los flujos asociados manualmente:
+Dado que los cron jobs no están configurados como endpoints automáticos en `/api/cron/*` (ver [DISCREPANCIAS.md](docs/test-cases/DISCREPANCIAS.md)), se documenta cómo probar los flujos asociados manualmente:
 
 ### A) Enviar Notificación de Proforma por API
 ```bash

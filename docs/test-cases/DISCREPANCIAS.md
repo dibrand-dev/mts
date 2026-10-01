@@ -31,7 +31,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Acción QA:** La lógica de plantillas de correo (`createInvoiceReminderEmail`) existe en `src/lib/brevo/templates.ts`, y el endpoint genérico `/api/mail/send` acepta `type: "invoice_reminder"`, pero no existe el disparador automático. Se excluye el cron automático de la suite UI y se prueba la API de forma aislada.
 
 ### 2.3. Catálogo / Selector de Días Feriados en Carga Diaria
-- **Realidad en Código:** La función `calculateShiftHours` en [`daily-entries.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L23-L44) acepta un parámetro booleano `isHoliday`. Sin embargo, en el formulario de la UI (`daily-entry/page.tsx`), **no existe ningún checkbox, selector ni campo para indicar que el día es feriado**. Tampoco existe tabla de feriados nacionales en la base de datos.
+- **Realidad en Código:** La función `calculateShiftHours` en [`daily-entries.ts`](src/lib/services/daily-entries.ts#L23-L44) acepta un parámetro booleano `isHoliday`. Sin embargo, en el formulario de la UI (`daily-entry/page.tsx`), **no existe ningún checkbox, selector ni campo para indicar que el día es feriado**. Tampoco existe tabla de feriados nacionales en la base de datos.
 - **Acción QA:** Los casos de feriado solo pueden probarse como caso `SCRIPT` ejecutando la función de servicio o simulando el cálculo directamente, no a través de la pantalla actual.
 
 ### 2.4. Pantalla de Gestión de Usuarios y Asignación de Roles
@@ -43,7 +43,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 ## 3. Bugs y Comportamientos Inesperados en el Código
 
 ### D-01 · Cálculo de Turnos Nocturnos que Cruzan a Fin de Semana (`calculateShiftHours`)
-- **Archivo:** [`src/lib/services/daily-entries.ts` (L86-150)](file:///home/carluis/Work/dibrand/mts/src/lib/services/daily-entries.ts#L86-L150)
+- **Archivo:** [`src/lib/services/daily-entries.ts` (L86-150)](src/lib/services/daily-entries.ts#L86-L150)
 - **Comportamiento Anómalo:** La función clasifica las horas basándose **únicamente en el día de inicio del turno** (`startDt.getDay()`):
   ```typescript
   const startDayOfWeek = startDt.getDay();
@@ -62,7 +62,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Los casos de prueba deben reflejar el resultado exacto que el código arroja actualmente, señalando esta discrepancia con la legislación laboral argentina (CCT).
 
 ### D-02 · Máquina de Estados de Proformas sin Validación
-- **Archivo:** [`src/lib/services/invoicing/index.ts` (L226-244)](file:///home/carluis/Work/dibrand/mts/src/lib/services/invoicing/index.ts#L226-L244)
+- **Archivo:** [`src/lib/services/invoicing/index.ts` (L226-244)](src/lib/services/invoicing/index.ts#L226-L244)
 - **Comportamiento Anómalo:** `updateProformaStatusService` ejecuta un simple `UPDATE proformas SET status = $1 WHERE id = $2`. No existe validación de transiciones permitidas ni en frontend ni en backend. Desde la UI o API se puede marcar una proforma `draft` directamente como `paid`, o revertir una proforma `paid` a `draft`.
 - **Impacto QA:** Se crean pruebas negativas a nivel SCRIPT/API para documentar que la API no rechaza transiciones inválidas, alertando a desarrollo.
 
@@ -82,7 +82,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Casos específicos de permisos deben verificar este fallo exacto de lectura para documentar el defecto en el reporte.
 
 ### D-04 · Exposición Pública Insegura de Proformas (`anon` RLS Policy)
-- **Archivo:** [`supabase/migrations/20260801000000_initial_schema.sql` (L267-276)](file:///home/carluis/Work/dibrand/mts/supabase/migrations/20260801000000_initial_schema.sql#L267-L276)
+- **Archivo:** [`supabase/migrations/20260801000000_initial_schema.sql` (L267-276)](supabase/migrations/20260801000000_initial_schema.sql#L267-L276)
 - **Comportamiento Anómalo:**
   ```sql
   CREATE POLICY "Public read proforma via token" ON public.proformas 
@@ -92,7 +92,7 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 - **Impacto QA:** Se registra como vulnerabilidad de seguridad P0 en el caso de prueba SCRIPT correspondiente.
 
 ### D-05 · Nombre de Usuario Hardcodeado en Menú Móvil
-- **Archivo:** [`src/components/layout/TopNav.tsx` (L140-143)](file:///home/carluis/Work/dibrand/mts/src/components/layout/TopNav.tsx#L140-L143)
+- **Archivo:** [`src/components/layout/TopNav.tsx` (L140-143)](src/components/layout/TopNav.tsx#L140-L143)
 - **Comportamiento:** En resoluciones móviles (`sm:hidden`), el desplegable del perfil tiene el texto fijo `"Jorge Caetano"` y `"Admin"`, ignorando la sesión real cargada desde Supabase Auth. En escritorio sí renderiza `{userName}`.
 - **Impacto QA:** Si un agente de pruebas corre en viewport móvil con el usuario auditor, verá "Jorge Caetano" en lugar del nombre del auditor.
 
@@ -103,13 +103,13 @@ Los siguientes elementos fueron asumidos o mencionados en `CONTEXT.md` o en la s
 Los siguientes módulos de la interfaz no interactúan con Supabase:
 
 1. **Modificación de Contraseña (`/change-password`):**
-   - [`change-password/page.tsx` L73-79](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/change-password/page.tsx#L73-L79): La función `handleSave` ejecuta un `setTimeout(..., 1000)` simulando el cambio. No realiza ninguna llamada a `supabase.auth.updateUser()`. La contraseña real nunca cambia.
+   - [`change-password/page.tsx` L73-79](src/app/%28dashboard%29/change-password/page.tsx#L73-L79): La función `handleSave` ejecuta un `setTimeout(..., 1000)` simulando el cambio. No realiza ninguna llamada a `supabase.auth.updateUser()`. La contraseña real nunca cambia.
 2. **Configuración del Sistema (`/settings`):**
-   - [`settings/page.tsx` L28-61, L85-92](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/settings/page.tsx#L28-L61): Carga el array estático `INITIAL_VARIABLES` en memoria. Al guardar ejecuta `setTimeout`. Las tablas `company_settings` y `master_variables` no son leídas ni actualizadas.
+   - [`settings/page.tsx` L28-61, L85-92](src/app/%28dashboard%29/settings/page.tsx#L28-L61): Carga el array estático `INITIAL_VARIABLES` en memoria. Al guardar ejecuta `setTimeout`. Las tablas `company_settings` y `master_variables` no son leídas ni actualizadas.
 3. **Centro de Reportes (`/reports`):**
-   - [`reports/page.tsx` L28-69](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/reports/page.tsx#L28-L69): Lista estática `INITIAL_REPORTS`. La descarga simula un retardo.
+   - [`reports/page.tsx` L28-69](src/app/%28dashboard%29/reports/page.tsx#L28-L69): Lista estática `INITIAL_REPORTS`. La descarga simula un retardo.
 4. **Tablero Principal (`/`):**
-   - [`page.tsx` (dashboard)](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/page.tsx): Las tarjetas KPI (*Saldo Banco*, *Total Facturado*, *Total Sueldos*, etc.) y los acordeones (*Proformas a Enviar*, *Facturas a Cobrar*) muestran datos constantes de ejemplo, no agregaciones de la base de datos.
+   - [`page.tsx` (dashboard)](src/app/%28dashboard%29/page.tsx): Las tarjetas KPI (*Saldo Banco*, *Total Facturado*, *Total Sueldos*, etc.) y los acordeones (*Proformas a Enviar*, *Facturas a Cobrar*) muestran datos constantes de ejemplo, no agregaciones de la base de datos.
 
 ---
 
@@ -119,7 +119,7 @@ Los siguientes módulos de la interfaz no interactúan con Supabase:
 
 | Vía Posible | ¿Existe en el Repo? | Estado / Análisis | ¿Riesgo de Envío Real? |
 | :--- | :--- | :--- | :--- |
-| **Brevo REST API (`/api/mail/send`)** | Sí ([`src/lib/brevo/client.ts`](file:///home/carluis/Work/dibrand/mts/src/lib/brevo/client.ts)) | Si `BREVO_API_KEY` está vacía o ausente, retorna `{ success: true, mocked: true }` y loguea a consola. No contacta a api.brevo.com. | 🟢 **NULO** si `BREVO_API_KEY=""` en `.env.test`. |
+| **Brevo REST API (`/api/mail/send`)** | Sí ([`src/lib/brevo/client.ts`](src/lib/brevo/client.ts)) | Si `BREVO_API_KEY` está vacía o ausente, retorna `{ success: true, mocked: true }` y loguea a consola. No contacta a api.brevo.com. | 🟢 **NULO** si `BREVO_API_KEY=""` en `.env.test`. |
 | **Triggers de Base de Datos (pg_net / http)** | No | Se revisaron las 16 migraciones SQL en `supabase/migrations/`. No se utiliza `pg_net` ni extensiones HTTP en triggers. | 🟢 **NULO**. |
 | **Supabase Edge Functions** | No | No existe directorio `supabase/functions/` en el proyecto. | 🟢 **NULO**. |
 | **Supabase Auth Emails (Confirmación / Reset)** | Sí (Infraestructura Supabase) | Si se crea un usuario usando `supabase.auth.signUp()`, Supabase intentará enviar el correo de confirmación a menos que se use `supabase.auth.admin.createUser({ email_confirm: true })` con `service_role`. | 🟡 **MITIGADO**: Las cuentas de test deben crearse exclusivamente vía `service_role` con `email_confirm: true` y dominio `@example.com`. |

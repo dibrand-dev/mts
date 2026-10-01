@@ -7,7 +7,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 1. Módulo: Autenticación (`/login`)
-**Archivo:** [`src/app/login/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/login/page.tsx)
+**Archivo:** [`src/app/login/page.tsx`](src/app/login/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -21,8 +21,8 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 
 ## 2. Layout Global: Navegación y Encabezado
 **Archivos:**
-- [`src/components/layout/Sidebar.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/layout/Sidebar.tsx)
-- [`src/components/layout/TopNav.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/layout/TopNav.tsx)
+- [`src/components/layout/Sidebar.tsx`](src/components/layout/Sidebar.tsx)
+- [`src/components/layout/TopNav.tsx`](src/components/layout/TopNav.tsx)
 
 | data-testid | Elemento HTML | Ubicación | Propósito / Descripción |
 |---|---|---|---|
@@ -48,7 +48,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 3. Módulo: Carga Diaria de Horas (`/daily-entry`)
-**Archivo:** [`src/app/(dashboard)/daily-entry/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/daily-entry/page.tsx)
+**Archivo:** [`src/app/(dashboard)/daily-entry/page.tsx`](src/app/%28dashboard%29/daily-entry/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -80,8 +80,8 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 
 ## 4. Módulo: Facturación y Proformas (`/invoicing`)
 **Archivos:**
-- [`src/app/(dashboard)/invoicing/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/invoicing/page.tsx)
-- [`src/components/invoicing/CreateProformaSlideover.tsx`](file:///home/carluis/Work/dibrand/mts/src/components/invoicing/CreateProformaSlideover.tsx)
+- [`src/app/(dashboard)/invoicing/page.tsx`](src/app/%28dashboard%29/invoicing/page.tsx)
+- [`src/components/invoicing/CreateProformaSlideover.tsx`](src/components/invoicing/CreateProformaSlideover.tsx)
 
 | data-testid | Elemento HTML | Ubicación | Propósito / Descripción |
 |---|---|---|---|
@@ -105,7 +105,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 5. Módulo: Liquidación de Sueldos (`/payroll`)
-**Archivo:** [`src/app/(dashboard)/payroll/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/payroll/page.tsx)
+**Archivo:** [`src/app/(dashboard)/payroll/page.tsx`](src/app/%28dashboard%29/payroll/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -121,7 +121,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 6. Módulo: Tarifario Comercial (`/rates`)
-**Archivo:** [`src/app/(dashboard)/rates/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/rates/page.tsx)
+**Archivo:** [`src/app/(dashboard)/rates/page.tsx`](src/app/%28dashboard%29/rates/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -140,7 +140,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 7. Módulo: Puestos y Funciones (`/positions`)
-**Archivo:** [`src/app/(dashboard)/positions/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/positions/page.tsx)
+**Archivo:** [`src/app/(dashboard)/positions/page.tsx`](src/app/%28dashboard%29/positions/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -156,7 +156,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 8. Módulo: Gestión de Empleados (`/employees`)
-**Archivo:** [`src/app/(dashboard)/employees/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/employees/page.tsx)
+**Archivo:** [`src/app/(dashboard)/employees/page.tsx`](src/app/%28dashboard%29/employees/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -176,7 +176,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 9. Módulo: Gestión de Clientes (`/clients`)
-**Archivo:** [`src/app/(dashboard)/clients/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/clients/page.tsx)
+**Archivo:** [`src/app/(dashboard)/clients/page.tsx`](src/app/%28dashboard%29/clients/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -194,7 +194,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 10. Módulo: Lugares de Trabajo (`/locations`)
-**Archivo:** [`src/app/(dashboard)/locations/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/locations/page.tsx)
+**Archivo:** [`src/app/(dashboard)/locations/page.tsx`](src/app/%28dashboard%29/locations/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
@@ -210,7 +210,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 ---
 
 ## 11. Módulo: Flujo de Caja (`/cash-flow`)
-**Archivo:** [`src/app/(dashboard)/cash-flow/page.tsx`](file:///home/carluis/Work/dibrand/mts/src/app/%28dashboard%29/cash-flow/page.tsx)
+**Archivo:** [`src/app/(dashboard)/cash-flow/page.tsx`](src/app/%28dashboard%29/cash-flow/page.tsx)
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
