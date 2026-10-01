@@ -62,7 +62,7 @@ export default function LoginPage() {
           </h1>
 
           {errorMsg && (
-            <div className="mb-6 p-4 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
+            <div data-testid="login-alert-error" className="mb-6 p-4 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
               {errorMsg}
             </div>
           )}
@@ -83,6 +83,7 @@ export default function LoginPage() {
                   name="email"
                   type="email"
                   required
+                  data-testid="login-input-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="nombre@mtscaetano.com"
@@ -105,6 +106,7 @@ export default function LoginPage() {
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  data-testid="login-input-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -112,6 +114,7 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
+                  data-testid="login-btn-toggle-password"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
                 >
@@ -133,6 +136,7 @@ export default function LoginPage() {
             <div>
               <button
                 type="submit"
+                data-testid="login-btn-submit"
                 disabled={loading}
                 className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-[#2b56a3] hover:bg-[#1e4280] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b56a3] transition-colors duration-200 disabled:opacity-50"
               >

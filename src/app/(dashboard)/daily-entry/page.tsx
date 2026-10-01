@@ -845,6 +845,7 @@ export default function DailyEntryPage() {
             <div className="text-center">
               <button
                 type="button"
+                data-testid="daily-entry-btn-toggle-approval"
                 onClick={() => handleToggleApproval(entry)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
                   entry.is_approved
@@ -881,6 +882,7 @@ export default function DailyEntryPage() {
           return (
             <div className="flex items-center justify-center gap-1">
               <button
+                data-testid="daily-entry-btn-edit-entry"
                 onClick={() => handleEditEntry(entry)}
                 className="p-1.5 text-slate-400 hover:text-[#1E5BB4] hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
                 title="Editar operario"
@@ -888,6 +890,7 @@ export default function DailyEntryPage() {
                 <Edit2 className="h-4 w-4" />
               </button>
               <button
+                data-testid="daily-entry-btn-delete-entry"
                 onClick={() => handleDeleteEntry(entry.id)}
                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                 title="Eliminar registro"
@@ -938,6 +941,7 @@ export default function DailyEntryPage() {
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
+            data-testid="daily-entry-btn-cargar-horas"
             onClick={handleOpenNewEntry}
             className="w-full sm:w-auto px-5 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
           >
@@ -1364,6 +1368,7 @@ export default function DailyEntryPage() {
                     </label>
                     <input
                       type="date"
+                      data-testid="daily-entry-input-date"
                       value={formWorkDate}
                       onChange={(e) => {
                         setFormWorkDate(e.target.value);
@@ -1381,6 +1386,7 @@ export default function DailyEntryPage() {
                     </label>
                     <select
                       value={formClientId}
+                      data-testid="daily-entry-select-client"
                       onChange={(e) => setFormClientId(e.target.value)}
                       className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
                       required
@@ -1402,6 +1408,7 @@ export default function DailyEntryPage() {
                   </label>
                   <select
                     value={formLocationId}
+                    data-testid="daily-entry-select-location"
                     onChange={(e) => setFormLocationId(e.target.value)}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
                   >
@@ -1436,6 +1443,7 @@ export default function DailyEntryPage() {
                   </div>
                   <select
                     value={formVesselName}
+                    data-testid="daily-entry-select-vessel"
                     onChange={(e) => setFormVesselName(e.target.value)}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
                   >
@@ -1495,6 +1503,7 @@ export default function DailyEntryPage() {
                   <label className="text-xs font-bold text-slate-700 block">Empleado *</label>
                   <select
                     value={selectedEmployeeId}
+                    data-testid="daily-entry-select-employee"
                     onChange={(e) => handleEmployeeChange(e.target.value)}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
                     required
@@ -1513,6 +1522,7 @@ export default function DailyEntryPage() {
                   <label className="text-xs font-bold text-slate-700 block">Función / Puesto *</label>
                   <select
                     value={selectedPositionId}
+                    data-testid="daily-entry-select-position"
                     onChange={(e) => setSelectedPositionId(e.target.value)}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
                     required
@@ -1546,6 +1556,7 @@ export default function DailyEntryPage() {
                     <label className="text-xs font-bold text-slate-700 block">Hora Inicio (Desde)</label>
                     <input
                       type="time"
+                      data-testid="daily-entry-input-start-time"
                       value={startTime}
                       onChange={(e) => handleStartTimeChange(e.target.value)}
                       className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
@@ -1557,6 +1568,7 @@ export default function DailyEntryPage() {
                     <label className="text-xs font-bold text-slate-700 block">Hora Fin (Hasta)</label>
                     <input
                       type="time"
+                      data-testid="daily-entry-input-end-time"
                       value={endTime}
                       onChange={(e) => handleEndTimeChange(e.target.value)}
                       className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
@@ -1602,6 +1614,7 @@ export default function DailyEntryPage() {
                       type="number"
                       step="0.5"
                       min="0"
+                      data-testid="daily-entry-input-regular-hours"
                       value={regularHours}
                       onChange={(e) => {
                         setRegularHours(e.target.value);
@@ -1617,6 +1630,7 @@ export default function DailyEntryPage() {
                       type="number"
                       step="0.5"
                       min="0"
+                      data-testid="daily-entry-input-overtime-50"
                       value={ot50Hours}
                       onChange={(e) => {
                         setOt50Hours(e.target.value);
@@ -1632,6 +1646,7 @@ export default function DailyEntryPage() {
                       type="number"
                       step="0.5"
                       min="0"
+                      data-testid="daily-entry-input-overtime-100"
                       value={ot100Hours}
                       onChange={(e) => {
                         setOt100Hours(e.target.value);
@@ -1667,6 +1682,7 @@ export default function DailyEntryPage() {
                       type="number"
                       min="0"
                       step="1"
+                      data-testid="daily-entry-input-shuttles"
                       value={shuttlesCount}
                       onChange={(e) => setShuttlesCount(e.target.value)}
                       className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
@@ -1682,6 +1698,7 @@ export default function DailyEntryPage() {
                       type="number"
                       min="0"
                       step="1"
+                      data-testid="daily-entry-input-meal"
                       value={mealAllowanceCount}
                       onChange={(e) => setMealAllowanceCount(e.target.value)}
                       className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
@@ -1696,6 +1713,7 @@ export default function DailyEntryPage() {
                       type="number"
                       step="0.01"
                       placeholder="0.00"
+                      data-testid="daily-entry-input-advance"
                       value={advancePaymentAmount}
                       onChange={(e) => setAdvancePaymentAmount(e.target.value)}
                       className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
@@ -1708,6 +1726,7 @@ export default function DailyEntryPage() {
                       type="number"
                       step="0.01"
                       placeholder="0.00"
+                      data-testid="daily-entry-input-plus-delta"
                       value={plusDeltaAmount}
                       onChange={(e) => setPlusDeltaAmount(e.target.value)}
                       className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
@@ -1720,6 +1739,7 @@ export default function DailyEntryPage() {
                   <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-2.5 rounded-lg border border-slate-200 transition-colors">
                     <input
                       type="checkbox"
+                      data-testid="daily-entry-checkbox-day-off"
                       checked={isDayOff}
                       onChange={(e) => setIsDayOff(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-300 text-[#1E5BB4] focus:ring-0 cursor-pointer"
@@ -1737,6 +1757,7 @@ export default function DailyEntryPage() {
                 <label className="flex items-center gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
+                    data-testid="daily-entry-checkbox-approved"
                     checked={formIsApproved}
                     onChange={(e) => setFormIsApproved(e.target.checked)}
                     className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-0 cursor-pointer"
@@ -1757,6 +1778,7 @@ export default function DailyEntryPage() {
               <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-200">
                 <button
                   type="button"
+                  data-testid="daily-entry-btn-finalizar-turno-slideover"
                   onClick={handleFinalizeShift}
                   className="px-3.5 py-2 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors cursor-pointer"
                   title="Finaliza la carga del turno actual y limpia todos los parámetros"
@@ -1773,6 +1795,7 @@ export default function DailyEntryPage() {
                   </button>
                   <button
                     type="submit"
+                    data-testid="daily-entry-btn-guardar-seguir"
                     disabled={submittingEntry}
                     className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                   >

@@ -266,6 +266,7 @@ export function CreateProformaSlideover({
                 </label>
                 <select
                   value={selectedClientId}
+                  data-testid="invoicing-select-client"
                   onChange={(e) => handleClientSelectionChange(e.target.value)}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:border-[#1E5BB4]"
                   required
@@ -285,6 +286,7 @@ export function CreateProformaSlideover({
                 </label>
                 <select
                   value={selectedType}
+                  data-testid="invoicing-select-model"
                   onChange={(e) => {
                     const newType = e.target.value;
                     setSelectedType(newType);
@@ -420,6 +422,7 @@ export function CreateProformaSlideover({
                   <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Desde *</label>
                   <input
                     type="date"
+                    data-testid="invoicing-input-from-date"
                     value={calcFromDate}
                     onChange={(e) => setCalcFromDate(e.target.value)}
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -430,6 +433,7 @@ export function CreateProformaSlideover({
                   <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Hasta *</label>
                   <input
                     type="date"
+                    data-testid="invoicing-input-to-date"
                     value={calcToDate}
                     onChange={(e) => setCalcToDate(e.target.value)}
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -444,6 +448,7 @@ export function CreateProformaSlideover({
                   <label className="text-xs font-bold uppercase tracking-wider text-white">Período Quincenal *</label>
                   <input
                     type="text"
+                    data-testid="invoicing-input-fortnight-period"
                     value={fortnightPeriod}
                     onChange={(e) => setFortnightPeriod(e.target.value)}
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -458,6 +463,7 @@ export function CreateProformaSlideover({
                     step="0.1"
                     min="0"
                     max="100"
+                    data-testid="invoicing-input-discount"
                     value={discountPercentageInput}
                     onChange={(e) => setDiscountPercentageInput(e.target.value)}
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:border-[#1E5BB4]"
@@ -511,7 +517,7 @@ export function CreateProformaSlideover({
 
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal Neto Servicios:</span>
-                    <span className="font-mono font-semibold text-[#0B1C30]">
+                    <span data-testid="invoicing-preview-subtotal" className="font-mono font-semibold text-[#0B1C30]">
                       $ {calculationResult.total_neto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -534,7 +540,7 @@ export function CreateProformaSlideover({
 
                   <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-extrabold text-[#0B1C30] text-sm">
                     <span>TOTAL FACTURA:</span>
-                    <span className="font-mono text-base text-[#1E5BB4]">
+                    <span data-testid="invoicing-preview-total" className="font-mono text-base text-[#1E5BB4]">
                       $ {calculationResult.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -552,6 +558,7 @@ export function CreateProformaSlideover({
             <div className="pt-2">
               <button
                 type="submit"
+                data-testid="invoicing-btn-emitir-proforma"
                 disabled={isSubmitting || calculating || !calculationResult || calculationResult.total <= 0}
                 className="w-full bg-[#1E5BB4] hover:bg-[#004392] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >

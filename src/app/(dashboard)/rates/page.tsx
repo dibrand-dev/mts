@@ -334,6 +334,7 @@ export default function RatesPage() {
             <div className="text-center space-x-1 whitespace-nowrap pr-2">
               <button
                 onClick={() => handleOpenSlideover(group)}
+                data-testid="rates-btn-edit"
                 className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Editar Tarifa"
               >
@@ -341,6 +342,7 @@ export default function RatesPage() {
               </button>
               <button
                 onClick={() => handleOpenDeleteModal(group)}
+                data-testid="rates-btn-delete"
                 className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
                 title="Eliminar Tarifa"
               >
@@ -515,6 +517,7 @@ export default function RatesPage() {
           <div className="flex justify-start md:justify-end">
             <button
               onClick={() => handleOpenSlideover()}
+              data-testid="rates-btn-nueva-tarifa"
               className="w-full md:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm py-2.5 px-5 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
               type="button"
             >
@@ -613,6 +616,7 @@ export default function RatesPage() {
                   value={clientId}
                   disabled={!!editingGroup}
                   onChange={(e) => setClientId(e.target.value)}
+                  data-testid="rates-select-client"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100 disabled:opacity-80"
                 >
                   <option value="">Seleccionar Cliente...</option>
@@ -631,6 +635,7 @@ export default function RatesPage() {
                   value={positionId}
                   disabled={!!editingGroup}
                   onChange={(e) => setPositionId(e.target.value)}
+                  data-testid="rates-select-position"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100 disabled:opacity-80"
                 >
                   <option value="">Seleccionar Puesto...</option>
@@ -651,6 +656,7 @@ export default function RatesPage() {
                     value={effectiveFrom}
                     disabled={!!editingGroup}
                     onChange={(e) => setEffectiveFrom(e.target.value)}
+                    data-testid="rates-input-effective-from"
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100 disabled:opacity-80"
                   />
                 </div>
@@ -663,6 +669,7 @@ export default function RatesPage() {
                   id="autoCalculate"
                   checked={autoCalculate}
                   onChange={(e) => setAutoCalculate(e.target.checked)}
+                  data-testid="rates-checkbox-auto-calculate"
                   className="h-4 w-4 text-[#1E5BB4] rounded border-[#0F2547]"
                 />
                 <label htmlFor="autoCalculate" className="text-xs text-white cursor-pointer select-none">
@@ -681,6 +688,7 @@ export default function RatesPage() {
                     placeholder="0.00"
                     value={rateRegular}
                     onChange={(e) => handleRegularRateChange(e.target.value)}
+                    data-testid="rates-input-regular"
                     className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                   />
                 </div>
@@ -696,6 +704,7 @@ export default function RatesPage() {
                   placeholder="0.00"
                   value={rateOvertime50}
                   onChange={(e) => setRateOvertime50(e.target.value)}
+                  data-testid="rates-input-overtime-50"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
@@ -710,6 +719,7 @@ export default function RatesPage() {
                   placeholder="0.00"
                   value={rateOvertime100}
                   onChange={(e) => setRateOvertime100(e.target.value)}
+                  data-testid="rates-input-overtime-100"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
@@ -725,6 +735,7 @@ export default function RatesPage() {
                 <button
                   type="submit"
                   disabled={saving}
+                  data-testid="rates-btn-guardar"
                   className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg shadow-sm transition-colors text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}

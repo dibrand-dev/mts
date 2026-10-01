@@ -383,6 +383,7 @@ export default function PayrollPage() {
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
+            data-testid="payroll-btn-export-csv"
             onClick={handleExport}
             disabled={loading || filteredData.length === 0}
             className="flex-1 sm:flex-none px-4 py-2 border border-slate-400 text-[#0B1C30] hover:bg-slate-100 font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -495,6 +496,7 @@ export default function PayrollPage() {
             </span>
             <button
               type="button"
+              data-testid="payroll-btn-preset-week"
               onClick={() => handleSetPreset('week')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs ${
                 activePreset === 'week'
@@ -506,6 +508,7 @@ export default function PayrollPage() {
             </button>
             <button
               type="button"
+              data-testid="payroll-btn-preset-fortnight"
               onClick={() => handleSetPreset('fortnight')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs ${
                 activePreset === 'fortnight'
@@ -517,6 +520,7 @@ export default function PayrollPage() {
             </button>
             <button
               type="button"
+              data-testid="payroll-btn-preset-month"
               onClick={() => handleSetPreset('month')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs ${
                 activePreset === 'month'
@@ -583,7 +587,7 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Personal Liquidado</span>
             <Users className="h-4 w-4 text-[#1E5BB4]" />
           </div>
-          <div className="text-2xl font-bold text-[#0B1C30] mt-2">
+          <div data-testid="payroll-kpi-personal-liquidado" className="text-2xl font-bold text-[#0B1C30] mt-2">
             {totals.count} <span className="text-sm font-normal text-slate-500">de {totals.totalStaff} Legajos</span>
           </div>
         </article>
@@ -593,7 +597,7 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Básico Bruto</span>
             <TrendingUp className="h-4 w-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-bold text-[#0B1C30] font-mono mt-2">{formatCurrency(totals.gross)}</div>
+          <div data-testid="payroll-kpi-total-bruto" className="text-2xl font-bold text-[#0B1C30] font-mono mt-2">{formatCurrency(totals.gross)}</div>
         </article>
 
         <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
@@ -601,7 +605,7 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Anticipos</span>
             <ArrowDownRight className="h-4 w-4 text-red-500" />
           </div>
-          <div className="text-2xl font-bold text-red-600 font-mono mt-2">
+          <div data-testid="payroll-kpi-total-anticipos" className="text-2xl font-bold text-red-600 font-mono mt-2">
             {totals.advances > 0 ? `-${formatCurrency(totals.advances)}` : formatCurrency(0)}
           </div>
         </article>
@@ -611,7 +615,7 @@ export default function PayrollPage() {
             <span className="text-xs font-bold text-[#1E5BB4] uppercase tracking-wider">Total Neto a Liquidar</span>
             <DollarSign className="h-4 w-4 text-[#1E5BB4]" />
           </div>
-          <div className="text-2xl font-bold text-[#1E5BB4] font-mono mt-2">{formatCurrency(totals.net)}</div>
+          <div data-testid="payroll-kpi-total-neto" className="text-2xl font-bold text-[#1E5BB4] font-mono mt-2">{formatCurrency(totals.net)}</div>
         </article>
       </section>
 

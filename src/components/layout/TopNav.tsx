@@ -118,6 +118,7 @@ export function TopNav() {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
+            data-testid="topnav-user-menu-trigger"
             className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-[#EFF4FF] transition-colors cursor-pointer text-left focus:outline-none"
             aria-expanded={dropdownOpen}
           >
@@ -145,6 +146,7 @@ export function TopNav() {
               <div className="py-1">
                 <Link
                   href="/change-password"
+                  data-testid="topnav-link-change-password"
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-[#0B1C30] hover:bg-[#EFF4FF] hover:text-[#1E5BB4] transition-colors font-medium"
                 >
@@ -154,6 +156,7 @@ export function TopNav() {
 
                 <Link
                   href="/settings"
+                  data-testid="topnav-link-settings"
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-[#0B1C30] hover:bg-[#EFF4FF] hover:text-[#1E5BB4] transition-colors font-medium"
                 >
@@ -168,6 +171,7 @@ export function TopNav() {
                     setDropdownOpen(false);
                     handleLogout();
                   }}
+                  data-testid="topnav-btn-logout"
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-red-600 hover:bg-red-50 transition-colors font-medium text-left"
                 >
                   <LogOut className="h-4 w-4" />

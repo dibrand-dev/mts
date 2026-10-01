@@ -252,6 +252,7 @@ export default function LocationsPage() {
           <div className="text-right space-x-1 whitespace-nowrap">
             <button
               onClick={() => handleOpenEdit(row.original)}
+              data-testid="locations-btn-edit"
               className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
               title="Editar Lugar de Trabajo"
             >
@@ -259,6 +260,7 @@ export default function LocationsPage() {
             </button>
             <button
               onClick={() => setDeletingLocation(row.original)}
+              data-testid="locations-btn-delete"
               className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
               title="Eliminar Lugar de Trabajo"
             >
@@ -356,6 +358,7 @@ export default function LocationsPage() {
           <div className="w-full md:w-auto">
             <button
               onClick={handleOpenCreate}
+              data-testid="locations-btn-nuevo-lugar"
               className="w-full md:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap cursor-pointer"
               type="button"
             >
@@ -461,6 +464,7 @@ export default function LocationsPage() {
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                   placeholder="Ej: LDT-001"
                   required
+                  data-testid="locations-input-code"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
@@ -473,6 +477,7 @@ export default function LocationsPage() {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Ej: Muelle Norte 1"
                   required
+                  data-testid="locations-input-name"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
@@ -485,6 +490,7 @@ export default function LocationsPage() {
                   onChange={(e) => setFormData({ ...formData, port_city: e.target.value })}
                   placeholder="Ej: Puerto Buenos Aires"
                   required
+                  data-testid="locations-input-port-city"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 />
               </div>
@@ -496,6 +502,7 @@ export default function LocationsPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, status: e.target.value as 'active' | 'maintenance' | 'inactive' })
                   }
+                  data-testid="locations-select-status"
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
                   <option value="active">Activo</option>
@@ -515,6 +522,7 @@ export default function LocationsPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
+                  data-testid="locations-btn-guardar"
                   className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg shadow-sm transition-colors text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

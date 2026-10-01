@@ -325,6 +325,7 @@ export default function InvoicingPage() {
           return (
             <div className="text-center space-x-1 whitespace-nowrap pr-2">
               <button
+                data-testid="invoicing-btn-view-details"
                 onClick={() => handleOpenDetailsModal(rec)}
                 className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-blue-50 transition-colors inline-block cursor-pointer"
                 title="Ver Desglose de Cálculo"
@@ -334,6 +335,7 @@ export default function InvoicingPage() {
 
               {!rec.invoice && (
                 <button
+                  data-testid="invoicing-btn-facturar"
                   onClick={() => {
                     setSelectedProforma(rec);
                     setIsInvoiceModalOpen(true);
@@ -346,6 +348,7 @@ export default function InvoicingPage() {
               )}
               {rec.status !== 'paid' && (
                 <button
+                  data-testid="invoicing-btn-marcar-cobrada"
                   onClick={() => handleStatusChange(rec, 'paid')}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2 py-1 rounded font-medium transition-colors cursor-pointer"
                   title="Marcar como Cobrada"
@@ -354,6 +357,7 @@ export default function InvoicingPage() {
                 </button>
               )}
               <button
+                data-testid="invoicing-btn-delete-proforma"
                 onClick={() => handleDeleteProforma(rec.id)}
                 className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors inline-block cursor-pointer"
                 title="Eliminar"
@@ -389,6 +393,7 @@ export default function InvoicingPage() {
         </div>
         <button
           onClick={() => setIsSlideoverOpen(true)}
+          data-testid="invoicing-btn-nueva-proforma"
           className="w-full sm:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
           type="button"
         >
@@ -565,6 +570,7 @@ export default function InvoicingPage() {
                 <input
                   type="text"
                   placeholder="Ej: A-0001-00004523"
+                  data-testid="invoicing-input-factura-numero"
                   value={invoiceNumberInput}
                   onChange={(e) => setInvoiceNumberInput(e.target.value)}
                   className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] font-mono"
@@ -582,6 +588,7 @@ export default function InvoicingPage() {
                 </button>
                 <button
                   type="submit"
+                  data-testid="invoicing-btn-confirmar-factura"
                   disabled={isSubmittingInvoice || !invoiceNumberInput.trim()}
                   className="px-4 py-2 text-sm font-bold text-white bg-[#1E5BB4] hover:bg-[#004392] disabled:bg-slate-300 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >

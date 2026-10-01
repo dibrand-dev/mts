@@ -409,6 +409,7 @@ export default function EmployeesPage() {
           return (
             <div className="text-right space-x-1 whitespace-nowrap pr-2">
               <button
+                data-testid="employees-btn-auditar-horas"
                 onClick={() => handleOpenAudit(emp)}
                 className="bg-sky-50 text-[#1E5BB4] hover:bg-[#1E5BB4] hover:text-white p-1.5 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
                 title="Auditar turnos y horas registradas para liquidación quincenal"
@@ -417,6 +418,7 @@ export default function EmployeesPage() {
                 <span>Auditar Horas</span>
               </button>
               <button
+                data-testid="employees-btn-edit"
                 onClick={() => handleOpenEdit(emp)}
                 className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Editar"
@@ -424,6 +426,7 @@ export default function EmployeesPage() {
                 <Edit2 className="h-4 w-4" />
               </button>
               <button
+                data-testid="employees-btn-delete"
                 onClick={() => setDeletingEmployee(emp)}
                 className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
                 title="Eliminar"
@@ -468,6 +471,7 @@ export default function EmployeesPage() {
           </Link>
           <button
             type="button"
+            data-testid="employees-btn-nuevo-empleado"
             onClick={handleOpenCreate}
             className="bg-[#1E5BB4] text-white font-bold text-sm px-5 py-2.5 rounded-lg hover:bg-[#004392] transition-colors flex items-center justify-center gap-2 shadow-xs whitespace-nowrap cursor-pointer"
           >
@@ -981,6 +985,7 @@ export default function EmployeesPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Nombre Completo *</label>
                 <input
                   type="text"
+                  data-testid="employees-input-fullname"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   placeholder="Ej: Carlos Ruiz"
@@ -993,6 +998,7 @@ export default function EmployeesPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">DNI *</label>
                 <input
                   type="text"
+                  data-testid="employees-input-dni"
                   value={formData.national_id}
                   onChange={(e) => setFormData({ ...formData, national_id: e.target.value })}
                   placeholder="Ej: 28456789"
@@ -1006,6 +1012,7 @@ export default function EmployeesPage() {
                   <label className="text-xs font-bold uppercase tracking-wider text-white">Nº Legajo</label>
                   <input
                     type="text"
+                    data-testid="employees-input-file-number"
                     value={formData.file_number}
                     onChange={(e) => setFormData({ ...formData, file_number: e.target.value })}
                     placeholder="Ej: L-042"
@@ -1016,6 +1023,7 @@ export default function EmployeesPage() {
                   <label className="text-xs font-bold uppercase tracking-wider text-white">CUIL</label>
                   <input
                     type="text"
+                    data-testid="employees-input-tax-id"
                     value={formData.tax_id}
                     onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
                     placeholder="Ej: 20-28456789-8"
@@ -1028,6 +1036,7 @@ export default function EmployeesPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Puesto Habitual</label>
                 <select
                   value={formData.default_position_id}
+                  data-testid="employees-select-position"
                   onChange={(e) => setFormData({ ...formData, default_position_id: e.target.value })}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
@@ -1044,6 +1053,7 @@ export default function EmployeesPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Teléfono de Contacto</label>
                 <input
                   type="text"
+                  data-testid="employees-input-phone"
                   value={formData.phone_number}
                   onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                   placeholder="Ej: +54 9 11 4567-8900"
@@ -1055,6 +1065,7 @@ export default function EmployeesPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Estado</label>
                 <select
                   value={formData.status}
+                  data-testid="employees-select-status"
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
@@ -1067,6 +1078,7 @@ export default function EmployeesPage() {
               <div className="pt-4 flex gap-2">
                 <button
                   type="submit"
+                  data-testid="employees-btn-guardar"
                   disabled={isSubmitting}
                   className="w-full bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors cursor-pointer disabled:opacity-50"
                 >

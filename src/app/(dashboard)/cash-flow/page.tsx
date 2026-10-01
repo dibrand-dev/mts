@@ -386,6 +386,7 @@ export default function CashFlowPage() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => handleOpenNew('income')}
+            data-testid="cash-flow-btn-nuevo-ingreso"
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             type="button"
           >
@@ -394,6 +395,7 @@ export default function CashFlowPage() {
           </button>
           <button
             onClick={() => handleOpenNew('expense')}
+            data-testid="cash-flow-btn-nuevo-movimiento"
             className="bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             type="button"
           >
@@ -413,7 +415,7 @@ export default function CashFlowPage() {
               <TrendingUp className="h-4 w-4" />
             </span>
           </div>
-          <p className="text-2xl font-bold font-mono text-emerald-700">{formatCurrency(totalIncome)}</p>
+          <p data-testid="cash-flow-kpi-total-ingresos" className="text-2xl font-bold font-mono text-emerald-700">{formatCurrency(totalIncome)}</p>
         </article>
 
         {/* Total Egresos */}
@@ -424,7 +426,7 @@ export default function CashFlowPage() {
               <TrendingDown className="h-4 w-4" />
             </span>
           </div>
-          <p className="text-2xl font-bold font-mono text-red-600">{formatCurrency(totalExpense)}</p>
+          <p data-testid="cash-flow-kpi-total-egresos" className="text-2xl font-bold font-mono text-red-600">{formatCurrency(totalExpense)}</p>
         </article>
 
         {/* Saldo Neto */}
@@ -436,6 +438,7 @@ export default function CashFlowPage() {
             </span>
           </div>
           <p
+            data-testid="cash-flow-kpi-saldo-operativo"
             className={`text-2xl font-bold font-mono ${
               netBalance >= 0 ? 'text-[#0B1C30]' : 'text-red-600'
             }`}
@@ -658,6 +661,7 @@ export default function CashFlowPage() {
                 <input
                   type="date"
                   required
+                  data-testid="cash-flow-input-date"
                   disabled={isSubmitting}
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
@@ -670,6 +674,7 @@ export default function CashFlowPage() {
                 <label className="text-xs sm:text-sm font-semibold text-white">Tipo de Movimiento</label>
                 <select
                   disabled={isSubmitting}
+                  data-testid="cash-flow-select-type"
                   value={formType}
                   onChange={(e) => {
                     const newType = e.target.value as 'income' | 'expense';
@@ -693,6 +698,7 @@ export default function CashFlowPage() {
                 <select
                   required
                   disabled={isSubmitting}
+                  data-testid="cash-flow-select-area"
                   value={formArea}
                   onChange={(e) => setFormArea(e.target.value)}
                   className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
@@ -713,6 +719,7 @@ export default function CashFlowPage() {
                   type="text"
                   required
                   disabled={isSubmitting}
+                  data-testid="cash-flow-input-detail"
                   placeholder="Ej: Factura #1234, Cobro de servicio, etc."
                   value={formDetail}
                   onChange={(e) => setFormDetail(e.target.value)}
@@ -731,6 +738,7 @@ export default function CashFlowPage() {
                     min="0.01"
                     required
                     disabled={isSubmitting}
+                    data-testid="cash-flow-input-amount"
                     placeholder="0.00"
                     value={formAmount}
                     onChange={(e) => setFormAmount(e.target.value)}
@@ -751,6 +759,7 @@ export default function CashFlowPage() {
                 </button>
                 <button
                   type="submit"
+                  data-testid="cash-flow-btn-guardar"
                   disabled={isSubmitting}
                   className="bg-[#1E5BB4] hover:bg-[#004392] text-white px-6 py-2.5 rounded-lg font-bold text-sm shadow-md hover:opacity-95 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                 >

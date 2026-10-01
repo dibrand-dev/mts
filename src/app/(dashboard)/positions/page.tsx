@@ -455,6 +455,7 @@ export default function PositionsPage() {
 
               <button
                 type="button"
+                data-testid="positions-btn-assign-staff"
                 onClick={() => handleOpenAssignStaff(pos)}
                 className="bg-white hover:bg-slate-50 text-[#1E5BB4] hover:text-[#004392] border border-slate-300 font-semibold text-xs px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
               >
@@ -485,6 +486,7 @@ export default function PositionsPage() {
 
               <button
                 type="button"
+                data-testid="positions-btn-view-rates"
                 onClick={() => handleOpenRatesModal(pos)}
                 className="bg-white hover:bg-slate-50 text-[#1E5BB4] hover:text-[#004392] border border-slate-300 font-semibold text-xs px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
               >
@@ -503,6 +505,7 @@ export default function PositionsPage() {
           return (
             <div className="flex items-center justify-end gap-1.5">
               <button
+                data-testid="positions-btn-edit"
                 onClick={() => handleOpenSlideover(pos)}
                 className="p-1.5 text-slate-500 hover:text-[#1E5BB4] hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
                 title="Editar puesto"
@@ -510,6 +513,7 @@ export default function PositionsPage() {
                 <Edit2 className="h-4 w-4" />
               </button>
               <button
+                data-testid="positions-btn-delete"
                 onClick={() => handleOpenDeleteModal(pos)}
                 className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
                 title="Eliminar puesto"
@@ -594,6 +598,7 @@ export default function PositionsPage() {
           </Link>
           <button
             onClick={() => handleOpenSlideover()}
+            data-testid="positions-btn-nuevo-puesto"
             className="bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
             type="button"
           >
@@ -841,6 +846,7 @@ export default function PositionsPage() {
                       id="pos-name"
                       type="text"
                       required
+                      data-testid="positions-input-name"
                       value={posName}
                       onChange={(e) => setPosName(e.target.value)}
                       placeholder="Ej: Encargado, Apuntador, Chofer, Capataz"
@@ -857,6 +863,7 @@ export default function PositionsPage() {
                       <input
                         id="vehicle-bonus"
                         type="checkbox"
+                        data-testid="positions-checkbox-vehicle-bonus"
                         checked={posRequiresVehicleBonus}
                         onChange={(e) => setPosRequiresVehicleBonus(e.target.checked)}
                         className="h-4 w-4 mt-0.5 text-[#1E5BB4] border-[#0F2547] rounded focus:ring-[#1E5BB4] cursor-pointer"
@@ -896,6 +903,7 @@ export default function PositionsPage() {
                   </button>
                   <button
                     type="submit"
+                    data-testid="positions-btn-guardar"
                     disabled={saving}
                     className="bg-[#1E5BB4] hover:bg-[#004392] disabled:opacity-50 text-white font-bold text-sm px-6 py-2 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >

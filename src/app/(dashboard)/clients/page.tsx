@@ -441,6 +441,7 @@ export default function ClientsPage() {
         cell: ({ row }) => (
           <div className="text-right space-x-1 whitespace-nowrap">
             <button
+              data-testid="clients-btn-edit"
               onClick={() => handleOpenSlideover(row.original)}
               className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
               title="Editar Cliente"
@@ -448,6 +449,7 @@ export default function ClientsPage() {
               <Edit2 className="h-4 w-4" />
             </button>
             <button
+              data-testid="clients-btn-delete"
               onClick={() => handleOpenDeleteModal(row.original)}
               className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
               title="Eliminar Cliente"
@@ -537,6 +539,7 @@ export default function ClientsPage() {
         <div className="w-full lg:w-auto lg:ml-auto">
           <button
             onClick={() => handleOpenSlideover()}
+            data-testid="clients-btn-nuevo-cliente"
             className="w-full lg:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
             type="button"
           >
@@ -636,6 +639,7 @@ export default function ClientsPage() {
                 <input
                   type="text"
                   placeholder="Ej: Logística Sur S.A."
+                  data-testid="clients-input-company-name"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -648,6 +652,7 @@ export default function ClientsPage() {
                 <input
                   type="text"
                   placeholder="Ej: 30-71234567-8"
+                  data-testid="clients-input-tax-id"
                   value={taxId}
                   onChange={(e) => setTaxId(e.target.value)}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -682,6 +687,7 @@ export default function ClientsPage() {
                   ))}
                   <input
                     type="text"
+                    data-testid="clients-input-billing-email"
                     placeholder={billingEmails.length === 0 ? "facturacion@empresa.com" : "Escriba otro email..."}
                     value={emailInput}
                     onChange={(e) => {
@@ -719,6 +725,7 @@ export default function ClientsPage() {
                 <input
                   type="text"
                   placeholder="Ej: +54 11 4321-8765"
+                  data-testid="clients-input-phone"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
@@ -730,6 +737,7 @@ export default function ClientsPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Plazo de Vencimiento de Pago (Días) *</label>
                 <select
                   value={paymentDueDays}
+                  data-testid="clients-select-payment-due-days"
                   onChange={(e) => setPaymentDueDays(Number(e.target.value))}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
@@ -746,6 +754,7 @@ export default function ClientsPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-white">Estado del Cliente *</label>
                 <select
                   value={isActive ? 'active' : 'inactive'}
+                  data-testid="clients-select-status"
                   onChange={(e) => setIsActive(e.target.value === 'active')}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
@@ -764,6 +773,7 @@ export default function ClientsPage() {
                 </button>
                 <button
                   type="submit"
+                  data-testid="clients-btn-guardar"
                   disabled={saving}
                   className="px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg shadow-sm transition-colors text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >

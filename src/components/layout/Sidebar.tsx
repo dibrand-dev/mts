@@ -22,18 +22,18 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 const navItems = [
-  { name: 'Tablero Principal', href: '/', icon: LayoutDashboard },
-  { name: 'Carga Diaria de Horas', href: '/daily-entry', icon: ClipboardEdit },
-  { name: 'Cálculo de Sueldos', href: '/payroll', icon: ClipboardEdit },
-  { name: 'Gestión de Facturación', href: '/invoicing', icon: FileSpreadsheet },
-  { name: 'Tarifario Comercial', href: '/rates', icon: FileSpreadsheet },
-  { name: 'Ingreso de Caja y Flujo de Caja', href: '/cash-flow', icon: Wallet },
-  { name: 'Gestión de Personal', href: '/employees', icon: Users },
-  { name: 'Puestos de Trabajo', href: '/positions', icon: Briefcase },
-  { name: 'Gestión de Lugares de Trabajo', href: '/locations', icon: MapPin },
-  { name: 'Gestión de Clientes', href: '/clients', icon: Building2 },
-  { name: 'Centro de Reportes', href: '/reports', icon: FileSpreadsheet },
-  { name: 'Configuración del Sistema', href: '/settings', icon: Settings },
+  { name: 'Tablero Principal', href: '/', icon: LayoutDashboard, testId: 'dashboard' },
+  { name: 'Carga Diaria de Horas', href: '/daily-entry', icon: ClipboardEdit, testId: 'daily-entry' },
+  { name: 'Cálculo de Sueldos', href: '/payroll', icon: ClipboardEdit, testId: 'payroll' },
+  { name: 'Gestión de Facturación', href: '/invoicing', icon: FileSpreadsheet, testId: 'invoicing' },
+  { name: 'Tarifario Comercial', href: '/rates', icon: FileSpreadsheet, testId: 'rates' },
+  { name: 'Ingreso de Caja y Flujo de Caja', href: '/cash-flow', icon: Wallet, testId: 'cash-flow' },
+  { name: 'Gestión de Personal', href: '/employees', icon: Users, testId: 'employees' },
+  { name: 'Puestos de Trabajo', href: '/positions', icon: Briefcase, testId: 'positions' },
+  { name: 'Gestión de Lugares de Trabajo', href: '/locations', icon: MapPin, testId: 'locations' },
+  { name: 'Gestión de Clientes', href: '/clients', icon: Building2, testId: 'clients' },
+  { name: 'Centro de Reportes', href: '/reports', icon: FileSpreadsheet, testId: 'reports' },
+  { name: 'Configuración del Sistema', href: '/settings', icon: Settings, testId: 'settings' },
 ];
 
 export function Sidebar() {
@@ -86,6 +86,7 @@ export function Sidebar() {
         <div className="px-4 pt-4">
           <Link
             href="/daily-entry"
+            data-testid="sidebar-btn-nuevo-registro"
             onClick={() => setIsOpen(false)}
             className="w-full bg-[#1e5bb4] hover:bg-[#004392] text-white flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-sm transition-colors shadow-xs"
           >
@@ -103,6 +104,7 @@ export function Sidebar() {
               <Link
                 key={item.name}
                 href={item.href}
+                data-testid={`sidebar-link-${item.testId}`}
                 onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-colors ${
                   isActive
@@ -121,6 +123,7 @@ export function Sidebar() {
         <div className="p-4 border-t border-[#c2c6d4]/40">
           <button
             onClick={handleLogout}
+            data-testid="sidebar-btn-logout"
             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-[#4b5e84] hover:bg-red-600/10 hover:text-red-700 transition-colors"
           >
             <LogOut className="h-4 w-4" />
