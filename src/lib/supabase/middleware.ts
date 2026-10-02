@@ -50,10 +50,40 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+  if (user) {
+    // Check user profile for active status and role restriction
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, is_active')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    // 1. Immediate access block if account is inactive
+    if (profile && profile.is_active === false && !isLoginPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('error', 'account_inactive');
+      return NextResponse.redirect(url);
+    }
+
+    // 2. Protect /users route strictly for Owner / Principal Admin
+    if (pathname.startsWith('/users')) {
+      if (profile?.role !== 'admin') {
+        const url = request.nextUrl.clone();
+        url.pathname = '/';
+        return NextResponse.redirect(url);
+      }
+    }
+
+    if (isLoginPage) {
+      if (profile?.is_active === false) {
+        // Allow rendering login with error message
+        return supabaseResponse;
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

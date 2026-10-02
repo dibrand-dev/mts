@@ -13,7 +13,8 @@ import {
   Shield,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
 
 interface MasterVariable {
@@ -57,6 +58,14 @@ const INITIAL_VARIABLES: MasterVariable[] = [
     value: '12.00',
     updatedAt: '15/12/2025',
     status: 'Inactivo',
+  },
+  {
+    id: '5',
+    code: 'OVERDUE_CADENCE_DAYS',
+    name: 'Cadencia de Reclamo Factura Vencida (Días)',
+    value: '3',
+    updatedAt: '02/10/2026',
+    status: 'Activo',
   },
 ];
 
@@ -230,6 +239,34 @@ export default function SystemSettingsPage() {
         >
           <KeyRound className="h-4 w-4 text-[#0EA5E9]" />
           <span>Cambiar Contraseña</span>
+        </Link>
+      </section>
+
+      {/* User Management Banner (Owner Exclusive) */}
+      <section className="bg-white rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/50 to-white p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-[#1E5BB4] p-3 rounded-xl text-white shadow-xs">
+            <UserCheck className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">Gestión de Usuarios y Roles</h2>
+              <span className="bg-[#1E5BB4]/10 text-[#1E5BB4] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                Owner
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Invita personal administrativo y contable, asigna roles y gestiona el bloqueo de cuentas inactivas.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/users"
+          data-testid="settings-link-users"
+          className="w-full sm:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg px-4 py-2.5 text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap shadow-xs"
+        >
+          <UserCheck className="h-4 w-4" />
+          <span>Administrar Usuarios</span>
         </Link>
       </section>
 

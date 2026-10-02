@@ -10,7 +10,8 @@ import {
   ChevronDown, 
   KeyRound, 
   LogOut, 
-  Sliders
+  Sliders,
+  UserCheck
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -35,7 +36,7 @@ export function TopNav() {
 
         const profile = data as { full_name: string; role: string } | null;
         const name = profile?.full_name || user.email?.split('@')[0] || 'Usuario Admin';
-        const role = profile?.role === 'admin' ? 'Admin' : (profile?.role || 'Admin');
+        const role = profile?.role === 'admin' ? 'Admin' : (profile?.role === 'accounting_auditor' ? 'Contable' : (profile?.role || 'Admin'));
         
         setUserName(name);
         setUserRole(role);
@@ -139,11 +140,23 @@ export function TopNav() {
           {dropdownOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden z-50 animate-fadeIn">
               <div className="p-3 border-b border-slate-100 bg-slate-50 sm:hidden">
-                <p className="font-bold text-xs text-[#0B1C30]">Jorge Caetano</p>
-                <p className="text-[10px] text-slate-500">Admin</p>
+                <p className="font-bold text-xs text-[#0B1C30]">{userName}</p>
+                <p className="text-[10px] text-slate-500">{userRole}</p>
               </div>
 
               <div className="py-1">
+                {userRole === 'Admin' && (
+                  <Link
+                    href="/users"
+                    data-testid="topnav-link-users"
+                    onClick={() => setDropdownOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-xs sm:text-sm text-[#0B1C30] hover:bg-[#EFF4FF] hover:text-[#1E5BB4] transition-colors font-medium"
+                  >
+                    <UserCheck className="h-4 w-4 text-[#1E5BB4]" />
+                    <span>Gestión de Usuarios</span>
+                  </Link>
+                )}
+
                 <Link
                   href="/change-password"
                   data-testid="topnav-link-change-password"

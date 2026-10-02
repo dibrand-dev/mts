@@ -328,6 +328,17 @@ export default function DashboardPage() {
                       </tr>
                     </tbody>
                   </table>
+                  <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs text-slate-500">
+                      Recordatorios automáticos Brevo configurados (3 días antes, día 0 y vencidas).
+                    </span>
+                    <Link
+                      href="/invoicing/due-reminders"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1E5BB4] hover:text-[#002d67] transition-colors"
+                    >
+                      Ver Control de Vencimientos <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

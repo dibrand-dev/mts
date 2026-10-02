@@ -5,3 +5,4 @@ export * from './locations';
 export * from './positions';
 export * from './rates';
 export * from './union-scales';
+export * from './users';

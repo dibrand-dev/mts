@@ -156,6 +156,12 @@ BEGIN
         (3000, 99999, 155000.00)
     ) AS v(min_v, max_v, bonus)
     WHERE NOT EXISTS (SELECT 1 FROM public.union_bonus_scales LIMIT 1);
+
+    -- Seed Master Variables
+    INSERT INTO public.master_variables (code, name, numeric_value, is_active)
+    VALUES 
+        ('OVERDUE_CADENCE_DAYS', 'Cadencia de Reclamo Factura Vencida (Días)', 3.0, true)
+    ON CONFLICT (code) DO NOTHING;
 END $$;
 
 

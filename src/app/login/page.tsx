@@ -9,7 +9,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error') === 'account_inactive') {
+        return 'Tu cuenta se encuentra inactiva. Comunícate con el Administrador Principal para habilitar tu acceso.';
+      }
+    }
+    return null;
+  });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +25,7 @@ export default function LoginPage() {
     setErrorMsg(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -27,9 +35,25 @@ export default function LoginPage() {
         ? 'Credenciales inválidas. Verifica tu correo y contraseña.' 
         : error.message);
       setLoading(false);
-    } else {
-      window.location.href = '/';
+      return;
     }
+
+    if (authData.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_active')
+        .eq('id', authData.user.id)
+        .maybeSingle();
+
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        setErrorMsg('Tu cuenta se encuentra inactiva. Comunícate con el Administrador Principal para habilitar tu acceso.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    window.location.href = '/';
   };
 
   return (

@@ -32,7 +32,7 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 ## 🗄️ Esquema de Base de Datos PostgreSQL (100% Inglés)
 
 ### 1. Perfiles y Enums
-- `profiles`: `id`, `full_name`, `role` (`admin` | `accounting_auditor`).
+- `profiles`: `id`, `full_name`, `email`, `role` (`admin` | `accounting_auditor`), `is_active` (`BOOLEAN DEFAULT true`), `created_at`.
 - `app_role`: `'admin'`, `'accounting_auditor'`.
 - `location_status`: `'active'`, `'maintenance'`, `'inactive'`.
 - `employee_status`: `'active'`, `'inactive'`, `'on_leave'`.
@@ -147,6 +147,19 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-10-02:** Implementación del **Control Automático de Vencimientos de Facturas y Cron de Cobranzas (API Brevo)**:
+  1. **Ejecución Diaria Programada (00:00 hs ART):** Configuración de `vercel.json` con cron diario a las 03:00 UTC (00:00 hs Buenos Aires) apuntando a `/api/cron/check-due-invoices` (con alias `/api/cron/invoice-reminders`), y Supabase Edge Function en `supabase/functions/check-due-invoices/index.ts`.
+  2. **Motor de Evaluación de Vencimientos y Cruce Comercial (`src/lib/services/invoice-reminders.ts`):** Lectura transaccional de comprobantes fiscales `tax_invoices` con estado `pending`, cálculo de fecha de vencimiento sumando los `payment_due_days` del cliente correspondiente y evaluación precisa de diferencias de días.
+  3. **Disparador Inteligente de Correos vía Brevo (`src/lib/brevo/`):**
+     - **-3 Días:** Disparo de *"Aviso de Próximo Vencimiento"* (asunto y preheader de recordatorio previo, badge `AVISO DE PAGO PRÓXIMO`).
+     - **Día 0:** Disparo de *"Vencimiento Hoy"* (badge `VENCE HOY`, recordatorio de regularización en el día de la fecha).
+     - **Factura Vencida (+N Días):** Disparo de *"Aviso de Factura Vencida"* (badge `FACTURA VENCIDA (+N DÍAS)`, datos de cuenta bancaria y enlace de consulta) con cadencia de repetición parametrizada (por defecto cada 3 días, configurable por cliente o globalmente).
+  4. **Protección de Idempotencia y Registro de Auditoría:** Migración `20261002020000_invoice_reminders_and_cron.sql` con tabla `invoice_reminder_logs` protegida por clave única diaria `(tax_invoice_id, reminder_type, sent_date)` para garantizar que ningún cliente reciba correos duplicados en el mismo día, y columnas `last_reminder_sent_at`, `last_reminder_type`, `reminders_sent_count` en `tax_invoices`.
+  5. **Panel Interactivo de Control y Herramientas CLI:**
+     - En Gestión de Facturación (`/invoicing`): Botón *"Control de Vencimientos"* con panel modal `InvoiceRemindersModal.tsx` para simular fechas (DRY-RUN), ejecutar controles manuales y visualizar el historial de envíos.
+     - En Configuración del Sistema (`/settings`): Parametrización de la cadencia de reclamo mediante la variable maestra `OVERDUE_CADENCE_DAYS`.
+     - Script CLI independiente: `scripts/check-due-invoices.ts` ejecutable vía `pnpm run cron:invoices` con opciones `--date`, `--cadence`, `--dry-run` y `--mock-db`.
+  6. **Suite de Pruebas Automatizada (DoD):** Creación de `tests/scripts/test-invoice-reminders-cron.ts` verificando los 24 criterios de aceptación (cálculo de vencimiento por cliente, disparador -3 días, Día 0, cadencias de repetición cada 3 y 7 días, idempotencia y mocks Brevo) integrada en `tests/scripts/run-all-tests.ts`.
 - **2026-10-02:** Implementación de **Escalas Dinámicas CCT y Cálculo Invisible de Bonificación Vehicular**:
   1. **Mantenedor de Escala Dinámica en Tarifario Comercial (`/rates`):** Incorporación de la 3ª pestaña *"Escalas CCT (Vehículos)"* en `/rates` (`src/components/rates/UnionBonusScalesTab.tsx`) para la administración completa (CRUD) de rangos de unidades (*Desde / Hasta*) y montos monetarios asociados según CCT. Incluye panel *Slide-over* con diseño de alto contraste B2B (`#0EA5E9`), inputs blancos con borde `#0F2547`, tabla paginada y modal de confirmación para bajas.
   2. **Cálculo Invisible en Carga Operativa (`/daily-entry`):** Campo interactivo `Unidades Operadas` (`total_vehicles_handled`) en la sección de buques del panel lateral de turnos. Al ingresar la cantidad de unidades, el sistema determina automáticamente en tiempo real el nivel salarial correspondiente desde `union_bonus_scales` y lo asigna de forma silenciosa e invisible en la base de datos a `bonus_applied_amount` para puestos con `requires_vehicle_bonus = true` (ej: *Encargado*), dejando en `$ 0` los puestos sin plus vehicular (ej: *Apuntador*).
@@ -176,6 +189,53 @@ supabase/
      - En **Gestión de Personal (`/employees`)**: Botón de acceso a *Puestos de Trabajo* en la cabecera y badges distintivos para el puesto asignado en la grilla de colaboradores.
   4. **Base de Datos y Rendimiento:**
      - Creación de la migración `20260924000000_positions_management.sql` con índices en `positions(name)`, `employees(default_position_id)` y `client_position_rates(position_id)`.
+- **2026-10-02:** Implementación Integral de la Pantalla Interna de Gestión de Usuarios, Invitaciones y Asignación de Roles (Owner/Admin):
+  1. **Restricción de Acceso (DoD 1):**
+     - Pantalla interna accesible de forma exclusiva para usuarios con rol máximo de "Owner/Administrador Principal" (`admin`).
+     - Protección multicapa: Middleware (`src/lib/supabase/middleware.ts`) redirige automáticamente a usuarios no administradores que intenten acceder a `/users` hacia el Tablero Principal (`/`), y a usuarios inactivos hacia `/login?error=account_inactive`.
+     - En `Sidebar.tsx`, `TopNav.tsx` y `settings/page.tsx`, el acceso a la pantalla solo se renderiza si el usuario activo tiene rol `admin`.
+     - Para usuarios con rol Contable (`accounting_auditor`), la barra lateral muestra un distintivo visual permanente: *"Rol Contable • Acceso Solo Lectura"*.
+  2. **Creación de Usuarios e Invitaciones (DoD 2):**
+     - Formulario interactivo en panel lateral *Slide-over* (`#0EA5E9`) con inputs blancos y bordes oscuros según la especificación B2B de `stitch_mts`.
+     - Campos solicitados: `Nombre Completo` (`fullName`), `Correo Electrónico` (`email`) y `Rol Asignado` (`role`: Administrador o Contable).
+     - Validación estricta con esquemas Zod en `src/lib/schemas/users.ts` y normalización automática de emails.
+  3. **Roles y Permisos (DoD 3):**
+     - *Administrador:* Acceso irrestricto a carga diaria de horas, mantenedores/catálogos, emisión de proformas, facturación, sueldos y tesorería/finanzas.
+     - *Contable (`accounting_auditor`):* Acceso acotado de "Solo Lectura", habilitado para auditar reportes, consultar catálogos operativos y exportar la liquidación mensual de haberes en Excel.
+     - Migración SQL `20261002030000_user_management_and_roles.sql` agrega políticas RLS `SELECT` para `accounting_auditor` en tablas de catálogo (`positions`, `hour_types`, `client_position_rates`, `union_bonus_scales`).
+  4. **Integración con Supabase Auth & Brevo (DoD 4):**
+     - Creación programática de la cuenta de usuario en Supabase Auth mediante el cliente administrativo (`src/lib/supabase/admin.ts`) usando `SUPABASE_SERVICE_ROLE_KEY`.
+     - Generación de enlace de invitación seguro (`inviteUserByEmail` / `generateLink`) dirigido a `/change-password` para que el nuevo usuario establezca su contraseña.
+     - Sincronización automática de perfil en `public.profiles` (`id`, `full_name`, `email`, `role`, `is_active`).
+     - Despacho de correo transaccional de bienvenida con `EmailBuilder` de Brevo (`createUserInviteEmail`) con diseño institucional B2B, detalle del rol asignado, resumen de permisos y botón de activación de cuenta con aviso de seguridad de 24 horas.
+  5. **Gestión de Estado y Bloqueo Inmediato (DoD 5):**
+     - Grilla interactiva de usuarios en `/users` con tarjetas KPI (*Total Usuarios*, *Administradores*, *Contables*, *Inactivos*), buscador en tiempo real y filtros rápidos por rol y estado.
+     - Toggle de cambio de estado a "Inactivo" con diálogo modal de confirmación.
+     - **Corte de Acceso Inmediato en 4 Capas:**
+       1. *Base de Datos / RLS:* La función `public.get_user_role(user_id)` verifica `WHERE is_active = true`. Si el usuario pasa a inactivo, la función devuelve `NULL` inmediatamente, revocando el acceso a todas las tablas protegidas por RLS al instante sin esperar expiración de JWT.
+       2. *Supabase Auth Admin API:* Aplica un baneo (`ban_duration: '876000h'`) para invalidar el refresh de sesión en los clientes de Supabase.
+       3. *Middleware:* Intercepta cualquier petición subsiguiente del usuario inactivo y lo expulsa a `/login?error=account_inactive`.
+       4. *Página de Login:* Valida el estado activo post-autenticación y muestra mensaje explicativo si la cuenta fue suspendida.
+     - **Protección de Seguridad:** Bloqueo explícito tanto en frontend como en el backend API (`/api/users/[id]`) que impide que un Administrador Principal inactive o degrade su propia cuenta.
+  6. **Testing Automatizado (DoD):**
+     - Suite completa `tests/scripts/test-user-management-dod.ts` (32 pruebas de criterios de aceptación verificadas, 100% PASS) incorporada al runner general `run-all-tests.ts`.
+- **2026-10-02:** Automatización de Control de Vencimientos y Reclamo de Cobranzas (Cron + API Brevo):
+  1. **Regla de Negocio y Criterios DoD:**
+     - Cron Job diario a medianoche (00:00 hs ART = 03:00 UTC) configurado en `vercel.json` (`/api/cron/check-due-invoices`) y Supabase Edge Function (`supabase/functions/check-due-invoices/index.ts`).
+     - Lectura automática de facturas en estado "Pendiente" (`status = 'pending'`), cruzando su fecha de emisión (`invoice_date`) con el plazo de pago del cliente (`clients.payment_due_days`).
+     - Disparadores Brevo:
+       - **-3 Días:** Aviso de Próximo Vencimiento (`upcoming_3_days`).
+       - **Día 0:** Vencimiento Hoy (`due_today`).
+       - **Vencida (> 0 días):** Aviso de Factura Vencida (`overdue`) con cadencia configurable (`overdue_reminder_cadence_days`, por ej. cada 3 o 7 días).
+     - Protección estricta de idempotencia en `invoice_reminder_logs` con clave única `(tax_invoice_id, reminder_type, sent_date)`.
+  2. **Interfaz de Usuario y Navegación:**
+     - **Acceso en Menú Lateral (`Sidebar.tsx`):** Ítem dedicado **"Control de Vencimientos"** (`/invoicing/due-reminders`) con ícono de reloj (`Clock`) ubicado debajo de *Gestión de Facturación*.
+     - **Pantalla Completa Dedicada (`/invoicing/due-reminders`):** Panel interactivo con KPIs (*Facturas Pendientes*, *Próximas a Vencer*, *Vencen Hoy*, *Vencidas*), filtros rápidos, tabla detallada con fecha de emisión, vencimiento calculado, días de diferencia, estado de recordatorios y botón para disparar auditoría/simulación manual.
+     - **Acceso en Gestión de Facturación (`/invoicing`):** Botón directo en la barra superior de acciones junto a "Nueva Proforma Comercial".
+     - **Acceso en Tablero Principal (`/`):** Acceso directo en el pie del acordeón de *Facturas a Cobrar*.
+  3. **Scripts y Testing Integral:**
+     - CLI `scripts/check-due-invoices.ts` para pruebas manuales y CI/CD con flags `--date`, `--cadence`, `--dry-run` y `--mock-db`.
+     - Suite de pruebas automatizadas `tests/scripts/test-invoice-reminders-cron.ts` (24 casos DoD aprobados, 100% PASS).
 - **2026-09-22:** Implementación de ajustes operativos prioritarios:
   1. **Tablero Principal (`/`):** Incorporación de la columna Fecha en las tablas de los acordeones *Facturas a Enviar* y *Facturas a Cobrar*, manteniendo la estructura estática solicitada.
   2. **Carga Diaria de Horas (`/daily-entry`):** 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Plus,
   Search,
@@ -38,6 +39,7 @@ import {
 import { ProformaDetailModal } from '@/components/invoicing/ProformaDetailModal';
 import { CreateProformaSlideover } from '@/components/invoicing/CreateProformaSlideover';
 import { ProformaActionsDropdown } from '@/components/invoicing/ProformaActionsDropdown';
+import { InvoiceRemindersModal } from '@/components/invoicing/InvoiceRemindersModal';
 
 const PROFORMA_TYPE_BADGES: Record<string, { label: string; color: string }> = {
   vessel: { label: 'Buque Ro-Ro', color: 'bg-sky-50 text-[#1E5BB4] border-sky-200' },
@@ -93,6 +95,7 @@ export default function InvoicingPage() {
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isRemindersModalOpen, setIsRemindersModalOpen] = useState(false);
   const [selectedProforma, setSelectedProforma] = useState<InvoicingRecord | null>(null);
   const [selectedProformaDetails, setSelectedProformaDetails] = useState<InvoicingRecord | null>(null);
   const [invoiceNumberInput, setInvoiceNumberInput] = useState('');
@@ -387,15 +390,25 @@ export default function InvoicingPage() {
             Motor extensible de proformas comerciales por cliente según horas registradas y tarifario comercial.
           </p>
         </div>
-        <button
-          onClick={() => setIsSlideoverOpen(true)}
-          data-testid="invoicing-btn-nueva-proforma"
-          className="w-full sm:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
-          type="button"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Nueva Proforma Comercial</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+          <Link
+            href="/invoicing/due-reminders"
+            data-testid="invoicing-btn-control-vencimientos"
+            className="bg-white hover:bg-slate-50 text-[#0F2547] border border-slate-300 font-bold text-sm px-4 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            <Clock className="h-4 w-4 text-[#0EA5E9]" />
+            <span>Control de Vencimientos</span>
+          </Link>
+          <button
+            onClick={() => setIsSlideoverOpen(true)}
+            data-testid="invoicing-btn-nueva-proforma"
+            className="bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-6 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
+            type="button"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Nueva Proforma Comercial</span>
+          </button>
+        </div>
       </header>
 
       {/* Error notification */}
@@ -595,6 +608,13 @@ export default function InvoicingPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice Due Date Reminders Modal (Cron & Manual Triggers) */}
+      <InvoiceRemindersModal
+        isOpen={isRemindersModalOpen}
+        onClose={() => setIsRemindersModalOpen(false)}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }

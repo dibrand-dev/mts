@@ -14,6 +14,8 @@ const suites = [
   { name: 'Criterios de Aceptación DoD - Carga Diaria', file: 'tests/scripts/test-carga-diaria-dod.ts' },
   { name: 'Seguridad de APIs y Mock de Correos', file: 'tests/scripts/test-api-security.ts' },
   { name: 'Escalas Dinámicas CCT y Cálculo Invisible', file: 'tests/scripts/test-union-scales.ts' },
+  { name: 'Control de Vencimientos y Cron de Cobranzas', file: 'tests/scripts/test-invoice-reminders-cron.ts' },
+  { name: 'Gestión de Usuarios, Invitaciones y Roles (DoD)', file: 'tests/scripts/test-user-management-dod.ts' },
 ];
 
 let allPassed = true;

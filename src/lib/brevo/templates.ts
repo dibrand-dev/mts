@@ -216,3 +216,54 @@ export function createGenericNotificationEmail(options: GenericNotificationOptio
   return builder;
 }
 
+/**
+ * Data payload for user invitation email.
+ */
+export interface UserInviteEmailData {
+  recipientEmail: string;
+  fullName: string;
+  role: 'admin' | 'accounting_auditor';
+  inviteUrl: string;
+}
+
+/**
+ * Creates an EmailBuilder pre-configured for new user invitation.
+ */
+export function createUserInviteEmail(data: UserInviteEmailData): EmailBuilder {
+  const isOwnerAdmin = data.role === 'admin';
+  const roleName = isOwnerAdmin ? 'Administrador' : 'Contable';
+  const roleDescription = isOwnerAdmin
+    ? 'Acceso total a carga de datos, catálogos, facturación y finanzas.'
+    : 'Acceso restringido de Solo Lectura, limitado a visualizar reportes y exportar el Excel de liquidación mensual.';
+
+  const builder = EmailBuilder.create()
+    .to({ email: data.recipientEmail, name: data.fullName })
+    .subject(`Invitación de Acceso a MTS Gestión Logística - Rol ${roleName}`)
+    .preheader(
+      `Hola ${data.fullName}, has sido invitado a la plataforma MTS Gestión Logística con el rol de ${roleName}.`
+    )
+    .badge('INVITACIÓN DE ACCESO', 'info')
+    .title(
+      'Bienvenido a MTS Gestión Logística',
+      `Invitación para ${data.fullName}`
+    )
+    .paragraph(
+      `Has sido invitado a formar parte de la plataforma operativa de MTS Logística Integral S.A. Para comenzar a operar, por favor activa tu cuenta generando tu contraseña segura de acceso.`
+    )
+    .summary([
+      { label: 'Usuario', value: data.fullName },
+      { label: 'Correo Electrónico', value: data.recipientEmail },
+      { label: 'Rol Asignado', value: roleName, highlight: true },
+      { label: 'Alcance de Permisos', value: roleDescription },
+    ])
+    .callout(
+      'Por motivos de seguridad, este enlace es personal y expira automáticamente a las 24 horas. Al hacer clic en el botón inferior serás redirigido al formulario para crear tu contraseña.',
+      'info',
+      'Configuración de Credenciales'
+    )
+    .button('Crear Contraseña y Activar Cuenta', data.inviteUrl, 'primary')
+    .tag('invitacion-usuario');
+
+  return builder;
+}
+

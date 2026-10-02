@@ -13,21 +13,28 @@ export interface Database {
         Row: {
           id: string
           full_name: string
+          email: string | null
           role: 'admin' | 'accounting_auditor'
+          is_active: boolean
           created_at: string
         }
         Insert: {
           id: string
           full_name: string
+          email?: string | null
           role?: 'admin' | 'accounting_auditor'
+          is_active?: boolean
           created_at?: string
         }
         Update: {
           id?: string
           full_name?: string
+          email?: string | null
           role?: 'admin' | 'accounting_auditor'
+          is_active?: boolean
           created_at?: string
         }
+        Relationships: []
       }
       locations: {
         Row: {
@@ -63,6 +70,7 @@ export interface Database {
           billing_email: string
           phone_number: string | null
           payment_due_days: number
+          overdue_reminder_cadence_days: number
           is_active: boolean
           created_at: string
         }
@@ -73,6 +81,7 @@ export interface Database {
           billing_email: string
           phone_number?: string | null
           payment_due_days?: number
+          overdue_reminder_cadence_days?: number
           is_active?: boolean
           created_at?: string
         }
@@ -83,6 +92,7 @@ export interface Database {
           billing_email?: string
           phone_number?: string | null
           payment_due_days?: number
+          overdue_reminder_cadence_days?: number
           is_active?: boolean
           created_at?: string
         }
@@ -435,6 +445,9 @@ export interface Database {
           invoiced_amount: number
           status: 'pending' | 'paid'
           invoice_date: string
+          last_reminder_sent_at: string | null
+          last_reminder_type: string | null
+          reminders_sent_count: number
           created_at: string
         }
         Insert: {
@@ -445,6 +458,9 @@ export interface Database {
           invoiced_amount: number
           status?: 'pending' | 'paid'
           invoice_date?: string
+          last_reminder_sent_at?: string | null
+          last_reminder_type?: string | null
+          reminders_sent_count?: number
           created_at?: string
         }
         Update: {
@@ -455,6 +471,53 @@ export interface Database {
           invoiced_amount?: number
           status?: 'pending' | 'paid'
           invoice_date?: string
+          last_reminder_sent_at?: string | null
+          last_reminder_type?: string | null
+          reminders_sent_count?: number
+          created_at?: string
+        }
+      }
+      invoice_reminder_logs: {
+        Row: {
+          id: string
+          tax_invoice_id: string
+          client_id: string
+          reminder_type: string
+          days_difference: number
+          recipient_email: string
+          sent_date: string
+          sent_at: string
+          brevo_message_id: string | null
+          status: 'sent' | 'mocked' | 'failed'
+          error_message: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tax_invoice_id: string
+          client_id: string
+          reminder_type: string
+          days_difference: number
+          recipient_email: string
+          sent_date?: string
+          sent_at?: string
+          brevo_message_id?: string | null
+          status?: 'sent' | 'mocked' | 'failed'
+          error_message?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tax_invoice_id?: string
+          client_id?: string
+          reminder_type?: string
+          days_difference?: number
+          recipient_email?: string
+          sent_date?: string
+          sent_at?: string
+          brevo_message_id?: string | null
+          status?: 'sent' | 'mocked' | 'failed'
+          error_message?: string | null
           created_at?: string
         }
       }
@@ -591,6 +654,24 @@ export interface Database {
           created_at?: string
         }
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      app_role: 'admin' | 'accounting_auditor'
+      location_status: 'active' | 'maintenance' | 'inactive'
+      employee_status: 'active' | 'inactive' | 'on_leave'
+      proforma_concept_type: 'general_hours' | 'shuttles' | 'export_tallymen'
+      proforma_status: 'draft' | 'sent' | 'approved' | 'invoiced' | 'paid' | 'overdue'
+      invoice_status: 'pending' | 'paid'
+      expense_type: 'fixed' | 'variable'
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }
