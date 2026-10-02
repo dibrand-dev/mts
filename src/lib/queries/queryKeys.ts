@@ -17,10 +17,16 @@ export const queryKeys = {
   cashFlow: {
     all: ['cash-flow'] as const,
   },
+  projections: {
+    all: ['projections'] as const,
+    byDate: (targetDate: string) => ['projections', targetDate] as const,
+    obligations: ['projections', 'obligations'] as const,
+  },
   rates: {
     commercial: ['rates', 'commercial'] as const,
     services: ['rates', 'services'] as const,
     positions: ['rates', 'positions'] as const,
+    unionScales: ['rates', 'union-scales'] as const,
   },
   dailyEntries: {
     workLogs: (date?: string, clientId?: string, locationId?: string) =>
@@ -33,5 +39,8 @@ export const queryKeys = {
   invoicing: {
     records: ['invoicing', 'records'] as const,
     detail: (id: string) => ['invoicing', 'detail', id] as const,
+  },
+  holidays: {
+    byYear: (year: number) => ['holidays', year] as const,
   },
 };

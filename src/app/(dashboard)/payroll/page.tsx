@@ -32,8 +32,11 @@ import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getPayrollData,
   exportPayrollToCSV,
+  exportLiquidationFlatCSV,
   PayrollRecord,
+  LiquidationFlatRecord,
 } from '@/lib/services/payroll';
+
 
 // Helper to format Date to YYYY-MM-DD
 function toISODate(d: Date): string {
@@ -365,6 +368,18 @@ export default function PayrollPage() {
     exportPayrollToCSV(filteredData, startDate, endDate);
   };
 
+  const handleExportLiquidationFlat = () => {
+    if (filteredData.length === 0) return;
+    const flatRecords: LiquidationFlatRecord[] = filteredData.map((r) => ({
+      employeeName: r.fullName,
+      regularHours: r.regularHours,
+      overtime50Hours: r.overtime50Hours,
+      overtime100Hours: r.overtime100Hours,
+      vehicleBonus: r.bonusAmount,
+    }));
+    exportLiquidationFlatCSV(flatRecords, `${startDate}_al_${endDate}`);
+  };
+
   const handleApprovePeriod = () => {
     setApprovalSuccess(true);
     setTimeout(() => {
@@ -381,6 +396,16 @@ export default function PayrollPage() {
           <p className="text-slate-500 text-sm mt-1">Auditoría de turnos, conceptos y liquidación de personal operativo en tiempo real</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            type="button"
+            data-testid="payroll-btn-export-liquidacion"
+            onClick={handleExportLiquidationFlat}
+            disabled={loading || filteredData.length === 0}
+            className="flex-1 sm:flex-none px-4 py-2 border-2 border-[#1E5BB4] text-[#1E5BB4] hover:bg-blue-50 font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="h-4 w-4" />
+            <span>Exportar Liquidación</span>
+          </button>
           <button
             type="button"
             data-testid="payroll-btn-export-csv"
@@ -402,6 +427,7 @@ export default function PayrollPage() {
           </button>
         </div>
       </header>
+
 
       {/* Approval Success Alert */}
       {approvalSuccess && (

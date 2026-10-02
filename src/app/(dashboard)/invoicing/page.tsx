@@ -11,6 +11,9 @@ import {
   Clock,
   AlertCircle,
   Eye,
+  Link2,
+  ExternalLink,
+  Check,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -34,6 +37,7 @@ import {
 } from '@/lib/services/invoicing';
 import { ProformaDetailModal } from '@/components/invoicing/ProformaDetailModal';
 import { CreateProformaSlideover } from '@/components/invoicing/CreateProformaSlideover';
+import { ProformaActionsDropdown } from '@/components/invoicing/ProformaActionsDropdown';
 
 const PROFORMA_TYPE_BADGES: Record<string, { label: string; color: string }> = {
   vessel: { label: 'Buque Ro-Ro', color: 'bg-sky-50 text-[#1E5BB4] border-sky-200' },
@@ -92,6 +96,23 @@ export default function InvoicingPage() {
   const [selectedProforma, setSelectedProforma] = useState<InvoicingRecord | null>(null);
   const [selectedProformaDetails, setSelectedProformaDetails] = useState<InvoicingRecord | null>(null);
   const [invoiceNumberInput, setInvoiceNumberInput] = useState('');
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  const handleCopyPublicLink = async (token: string) => {
+    const url = typeof window !== 'undefined'
+      ? `${window.location.origin}/proforma/${token}`
+      : `/proforma/${token}`;
+    try {
+      if (typeof window !== 'undefined') {
+        await navigator.clipboard.writeText(url);
+      }
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2500);
+    } catch {
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2500);
+    }
+  };
 
   const createInvoiceMutation = useMutation({
     mutationFn: createTaxInvoiceService,
@@ -319,51 +340,26 @@ export default function InvoicingPage() {
       },
       {
         id: 'actions',
-        header: () => <span className="block text-center pr-2">Acciones</span>,
-        cell: ({ row }) => {
+        header: () => <span className="block text-right pr-3">Acciones</span>,
+        cell: ({ row, table }) => {
           const rec = row.original;
+          const totalRows = table.getRowModel().rows.length;
           return (
-            <div className="text-center space-x-1 whitespace-nowrap pr-2">
-              <button
-                data-testid="invoicing-btn-view-details"
-                onClick={() => handleOpenDetailsModal(rec)}
-                className="text-slate-600 hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-blue-50 transition-colors inline-block cursor-pointer"
-                title="Ver Desglose de Cálculo"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
-
-              {!rec.invoice && (
-                <button
-                  data-testid="invoicing-btn-facturar"
-                  onClick={() => {
-                    setSelectedProforma(rec);
-                    setIsInvoiceModalOpen(true);
-                  }}
-                  className="bg-[#1E5BB4] hover:bg-[#004392] text-white text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer"
-                  title="Emitir Factura Fiscal"
-                >
-                  Facturar
-                </button>
-              )}
-              {rec.status !== 'paid' && (
-                <button
-                  data-testid="invoicing-btn-marcar-cobrada"
-                  onClick={() => handleStatusChange(rec, 'paid')}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2 py-1 rounded font-medium transition-colors cursor-pointer"
-                  title="Marcar como Cobrada"
-                >
-                  Cobrada
-                </button>
-              )}
-              <button
-                data-testid="invoicing-btn-delete-proforma"
-                onClick={() => handleDeleteProforma(rec.id)}
-                className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors inline-block cursor-pointer"
-                title="Eliminar"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+            <div className="flex items-center justify-end pr-2">
+              <ProformaActionsDropdown
+                record={rec}
+                rowIndex={row.index}
+                totalRows={totalRows}
+                onOpenDetails={handleOpenDetailsModal}
+                onInvoiceClick={(proforma) => {
+                  setSelectedProforma(proforma);
+                  setIsInvoiceModalOpen(true);
+                }}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDeleteProforma}
+                copiedToken={copiedToken}
+                onCopyPublicLink={handleCopyPublicLink}
+              />
             </div>
           );
         },
@@ -480,7 +476,7 @@ export default function InvoicingPage() {
         ) : filteredRecords.length === 0 ? (
           <div className="p-12 text-center text-slate-500 font-medium">No se encontraron proformas ni facturas.</div>
         ) : (
-          <div className="overflow-x-auto w-full">
+          <div className="overflow-x-auto w-full min-h-[350px]">
             <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 {table.getHeaderGroups().map((headerGroup) => (

@@ -14,6 +14,7 @@ import { getStrategy } from './registry';
 export * from './types';
 export * from './registry';
 export * from './helpers';
+export * from './csv-export';
 
 export async function calculateProforma(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
   const strategyType = context.proformaType || 'vessel';
@@ -59,7 +60,7 @@ export async function getInvoicingRecords(): Promise<InvoicingRecord[]> {
     .from('proformas')
     .select(`
       *,
-      clients(company_name),
+      clients(company_name, tax_id, billing_email, phone_number),
       tax_invoices(*),
       proforma_details(*)
     `)
@@ -76,11 +77,15 @@ export async function getInvoicingRecords(): Promise<InvoicingRecord[]> {
     proforma_type: row.proforma_type || 'vessel',
     client_id: row.client_id,
     client_name: row.clients?.company_name || 'Sin Cliente',
+    client_tax_id: row.clients?.tax_id || null,
+    client_billing_email: row.clients?.billing_email || null,
+    client_phone_number: row.clients?.phone_number || null,
     fortnight_period: row.fortnight_period,
     concept_type: row.concept_type,
     status: row.status,
     subtotal: Number(row.subtotal || 0),
     total: Number(row.total || 0),
+    public_token: row.public_token || row.id,
     issue_date: row.issue_date,
     due_date: row.due_date,
     vessel_name: row.vessel_name || null,
@@ -144,11 +149,107 @@ export async function getProformaWithDetails(proformaId: string): Promise<Invoic
     proforma_type: data.proforma_type || 'vessel',
     client_id: data.client_id,
     client_name: data.clients?.company_name || 'Sin Cliente',
+    client_tax_id: data.clients?.tax_id || null,
+    client_billing_email: data.clients?.billing_email || null,
+    client_phone_number: data.clients?.phone_number || null,
     fortnight_period: data.fortnight_period,
     concept_type: data.concept_type,
     status: data.status,
     subtotal: Number(data.subtotal || 0),
     total: Number(data.total || 0),
+    public_token: data.public_token || data.id,
+    issue_date: data.issue_date,
+    due_date: data.due_date,
+    vessel_name: data.vessel_name || null,
+    operation_dates: data.operation_dates || null,
+    discount_percentage: Number(data.discount_percentage || 0),
+    discount_amount: Number(data.discount_amount || 0),
+    subtotal_operativa: Number(data.subtotal_operativa || 0),
+    subtotal_encargado: Number(data.subtotal_encargado || 0),
+    subtotal_compensacion: Number(data.subtotal_compensacion || 0),
+    total_neto: Number(data.total_neto || 0),
+    tax_amount: Number(data.tax_amount || 0),
+    calculation_payload: data.calculation_payload || null,
+    notes: data.notes || [],
+    details: (data.proforma_details || []).map((d: any) => ({
+      id: d.id,
+      proforma_id: d.proforma_id,
+      description: d.description,
+      quantity: Number(d.quantity || 0),
+      unit_price: Number(d.unit_price || 0),
+      subtotal: Number(d.subtotal || 0),
+      created_at: d.created_at,
+    })),
+    invoice: data.tax_invoices?.[0]
+      ? {
+          id: data.tax_invoices[0].id,
+          invoice_number: data.tax_invoices[0].invoice_number,
+          pdf_storage_path: data.tax_invoices[0].pdf_storage_path || '',
+          invoiced_amount: Number(data.tax_invoices[0].invoiced_amount || 0),
+          status: data.tax_invoices[0].status,
+          invoice_date: data.tax_invoices[0].invoice_date,
+        }
+      : null,
+  };
+}
+
+export async function getProformaByToken(token: string): Promise<InvoicingRecord | null> {
+  const supabase = createClient() as any;
+
+  // 1. Try finding by public_token
+  const { data: tokenData, error } = await supabase
+    .from('proformas')
+    .select(`
+      *,
+      clients(company_name, tax_id, billing_email, phone_number),
+      tax_invoices(*),
+      proforma_details(*)
+    `)
+    .eq('public_token', token)
+    .maybeSingle();
+
+  let data = tokenData;
+
+  // 2. If not found and token looks like a UUID, fallback to id
+  if (!data && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+    const fallback = await supabase
+      .from('proformas')
+      .select(`
+        *,
+        clients(company_name, tax_id, billing_email, phone_number),
+        tax_invoices(*),
+        proforma_details(*)
+      `)
+      .eq('id', token)
+      .maybeSingle();
+
+    if (fallback.data) {
+      data = fallback.data;
+    }
+  }
+
+  if (error && !data) {
+    console.error('Error fetching proforma by public token:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    proforma_number: data.proforma_number,
+    proforma_type: data.proforma_type || 'vessel',
+    client_id: data.client_id,
+    client_name: data.clients?.company_name || 'Sin Cliente',
+    client_tax_id: data.clients?.tax_id || null,
+    client_billing_email: data.clients?.billing_email || null,
+    client_phone_number: data.clients?.phone_number || null,
+    fortnight_period: data.fortnight_period,
+    concept_type: data.concept_type,
+    status: data.status,
+    subtotal: Number(data.subtotal || 0),
+    total: Number(data.total || 0),
+    public_token: data.public_token || data.id,
     issue_date: data.issue_date,
     due_date: data.due_date,
     vessel_name: data.vessel_name || null,

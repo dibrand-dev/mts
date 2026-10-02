@@ -139,6 +139,7 @@ export async function getEmployeeAuditShifts(
       overtime_50_hours,
       overtime_100_hours,
       plus_delta_amount,
+      bonus_applied_amount,
       position:positions(id, name),
       work_log:daily_work_logs(
         id,
@@ -173,7 +174,7 @@ export async function getEmployeeAuditShifts(
     const reg = Number(row.regular_hours || 0);
     const ot50 = Number(row.overtime_50_hours || 0);
     const ot100 = Number(row.overtime_100_hours || 0);
-    const plus = Number(row.plus_delta_amount || 0);
+    const plus = Number(row.plus_delta_amount || 0) + Number(row.bonus_applied_amount || 0);
 
     regular_hours += reg;
     overtime_50_hours += ot50;
@@ -211,10 +212,19 @@ export async function getEmployeeAuditShifts(
   };
 }
 
+export interface EmployeePeriodHoursSummary {
+  total_hours: number;
+  regular_hours: number;
+  ot50_hours: number;
+  ot100_hours: number;
+  plus_amount: number;
+  shifts_count: number;
+}
+
 export async function getAllEmployeesHoursSummary(
   fromDate?: string,
   toDate?: string
-): Promise<Record<string, { total_hours: number; regular_hours: number; ot50_hours: number; ot100_hours: number; shifts_count: number }>> {
+): Promise<Record<string, EmployeePeriodHoursSummary>> {
   const supabase = createClient() as any;
 
   const { data, error } = await supabase
@@ -224,6 +234,8 @@ export async function getAllEmployeesHoursSummary(
       regular_hours,
       overtime_50_hours,
       overtime_100_hours,
+      plus_delta_amount,
+      bonus_applied_amount,
       work_log:daily_work_logs(work_date)
     `);
 
@@ -232,7 +244,7 @@ export async function getAllEmployeesHoursSummary(
     return {};
   }
 
-  const map: Record<string, { total_hours: number; regular_hours: number; ot50_hours: number; ot100_hours: number; shifts_count: number }> = {};
+  const map: Record<string, EmployeePeriodHoursSummary> = {};
 
   for (const row of data || []) {
     const workDate = row.work_log?.work_date;
@@ -242,19 +254,38 @@ export async function getAllEmployeesHoursSummary(
 
     const empId = row.employee_id;
     if (!map[empId]) {
-      map[empId] = { total_hours: 0, regular_hours: 0, ot50_hours: 0, ot100_hours: 0, shifts_count: 0 };
+      map[empId] = {
+        total_hours: 0,
+        regular_hours: 0,
+        ot50_hours: 0,
+        ot100_hours: 0,
+        plus_amount: 0,
+        shifts_count: 0,
+      };
     }
 
     const reg = Number(row.regular_hours || 0);
     const ot50 = Number(row.overtime_50_hours || 0);
     const ot100 = Number(row.overtime_100_hours || 0);
+    const plus = Number(row.plus_delta_amount || 0) + Number(row.bonus_applied_amount || 0);
 
     map[empId].regular_hours += reg;
     map[empId].ot50_hours += ot50;
     map[empId].ot100_hours += ot100;
+    map[empId].plus_amount += plus;
     map[empId].total_hours += (reg + ot50 + ot100);
     map[empId].shifts_count += 1;
   }
 
+  // Round decimals to 2 places
+  for (const empId of Object.keys(map)) {
+    map[empId].regular_hours = Math.round(map[empId].regular_hours * 100) / 100;
+    map[empId].ot50_hours = Math.round(map[empId].ot50_hours * 100) / 100;
+    map[empId].ot100_hours = Math.round(map[empId].ot100_hours * 100) / 100;
+    map[empId].plus_amount = Math.round(map[empId].plus_amount * 100) / 100;
+    map[empId].total_hours = Math.round(map[empId].total_hours * 100) / 100;
+  }
+
   return map;
 }
+

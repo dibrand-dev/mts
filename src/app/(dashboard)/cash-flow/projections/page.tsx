@@ -1,19 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
+  ArrowLeft,
+  Calendar,
+  CalendarClock,
   Plus,
   Edit2,
   Trash2,
-  X,
-  CheckCircle2,
-  AlertCircle,
   TrendingUp,
   TrendingDown,
   Wallet,
+  X,
+  CheckCircle2,
+  AlertCircle,
   Loader2,
-  CalendarClock,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,76 +29,100 @@ import {
 import { queryKeys } from '@/lib/queries/queryKeys';
 import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
-  getCashMovements,
+  getFinancialProjections,
   createCashMovement,
   updateCashMovement,
   deleteCashMovement,
+  ProjectedMovement,
   CashMovementRow,
-} from '@/lib/services/cash-flow';
+} from '@/lib/services/projections';
 
-type CashMovementWithBalance = CashMovementRow & { balanceAfter: number };
+function getEndOfCurrentMonth(): string {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return lastDay.toISOString().split('T')[0];
+}
 
-export default function CashFlowPage() {
+function getEndOfNextMonth(): string {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  return lastDay.toISOString().split('T')[0];
+}
+
+function getNextFortnight(): string {
+  const now = new Date();
+  const day = now.getDate();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  if (day < 15) {
+    return new Date(year, month, 15).toISOString().split('T')[0];
+  } else {
+    return new Date(year, month + 1, 0).toISOString().split('T')[0];
+  }
+}
+
+function getPlusDays(days: number): string {
+  const now = new Date();
+  now.setDate(now.getDate() + days);
+  return now.toISOString().split('T')[0];
+}
+
+export default function ProjectionsPage() {
   const queryClient = useQueryClient();
 
-  const {
-    data: movements = [],
-    isLoading,
-  } = useQuery({
-    queryKey: queryKeys.cashFlow.all,
-    queryFn: getCashMovements,
-  });
-
-  // Notifications
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  // Filters
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [selectedArea, setSelectedArea] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense'>('all');
+  // Target projection date filter ("Saldo para fecha X"), default is end of current month
+  const [targetDate, setTargetDate] = useState<string>(getEndOfCurrentMonth());
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Pagination state
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
-    pageSize: 10,
+    pageSize: 15,
   });
 
-  useEffect(() => {
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, [fromDate, toDate, selectedArea, selectedType]);
-
-  // Slideover & Form state
-  const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
-  const [editingMovement, setEditingMovement] = useState<CashMovementRow | null>(null);
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formType, setFormType] = useState<'income' | 'expense'>('income');
-  const [formArea, setFormArea] = useState('Cobros');
-  const [formDetail, setFormDetail] = useState('');
-  const [formAmount, setFormAmount] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-
-  // Delete Modal state
-  const [movementToDelete, setMovementToDelete] = useState<CashMovementRow | null>(null);
-
-  // Base balance for ledger calculation
-  const initialBaseBalance = 0;
+  // Notifications
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
 
+  // Slideover & Form state for movements
+  const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
+  const [editingMovement, setEditingMovement] = useState<{ id: string; row?: CashMovementRow } | null>(null);
+  const [formDate, setFormDate] = useState<string>(getEndOfCurrentMonth());
+  const [formType, setFormType] = useState<'income' | 'expense'>('expense');
+  const [formArea, setFormArea] = useState<string>('ARCA');
+  const [formDetail, setFormDetail] = useState<string>('');
+  const [formAmount, setFormAmount] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Delete modal state
+  const [movementToDelete, setMovementToDelete] = useState<ProjectedMovement | null>(null);
+
+  // Main projections query
+  const {
+    data: projectionData,
+    isLoading,
+    isRefetching,
+  } = useQuery({
+    queryKey: queryKeys.projections.byDate(targetDate),
+    queryFn: () => getFinancialProjections(targetDate),
+  });
+
+  // Mutations (Unified with cash_movements)
   const createMutation = useMutation({
     mutationFn: createCashMovement,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projections.all });
       showNotification('success', `Nuevo ${formType === 'income' ? 'ingreso' : 'egreso'} registrado exitosamente.`);
       setIsSlideoverOpen(false);
     },
     onError: (err: unknown) => {
       console.error('Error creating movement:', err);
-      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
+      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento.';
       setFormError(msg);
     },
   });
@@ -106,12 +132,13 @@ export default function CashFlowPage() {
       updateCashMovement(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
-      showNotification('success', 'Movimiento de caja actualizado correctamente.');
+      queryClient.invalidateQueries({ queryKey: queryKeys.projections.all });
+      showNotification('success', 'Movimiento actualizado correctamente.');
       setIsSlideoverOpen(false);
     },
     onError: (err: unknown) => {
       console.error('Error updating movement:', err);
-      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento en la base de datos.';
+      const msg = err instanceof Error ? err.message : 'Error al guardar el movimiento.';
       setFormError(msg);
     },
   });
@@ -120,6 +147,7 @@ export default function CashFlowPage() {
     mutationFn: deleteCashMovement,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cashFlow.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projections.all });
       showNotification('success', 'Movimiento eliminado correctamente.');
       setMovementToDelete(null);
     },
@@ -133,84 +161,47 @@ export default function CashFlowPage() {
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
   const isDeleting = deleteMutation.isPending;
 
-  // KPIs Totals
-  const { totalIncome, totalExpense, netBalance } = useMemo(() => {
-    let inc = 0;
-    let exp = 0;
-    for (const m of movements) {
-      const amt = Number(m.amount) || 0;
-      if (m.type === 'income') inc += amt;
-      else exp += amt;
-    }
-    return {
-      totalIncome: inc,
-      totalExpense: exp,
-      netBalance: inc - exp,
-    };
-  }, [movements]);
-
-  // Filtered movements
+  // Filtered movements based on category dropdown
   const filteredMovements = useMemo(() => {
-    return movements.filter((m) => {
-      // If only fromDate is set, filter STRICTLY for that specific date (no subsequent dates)
-      if (fromDate && !toDate && m.movement_date !== fromDate) return false;
-      // If only toDate is set, show up to toDate
-      if (!fromDate && toDate && m.movement_date > toDate) return false;
-      // If both fromDate and toDate are set, show the inclusive range
-      if (fromDate && toDate && (m.movement_date < fromDate || m.movement_date > toDate)) return false;
+    if (!projectionData) return [];
+    if (selectedCategory === 'all') return projectionData.movements;
+    return projectionData.movements.filter(
+      (m) => m.category.toLowerCase() === selectedCategory.toLowerCase()
+    );
+  }, [projectionData, selectedCategory]);
 
-      if (selectedArea && selectedArea !== 'Todas' && m.area.toLowerCase() !== selectedArea.toLowerCase()) {
-        return false;
-      }
-      if (selectedType !== 'all' && m.type !== selectedType) {
-        return false;
-      }
-      return true;
-    });
-  }, [movements, fromDate, toDate, selectedArea, selectedType]);
+  const formatCurrency = (val: number) => {
+    return `$ ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
 
-  // Running balance calculation
-  // Order chronologically (ASC) to assign running balance, then reverse to display newest first
-  const movementsWithBalance = useMemo(() => {
-    const chronological = [...filteredMovements].sort((a, b) => {
-      if (a.movement_date !== b.movement_date) {
-        return a.movement_date.localeCompare(b.movement_date);
-      }
-      return (a.created_at || '').localeCompare(b.created_at || '');
-    });
-
-    let runningBal = initialBaseBalance;
-    const withBal = [];
-    for (const m of chronological) {
-      const effect = m.type === 'income' ? Number(m.amount) : -Number(m.amount);
-      runningBal += effect;
-      withBal.push({
-        ...m,
-        balanceAfter: runningBal,
-      });
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
+    return dateStr;
+  };
 
-    return withBal.reverse();
-  }, [filteredMovements, initialBaseBalance]);
-
-  const handleOpenNew = (defaultType: 'income' | 'expense' = 'income') => {
+  const handleOpenNew = (type: 'income' | 'expense' = 'expense', defaultArea: string = 'ARCA') => {
     setEditingMovement(null);
-    setFormDate(new Date().toISOString().split('T')[0]);
-    setFormType(defaultType);
-    setFormArea(defaultType === 'income' ? 'Cobros' : 'Proveedores');
+    setFormDate(targetDate || getEndOfCurrentMonth());
+    setFormType(type);
+    setFormArea(type === 'income' ? 'Cobros' : defaultArea);
     setFormDetail('');
     setFormAmount('');
     setFormError(null);
     setIsSlideoverOpen(true);
   };
 
-  const handleOpenEdit = (m: CashMovementRow) => {
-    setEditingMovement(m);
-    setFormDate(m.movement_date);
-    setFormType(m.type);
-    setFormArea(m.area);
-    setFormDetail(m.detail);
-    setFormAmount(String(m.amount));
+  const handleOpenEdit = (mov: ProjectedMovement) => {
+    if (!mov.movementId) return;
+    setEditingMovement({ id: mov.movementId });
+    setFormDate(mov.date);
+    setFormType(mov.type);
+    setFormArea(mov.category);
+    setFormDetail(mov.concept);
+    setFormAmount(String(mov.amount));
     setFormError(null);
     setIsSlideoverOpen(true);
   };
@@ -218,11 +209,7 @@ export default function CashFlowPage() {
   const handleSaveMovement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formDate) {
-      setFormError('Por favor ingresa la fecha del movimiento.');
-      return;
-    }
-    if (!formArea) {
-      setFormError('Por favor selecciona un área.');
+      setFormError('Por favor selecciona la fecha del movimiento.');
       return;
     }
     if (!formDetail.trim()) {
@@ -260,22 +247,19 @@ export default function CashFlowPage() {
   };
 
   const handleDeleteConfirm = () => {
-    if (!movementToDelete) return;
-    deleteMutation.mutate(movementToDelete.id);
+    if (!movementToDelete || !movementToDelete.movementId) return;
+    deleteMutation.mutate(movementToDelete.movementId);
   };
 
-  const formatCurrency = (val: number) => {
-    return `$ ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const columns = useMemo<ColumnDef<CashMovementWithBalance>[]>(
+  // Columns definition (Ascending order)
+  const columns = useMemo<ColumnDef<ProjectedMovement>[]>(
     () => [
       {
-        accessorKey: 'movement_date',
+        accessorKey: 'date',
         header: 'Fecha',
         cell: ({ getValue }) => (
-          <span className="font-mono text-xs text-slate-600">
-            {String(getValue()).split('-').reverse().join('/')}
+          <span className="font-mono text-xs font-semibold text-slate-700">
+            {formatDateDisplay(String(getValue()))}
           </span>
         ),
       },
@@ -292,24 +276,47 @@ export default function CashFlowPage() {
                   : 'bg-red-100 text-red-800'
               }`}
             >
-              {isIngreso ? 'Ingreso' : 'Egreso'}
+              {isIngreso ? 'Ingreso (+)' : 'Egreso (-)'}
             </span>
           );
         },
       },
       {
-        accessorKey: 'area',
-        header: 'Área',
-        cell: ({ getValue }) => (
-          <span className="font-medium text-slate-700">{String(getValue())}</span>
-        ),
+        accessorKey: 'category',
+        header: 'Área / Concepto',
+        cell: ({ getValue }) => {
+          const cat = String(getValue());
+          let colorStyle = 'bg-slate-100 text-slate-800';
+          if (cat === 'Facturación' || cat === 'Cobros') colorStyle = 'bg-blue-100 text-blue-800';
+          else if (cat === 'Sueldos') colorStyle = 'bg-amber-100 text-amber-800';
+          else if (cat === 'ARCA' || cat === 'ARBA' || cat === 'IVA' || cat === 'Impuestos') colorStyle = 'bg-purple-100 text-purple-800';
+          else if (cat === 'Comisiones') colorStyle = 'bg-teal-100 text-teal-800';
+
+          return (
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold ${colorStyle}`}>
+              {cat}
+            </span>
+          );
+        },
       },
       {
-        accessorKey: 'detail',
+        accessorKey: 'concept',
         header: 'Detalle',
-        cell: ({ getValue }) => (
-          <span className="font-medium text-[#0B1C30]">{String(getValue())}</span>
-        ),
+        cell: ({ row }) => {
+          const m = row.original;
+          return (
+            <div>
+              <span className="font-medium text-[#0B1C30] block">{m.concept}</span>
+              <span className="text-[11px] text-slate-500">
+                {m.source === 'invoice'
+                  ? 'Factura emitida pendiente de cobro'
+                  : m.source === 'proforma'
+                  ? 'Proforma aprobada en facturación'
+                  : 'Movimiento de caja'}
+              </span>
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'amount',
@@ -330,31 +337,45 @@ export default function CashFlowPage() {
       },
       {
         accessorKey: 'balanceAfter',
-        header: () => <span className="block text-right">Saldo</span>,
-        cell: ({ getValue }) => (
-          <span className="block text-right font-mono font-bold text-[#0B1C30] whitespace-nowrap">
-            {formatCurrency(Number(getValue()))}
-          </span>
-        ),
+        header: () => <span className="block text-right">SALDO</span>,
+        cell: ({ getValue }) => {
+          const bal = Number(getValue() || 0);
+          return (
+            <span
+              className={`block text-right font-mono font-bold whitespace-nowrap ${
+                bal >= 0 ? 'text-[#0B1C30]' : 'text-red-600'
+              }`}
+            >
+              {formatCurrency(bal)}
+            </span>
+          );
+        },
       },
       {
         id: 'actions',
         header: () => <span className="block text-center pr-2">Acciones</span>,
         cell: ({ row }) => {
           const m = row.original;
+          if (!m.isManualMovement) {
+            return (
+              <span className="block text-center text-[11px] text-slate-400 italic">
+                Automático
+              </span>
+            );
+          }
           return (
             <div className="text-center whitespace-nowrap space-x-1 pr-2">
               <button
                 onClick={() => handleOpenEdit(m)}
                 className="text-[#0F2547] hover:text-[#1E5BB4] p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Editar"
+                title="Editar Movimiento"
               >
                 <Edit2 className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setMovementToDelete(m)}
                 className="text-red-600 hover:text-red-800 p-1.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer"
-                title="Eliminar"
+                title="Eliminar Movimiento"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -367,7 +388,7 @@ export default function CashFlowPage() {
   );
 
   const table = useReactTable({
-    data: movementsWithBalance,
+    data: filteredMovements,
     columns,
     state: { pagination },
     onPaginationChange: setPagination,
@@ -376,27 +397,38 @@ export default function CashFlowPage() {
   });
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-6 pb-10">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 pb-12">
+      {/* Return to Cash Flow Link & Breadcrumb */}
+      <div>
+        <Link
+          href="/cash-flow"
+          data-testid="projections-btn-volver"
+          className="inline-flex items-center gap-2 text-sm font-bold text-[#1E5BB4] hover:text-[#004392] transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Volver a Flujo de Caja</span>
+        </Link>
+      </div>
+
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Flujo de Caja</h1>
-          <p className="text-slate-500 text-sm mt-1">Control de ingresos, egresos y saldo operativo en tiempo real</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#1E293B]">Proyecciones de Flujo de Caja</h1>
+            <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 bg-blue-100 text-[#004392] rounded-full">
+              Estimación a Fecha de Corte
+            </span>
+          </div>
+          <p className="text-slate-500 text-sm mt-1">
+            Visualización proyectada de ingresos (Facturación) y egresos (Sueldos, ARCA, ARBA, IVA, Comisiones)
+          </p>
         </div>
 
-        {/* Quick action buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Link
-            href="/cash-flow/projections"
-            data-testid="cash-flow-btn-ver-proyecciones"
-            className="bg-white hover:bg-slate-50 text-[#0F2547] border-2 border-[#0F2547] font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-          >
-            <CalendarClock className="h-4 w-4 text-[#1E5BB4]" />
-            <span>Ver Proyecciones</span>
-          </Link>
+        {/* Quick action buttons matching /cash-flow standard */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => handleOpenNew('income')}
-            data-testid="cash-flow-btn-nuevo-ingreso"
+            data-testid="projections-btn-nuevo-ingreso"
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             type="button"
           >
@@ -405,58 +437,15 @@ export default function CashFlowPage() {
           </button>
           <button
             onClick={() => handleOpenNew('expense')}
-            data-testid="cash-flow-btn-nuevo-movimiento"
+            data-testid="projections-btn-nuevo-movimiento"
             className="bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold rounded-lg px-4 py-2 text-sm shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             type="button"
           >
             <Plus className="h-4 w-4" />
-            <span>Nuevo Movimiento</span>
+            <span>Nuevo Egreso</span>
           </button>
         </div>
       </header>
-
-      {/* KPI Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Total Ingresos */}
-        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Ingresos</span>
-            <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
-              <TrendingUp className="h-4 w-4" />
-            </span>
-          </div>
-          <p data-testid="cash-flow-kpi-total-ingresos" className="text-2xl font-bold font-mono text-emerald-700">{formatCurrency(totalIncome)}</p>
-        </article>
-
-        {/* Total Egresos */}
-        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Egresos</span>
-            <span className="p-1.5 bg-red-50 text-red-600 rounded-lg">
-              <TrendingDown className="h-4 w-4" />
-            </span>
-          </div>
-          <p data-testid="cash-flow-kpi-total-egresos" className="text-2xl font-bold font-mono text-red-600">{formatCurrency(totalExpense)}</p>
-        </article>
-
-        {/* Saldo Neto */}
-        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Saldo Operativo</span>
-            <span className="p-1.5 bg-blue-50 text-[#1E5BB4] rounded-lg">
-              <Wallet className="h-4 w-4" />
-            </span>
-          </div>
-          <p
-            data-testid="cash-flow-kpi-saldo-operativo"
-            className={`text-2xl font-bold font-mono ${
-              netBalance >= 0 ? 'text-[#0B1C30]' : 'text-red-600'
-            }`}
-          >
-            {formatCurrency(netBalance)}
-          </p>
-        </article>
-      </section>
 
       {/* Notifications Alert */}
       {notification && (
@@ -484,110 +473,198 @@ export default function CashFlowPage() {
         </div>
       )}
 
-      {/* Filters Section (Sky Blue B2B Card) */}
+      {/* KPI Cards Grid */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Card 1: Ingresos Proyectados */}
+        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Ingresos Proyectados</span>
+            <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+          </div>
+          <div>
+            <p
+              data-testid="projections-kpi-ingresos"
+              className="text-2xl font-bold font-mono text-emerald-700"
+            >
+              {formatCurrency(projectionData?.projectedIncome || 0)}
+            </p>
+            <span className="text-[11px] text-slate-400">Facturación y cobros hasta la fecha</span>
+          </div>
+        </article>
+
+        {/* Card 2: Egresos Proyectados */}
+        <article className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between h-28">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Egresos Proyectados</span>
+            <span className="p-1.5 bg-red-50 text-red-600 rounded-lg">
+              <TrendingDown className="h-4 w-4" />
+            </span>
+          </div>
+          <div>
+            <p
+              data-testid="projections-kpi-egresos"
+              className="text-2xl font-bold font-mono text-red-600"
+            >
+              {formatCurrency(projectionData?.projectedExpense || 0)}
+            </p>
+            <span className="text-[11px] text-slate-400">Sueldos, ARCA, ARBA, IVA, comisiones</span>
+          </div>
+        </article>
+
+        {/* Card 3: Saldo Proyectado Final a Fecha X */}
+        <article className="bg-[#004392] text-white rounded-xl p-4 shadow-md flex flex-col justify-between h-28 border border-[#002d67]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-200">
+              Saldo Proyectado al {formatDateDisplay(targetDate)}
+            </span>
+            <span className="p-1.5 bg-white/10 text-white rounded-lg">
+              <Wallet className="h-4 w-4" />
+            </span>
+          </div>
+          <div>
+            <p
+              data-testid="projections-kpi-saldo-proyectado"
+              className={`text-2xl font-bold font-mono ${
+                (projectionData?.projectedBalance || 0) >= 0 ? 'text-white' : 'text-red-300'
+              }`}
+            >
+              {formatCurrency(projectionData?.projectedBalance || 0)}
+            </p>
+            <span className="text-[11px] text-blue-200">Saldo estimado de caja resultante</span>
+          </div>
+        </article>
+      </section>
+
+      {/* Filters Section (Sky Blue B2B Card per Stitch standard) */}
       <section className="bg-[#0EA5E9] text-white rounded-xl p-4 sm:p-6 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
-          {/* Fecha Desde */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs sm:text-sm font-semibold text-white">
-                {toDate ? 'Fecha Desde' : 'Fecha (Día Exacto)'}
-              </label>
-              {fromDate && !toDate && (
-                <span className="text-[10px] bg-sky-900/60 text-white px-1.5 py-0.5 rounded font-bold">
-                  Solo este día
-                </span>
-              )}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+          {/* Selector de Fechas (Criterio DoD: "Saldo para fecha X") */}
+          <div className="lg:col-span-4 flex flex-col gap-1">
+            <label className="text-xs sm:text-sm font-semibold text-white flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" />
+              <span>Saldo para fecha X (Fecha de Corte)</span>
+            </label>
+            <input
+              type="date"
+              required
+              data-testid="projections-input-target-date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2 text-sm text-[#0B1C30] font-semibold focus:outline-none focus:border-[#1E5BB4]"
+            />
+          </div>
+
+          {/* Quick Date Presets */}
+          <div className="lg:col-span-5 flex flex-col gap-1">
+            <label className="text-xs sm:text-sm font-semibold text-white">Atajos Rápidos de Fecha</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="projections-preset-fin-mes"
+                onClick={() => setTargetDate(getEndOfCurrentMonth())}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  targetDate === getEndOfCurrentMonth()
+                    ? 'bg-[#0F2547] text-white shadow-xs'
+                    : 'bg-white text-[#0F2547] hover:bg-sky-50'
+                }`}
+              >
+                Fin de Mes
+              </button>
+              <button
+                type="button"
+                data-testid="projections-preset-quincena"
+                onClick={() => setTargetDate(getNextFortnight())}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  targetDate === getNextFortnight()
+                    ? 'bg-[#0F2547] text-white shadow-xs'
+                    : 'bg-white text-[#0F2547] hover:bg-sky-50'
+                }`}
+              >
+                Próxima Quincena
+              </button>
+              <button
+                type="button"
+                data-testid="projections-preset-fin-prox-mes"
+                onClick={() => setTargetDate(getEndOfNextMonth())}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  targetDate === getEndOfNextMonth()
+                    ? 'bg-[#0F2547] text-white shadow-xs'
+                    : 'bg-white text-[#0F2547] hover:bg-sky-50'
+                }`}
+              >
+                Fin Próximo Mes
+              </button>
+              <button
+                type="button"
+                data-testid="projections-preset-plus-30"
+                onClick={() => setTargetDate(getPlusDays(30))}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-[#0F2547] hover:bg-sky-50 transition-all cursor-pointer"
+              >
+                +30 Días
+              </button>
             </div>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-            />
           </div>
 
-          {/* Fecha Hasta */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-semibold text-white">Fecha Hasta (Opcional p/ Rango)</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-            />
-          </div>
-
-          {/* Tipo de Movimiento */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-semibold text-white">Tipo</label>
+          {/* Categoría Filter */}
+          <div className="lg:col-span-3 flex flex-col gap-1">
+            <label className="text-xs sm:text-sm font-semibold text-white">Filtrar Concepto</label>
             <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value as 'all' | 'income' | 'expense')}
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
             >
-              <option value="all">Todos los tipos</option>
-              <option value="income">Solo Ingresos (+)</option>
-              <option value="expense">Solo Egresos (-)</option>
-            </select>
-          </div>
-
-          {/* Área Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-semibold text-white">Área</label>
-            <select
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-              className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3 py-2 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-            >
-              <option value="">Todas las áreas</option>
-              <option value="Cobros">Cobros</option>
+              <option value="all">Todos los conceptos</option>
+              <option value="Facturación">Facturación (Cobros)</option>
               <option value="Sueldos">Sueldos</option>
+              <option value="ARCA">ARCA</option>
+              <option value="ARBA">ARBA</option>
+              <option value="IVA">IVA</option>
+              <option value="Comisiones">Comisiones</option>
               <option value="Proveedores">Proveedores</option>
-              <option value="Impuestos">Impuestos</option>
               <option value="Otros">Otros</option>
             </select>
           </div>
         </div>
 
-        {(fromDate || toDate || selectedArea || selectedType !== 'all') && (
-          <div className="flex items-center justify-between pt-2 border-t border-white/20 text-xs">
-            <span className="text-sky-100">
-              {fromDate && !toDate && `Mostrando exclusivamente los movimientos del día ${fromDate}`}
-              {fromDate && toDate && `Mostrando rango del ${fromDate} al ${toDate}`}
-              {!fromDate && toDate && `Mostrando movimientos hasta el día ${toDate}`}
+        {/* Footer info in filter card */}
+        <div className="flex items-center justify-between pt-2 border-t border-white/20 text-xs">
+          <span className="text-sky-100 flex items-center gap-1.5">
+            <CalendarClock className="h-3.5 w-3.5" />
+            <span>
+              Mostrando la proyección acumulada en orden cronológico hasta el día{' '}
+              <strong className="text-white font-mono">{formatDateDisplay(targetDate)}</strong>
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                setFromDate('');
-                setToDate('');
-                setSelectedArea('');
-                setSelectedType('all');
-              }}
-              className="text-white hover:underline font-bold cursor-pointer"
-            >
-              Restablecer Filtros
-            </button>
-          </div>
-        )}
+          </span>
+          {isRefetching && (
+            <span className="text-white flex items-center gap-1 text-[11px]">
+              <Loader2 className="h-3 w-3 animate-spin" /> Actualizando proyección...
+            </span>
+          )}
+        </div>
       </section>
 
-      {/* Data Table Section */}
+      {/* Main Projections Table Section (Ordered Ascending) */}
       <section className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-[#1E5BB4]" />
-            <span>Cargando movimientos de flujo de caja...</span>
+            <span>Calculando proyección de ingresos y egresos...</span>
           </div>
-        ) : movementsWithBalance.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            No se encontraron movimientos registrados con los filtros seleccionados.
+        ) : filteredMovements.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 space-y-3">
+            <p className="font-semibold text-slate-700">
+              No se encontraron movimientos registrados o previstos comprendidos hasta el {formatDateDisplay(targetDate)}.
+            </p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Puedes cargar nuevos ingresos o egresos (Sueldos, ARCA, ARBA, IVA, Comisiones) con los botones superiores.
+            </p>
           </div>
         ) : (
           <>
             <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse min-w-[750px]">
+              <table className="w-full text-left border-collapse min-w-[850px]">
                 <thead className="bg-slate-50 border-b-2 border-[#0F2547]">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id}>
@@ -615,7 +692,7 @@ export default function CashFlowPage() {
                       {row.getVisibleCells().map((cell) => (
                         <td
                           key={cell.id}
-                          className="px-4 py-3 first:pl-6 last:pr-6 whitespace-nowrap"
+                          className="px-4 py-3.5 first:pl-6 last:pr-6 whitespace-nowrap"
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
@@ -630,7 +707,7 @@ export default function CashFlowPage() {
         )}
       </section>
 
-      {/* Slideover (Overlay + Panel) */}
+      {/* Slideover for New / Edit Movement */}
       {isSlideoverOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
           {/* Backdrop */}
@@ -644,7 +721,11 @@ export default function CashFlowPage() {
             {/* Header */}
             <div className="p-5 sm:p-6 border-b border-[#0F2547]/20 flex items-center justify-between">
               <h2 className="font-bold text-lg sm:text-xl text-white">
-                {editingMovement ? 'Editar Movimiento' : formType === 'income' ? 'Ingreso de Flujo de Caja' : 'Ingresar Nuevo Egreso'}
+                {editingMovement
+                  ? 'Editar Movimiento'
+                  : formType === 'income'
+                  ? 'Nuevo Ingreso Proyectado'
+                  : 'Nuevo Egreso Proyectado'}
               </h2>
               <button
                 type="button"
@@ -671,7 +752,7 @@ export default function CashFlowPage() {
                 <input
                   type="date"
                   required
-                  data-testid="cash-flow-input-date"
+                  data-testid="projections-form-input-date"
                   disabled={isSubmitting}
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
@@ -684,41 +765,50 @@ export default function CashFlowPage() {
                 <label className="text-xs sm:text-sm font-semibold text-white">Tipo de Movimiento</label>
                 <select
                   disabled={isSubmitting}
-                  data-testid="cash-flow-select-type"
                   value={formType}
                   onChange={(e) => {
                     const newType = e.target.value as 'income' | 'expense';
                     setFormType(newType);
-                    if (newType === 'income' && formArea === 'Proveedores') {
+                    if (newType === 'income') {
                       setFormArea('Cobros');
                     } else if (newType === 'expense' && formArea === 'Cobros') {
-                      setFormArea('Proveedores');
+                      setFormArea('ARCA');
                     }
                   }}
                   className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 >
-                  <option value="income">Ingreso (+)</option>
                   <option value="expense">Egreso (-)</option>
+                  <option value="income">Ingreso (+)</option>
                 </select>
               </div>
 
-              {/* Área */}
+              {/* Área / Categoría */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs sm:text-sm font-semibold text-white">Área / Categoría</label>
                 <select
                   required
                   disabled={isSubmitting}
-                  data-testid="cash-flow-select-area"
+                  data-testid="projections-form-select-category"
                   value={formArea}
                   onChange={(e) => setFormArea(e.target.value)}
                   className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
                 >
-                  <option value="">Seleccionar área...</option>
-                  <option value="Cobros">Cobros (Facturación)</option>
-                  <option value="Sueldos">Sueldos (Nómina)</option>
-                  <option value="Proveedores">Proveedores (Gastos operativos)</option>
-                  <option value="Impuestos">Impuestos (ARCA / ARBA)</option>
-                  <option value="Otros">Otros</option>
+                  {formType === 'income' ? (
+                    <>
+                      <option value="Cobros">Cobros / Facturación</option>
+                      <option value="Otros">Otros Ingresos</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="ARCA">ARCA (Impuestos Nacionales)</option>
+                      <option value="ARBA">ARBA (Ingresos Brutos Prov. Bs As)</option>
+                      <option value="IVA">IVA (Saldo Declaración Jurada)</option>
+                      <option value="Sueldos">Sueldos (Nómina y Cargas Sociales)</option>
+                      <option value="Comisiones">Comisiones (Logística / Agentes)</option>
+                      <option value="Proveedores">Proveedores y Gastos Operativos</option>
+                      <option value="Otros">Otros Egresos</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -729,8 +819,8 @@ export default function CashFlowPage() {
                   type="text"
                   required
                   disabled={isSubmitting}
-                  data-testid="cash-flow-input-detail"
-                  placeholder="Ej: Factura #1234, Cobro de servicio, etc."
+                  data-testid="projections-form-input-title"
+                  placeholder="Ej: Anticipo Ganancias ARCA, Sueldos quincena, Factura #1234"
                   value={formDetail}
                   onChange={(e) => setFormDetail(e.target.value)}
                   className="w-full bg-white border-2 border-[#0F2547] rounded-lg px-3.5 py-2.5 text-sm text-[#0B1C30] placeholder-slate-400 focus:outline-none focus:border-[#1E5BB4] disabled:bg-slate-100"
@@ -748,7 +838,7 @@ export default function CashFlowPage() {
                     min="0.01"
                     required
                     disabled={isSubmitting}
-                    data-testid="cash-flow-input-amount"
+                    data-testid="projections-form-input-amount"
                     placeholder="0.00"
                     value={formAmount}
                     onChange={(e) => setFormAmount(e.target.value)}
@@ -769,7 +859,7 @@ export default function CashFlowPage() {
                 </button>
                 <button
                   type="submit"
-                  data-testid="cash-flow-btn-guardar"
+                  data-testid="projections-btn-guardar-movimiento"
                   disabled={isSubmitting}
                   className="bg-[#1E5BB4] hover:bg-[#004392] text-white px-6 py-2.5 rounded-lg font-bold text-sm shadow-md hover:opacity-95 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                 >
@@ -798,7 +888,7 @@ export default function CashFlowPage() {
             </div>
             <p className="text-sm text-slate-600">
               ¿Estás seguro de que deseas eliminar el movimiento{' '}
-              <strong className="text-slate-900">&quot;{movementToDelete.detail}&quot;</strong> por un importe de{' '}
+              <strong className="text-slate-900">&quot;{movementToDelete.concept}&quot;</strong> por un importe de{' '}
               <strong className="text-slate-900 font-mono">{formatCurrency(Number(movementToDelete.amount))}</strong>?
               Esta acción no se puede deshacer.
             </p>
@@ -813,6 +903,7 @@ export default function CashFlowPage() {
               </button>
               <button
                 type="button"
+                data-testid="projections-btn-confirm-delete"
                 disabled={isDeleting}
                 onClick={handleDeleteConfirm}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm rounded-lg transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"

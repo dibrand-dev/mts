@@ -40,3 +40,44 @@
   outline: 2px solid #1E5BB4;
   outline-offset: 1px;
 }
+
+/* Print Optimization for Proformas and Invoices */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Page break rules for printed documents */
+  .print-break-inside-avoid,
+  table,
+  tr,
+  .rounded-2xl,
+  .rounded-xl {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  header,
+  footer,
+  aside,
+  button,
+  nav {
+    display: none !important;
+  }
+
+  /* Re-enable document-specific header if inside print */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+}
+

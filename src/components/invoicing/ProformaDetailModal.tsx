@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
 import {
   X,
   Check,
@@ -9,8 +11,11 @@ import {
   Clock,
   CheckCircle2,
   Ship,
+  Link2,
+  ExternalLink,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { InvoicingRecord } from '@/lib/services/invoicing';
+import { InvoicingRecord, downloadProformaCSV } from '@/lib/services/invoicing';
 import { VesselViewer } from './viewers/VesselViewer';
 import { FiscalYardViewer } from './viewers/FiscalYardViewer';
 import { FixedDepositViewer } from './viewers/FixedDepositViewer';
@@ -32,7 +37,30 @@ export function ProformaDetailModal({
   onStatusChange,
   onInvoiceClick,
 }: Props) {
+  const [copiedLink, setCopiedLink] = useState(false);
+
   if (!isOpen || !proforma) return null;
+
+  const publicUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/proforma/${proforma.public_token}`
+    : `/proforma/${proforma.public_token}`;
+
+  const handleCopyLink = async () => {
+    try {
+      if (typeof window !== 'undefined') {
+        await navigator.clipboard.writeText(publicUrl);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+      }
+    } catch {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
+
+  const handleDownloadCSV = () => {
+    downloadProformaCSV(proforma);
+  };
 
   const proformaType = proforma.proforma_type || 'vessel';
   const invoiceNumberDisplay = proforma.invoice?.invoice_number || 'A DEFINIR';
@@ -84,7 +112,7 @@ export function ProformaDetailModal({
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {proforma.status !== 'approved' && proforma.status !== 'invoiced' && proforma.status !== 'paid' && (
               <button
                 type="button"
@@ -107,6 +135,45 @@ export function ProformaDetailModal({
               </button>
             )}
             <button
+              type="button"
+              onClick={handleCopyLink}
+              data-testid="modal-btn-copy-public-link"
+              className="text-slate-700 hover:text-[#1E5BB4] px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200 flex items-center gap-1 text-xs font-semibold"
+              title="Copiar enlace público de la proforma"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-emerald-600 font-bold">¡Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Link2 className="h-3.5 w-3.5" />
+                  <span>Copiar Enlace</span>
+                </>
+              )}
+            </button>
+            <Link
+              href={`/proforma/${proforma.public_token}`}
+              target="_blank"
+              data-testid="modal-btn-open-public-view"
+              className="text-slate-700 hover:text-[#1E5BB4] px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200 flex items-center gap-1 text-xs font-semibold"
+              title="Ver en portal público para cliente"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span>Vista Pública</span>
+            </Link>
+            <button
+              type="button"
+              onClick={handleDownloadCSV}
+              data-testid="modal-btn-download-csv"
+              className="text-slate-700 hover:text-emerald-700 px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200 flex items-center gap-1 text-xs font-semibold"
+              title="Descargar detalle en archivo CSV (Excel)"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+              <span>CSV</span>
+            </button>
+            <button
               onClick={() => window.print()}
               className="text-slate-600 hover:text-slate-800 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200"
               title="Imprimir Proforma"
@@ -119,6 +186,35 @@ export function ProformaDetailModal({
             >
               <X className="h-5 w-5" />
             </button>
+          </div>
+        </div>
+
+        {/* Public Link Share Bar */}
+        <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 overflow-hidden text-slate-700">
+            <span className="font-bold text-[#004392] flex items-center gap-1 shrink-0">
+              <Link2 className="h-3.5 w-3.5" /> Enlace Público:
+            </span>
+            <span className="font-mono text-[11px] text-slate-600 truncate max-w-md bg-white px-2 py-0.5 rounded border border-sky-100">
+              {publicUrl}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="text-[#1E5BB4] hover:text-[#004392] font-bold text-xs flex items-center gap-1 cursor-pointer hover:underline"
+            >
+              {copiedLink ? '¡Enlace copiado!' : 'Copiar URL pública'}
+            </button>
+            <span>•</span>
+            <Link
+              href={`/proforma/${proforma.public_token}`}
+              target="_blank"
+              className="text-[#1E5BB4] hover:text-[#004392] font-bold text-xs flex items-center gap-1 hover:underline"
+            >
+              Abrir <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
         </div>
 

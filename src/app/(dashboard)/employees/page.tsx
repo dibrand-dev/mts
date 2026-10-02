@@ -17,6 +17,8 @@ import {
   Layers,
   Briefcase,
   Filter,
+  Eye,
+  Download,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,6 +42,11 @@ import {
   EmployeeRow,
   EmployeeHoursSummary,
 } from '@/lib/services/employees';
+import {
+  exportLiquidationFlatCSV,
+  LiquidationFlatRecord,
+} from '@/lib/services/payroll';
+
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
@@ -176,11 +183,42 @@ export default function EmployeesPage() {
 
   const handleOpenAudit = async (emp: EmployeeRow) => {
     setAuditEmployee(emp);
-    const initialFrom = fromDate || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-    const initialTo = toDate || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-15`;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+
+    const initialFrom = fromDate || `${year}-${month}-01`;
+    const initialTo = toDate || `${year}-${month}-${lastDay}`;
     setAuditFromDate(initialFrom);
     setAuditToDate(initialTo);
     await loadAuditDetails(emp.id, initialFrom, initialTo);
+  };
+
+  const handleAuditPreset = (preset: 'q1' | 'q2' | 'month') => {
+    if (!auditEmployee) return;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    let newFrom = '';
+    let newTo = '';
+
+    if (preset === 'q1') {
+      newFrom = `${year}-${month}-01`;
+      newTo = `${year}-${month}-15`;
+    } else if (preset === 'q2') {
+      const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+      newFrom = `${year}-${month}-16`;
+      newTo = `${year}-${month}-${lastDay}`;
+    } else if (preset === 'month') {
+      const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+      newFrom = `${year}-${month}-01`;
+      newTo = `${year}-${month}-${lastDay}`;
+    }
+
+    setAuditFromDate(newFrom);
+    setAuditToDate(newTo);
+    loadAuditDetails(auditEmployee.id, newFrom, newTo);
   };
 
   const loadAuditDetails = async (empId: string, from: string, to: string) => {
@@ -204,6 +242,49 @@ export default function EmployeesPage() {
     if (type === 'to') setAuditToDate(val);
     loadAuditDetails(auditEmployee.id, newFrom, newTo);
   };
+
+  const handleExportLiquidation = async () => {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+
+      const activeFrom = fromDate || `${year}-${month}-01`;
+      const activeTo = toDate || `${year}-${month}-${lastDay}`;
+
+      // Ensure hours summary is available
+      let summary = hoursSummaryMap;
+      if (!isDateRangeActive || Object.keys(summary).length === 0) {
+        summary = await getAllEmployeesHoursSummary(activeFrom, activeTo);
+      }
+
+      const flatRecords: LiquidationFlatRecord[] = filteredEmployees.map((emp) => {
+        const empSummary = summary[emp.id] || {
+          regular_hours: 0,
+          ot50_hours: 0,
+          ot100_hours: 0,
+          plus_amount: 0,
+          total_hours: 0,
+          shifts_count: 0,
+        };
+
+        return {
+          employeeName: emp.full_name,
+          regularHours: empSummary.regular_hours,
+          overtime50Hours: empSummary.ot50_hours,
+          overtime100Hours: empSummary.ot100_hours,
+          vehicleBonus: empSummary.plus_amount,
+        };
+      });
+
+      exportLiquidationFlatCSV(flatRecords, `${activeFrom}_al_${activeTo}`);
+    } catch (err: any) {
+      console.error('Error al exportar liquidación:', err);
+      alert(`Error al exportar liquidación: ${err.message}`);
+    }
+  };
+
 
   const handleOpenCreate = () => {
     setEditingEmployee(null);
@@ -411,11 +492,11 @@ export default function EmployeesPage() {
               <button
                 data-testid="employees-btn-auditar-horas"
                 onClick={() => handleOpenAudit(emp)}
-                className="bg-sky-50 text-[#1E5BB4] hover:bg-[#1E5BB4] hover:text-white p-1.5 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
-                title="Auditar turnos y horas registradas para liquidación quincenal"
+                className="text-[#1E5BB4] hover:text-[#004392] p-1.5 rounded-full hover:bg-blue-50 transition-colors cursor-pointer inline-flex items-center"
+                title="Auditar Horas (Vista Rápida)"
+                aria-label="Auditar Horas"
               >
-                <Clock className="h-3.5 w-3.5" />
-                <span>Auditar Horas</span>
+                <Eye className="h-4 w-4" />
               </button>
               <button
                 data-testid="employees-btn-edit"
@@ -462,6 +543,16 @@ export default function EmployeesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="employees-btn-export-payroll"
+            onClick={handleExportLiquidation}
+            disabled={filteredEmployees.length === 0}
+            className="bg-white hover:bg-slate-50 text-[#0F2547] border border-slate-300 font-medium text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="h-4 w-4 text-[#1E5BB4]" />
+            <span>Exportar Liquidación</span>
+          </button>
           <Link
             href="/positions"
             className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
@@ -480,6 +571,7 @@ export default function EmployeesPage() {
           </button>
         </div>
       </header>
+
 
       {/* Error alert */}
       {queryError && (
@@ -712,240 +804,256 @@ export default function EmployeesPage() {
         )}
       </section>
 
-      {/* Modal / Slide-over: Auditoría de Horas y Turnos por Operario */}
+      {/* Slide-over: Vista de Auditoría Rápida de Horas y Turnos por Operario */}
       {auditEmployee && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setAuditEmployee(null)}
+          />
+          <div
+            data-testid="employees-slideover-audit"
+            className="relative w-screen max-w-2xl bg-white text-[#0B1C30] shadow-2xl z-50 flex flex-col h-full overflow-y-auto animate-in slide-in-from-right duration-200"
+          >
             {/* Header */}
-            <div className="flex justify-between items-start border-b border-slate-200 pb-4">
+            <div className="p-6 bg-[#0F2547] text-white flex items-center justify-between shrink-0">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs uppercase font-bold tracking-widest text-[#1E5BB4] bg-blue-50 px-2.5 py-1 rounded-md">
-                    Auditoría de Horas Operativas
-                  </span>
-                  <h3 className="text-xl font-bold text-[#0B1C30]">{auditEmployee.full_name}</h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  DNI: <strong className="text-slate-700 font-mono">{auditEmployee.national_id}</strong>
-                  {auditEmployee.file_number ? ` | Legajo: ${auditEmployee.file_number}` : ''} | Puesto Habitual:{' '}
-                  <span className="font-semibold text-slate-700">
-                    {auditEmployee.default_position?.name || 'General'}
-                  </span>
+                <span className="text-xs uppercase font-bold tracking-widest text-sky-300">
+                  Vista de Auditoría Rápida (Slideover)
+                </span>
+                <h3 className="text-xl font-bold text-white mt-0.5">{auditEmployee.full_name}</h3>
+                <p className="text-xs text-slate-300 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>DNI: <strong className="text-white font-mono">{auditEmployee.national_id}</strong></span>
+                  {auditEmployee.file_number && (
+                    <span>| Legajo: <strong className="text-white font-mono">{auditEmployee.file_number}</strong></span>
+                  )}
+                  {auditEmployee.default_position?.name && (
+                    <span>| Puesto: <span className="text-sky-200 font-semibold">{auditEmployee.default_position.name}</span></span>
+                  )}
                 </p>
               </div>
-
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => window.print()}
-                  className="text-slate-500 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Imprimir Planilla de Auditoría"
+                  className="text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Imprimir Planilla"
                 >
                   <Printer className="h-5 w-5" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setAuditEmployee(null)}
-                  className="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Cerrar panel"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-6 w-6" />
                 </button>
               </div>
             </div>
 
-            {/* Sub-header: Date range selectors inside audit view */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar className="h-4 w-4 text-[#1E5BB4]" />
-                  Período Quincenal:
-                </span>
+            {/* Content Container */}
+            <div className="p-6 flex-1 space-y-6">
+              {/* Date Filter Bar */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    <Calendar className="h-4 w-4 text-[#1E5BB4]" />
+                    <span>Período Auditado:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleAuditPreset('q1')}
+                      className="text-xs px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-md text-slate-700 font-semibold transition-colors cursor-pointer"
+                    >
+                      1ª Quincena
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAuditPreset('q2')}
+                      className="text-xs px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-md text-slate-700 font-semibold transition-colors cursor-pointer"
+                    >
+                      2ª Quincena
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAuditPreset('month')}
+                      className="text-xs px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-md text-slate-700 font-semibold transition-colors cursor-pointer"
+                    >
+                      Mes Completo
+                    </button>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2 text-xs">
                   <input
                     type="date"
                     value={auditFromDate}
                     onChange={(e) => handleAuditDateChange('from', e.target.value)}
-                    className="p-1.5 bg-white border border-slate-300 rounded-md font-mono text-slate-700 focus:outline-none focus:border-[#1E5BB4]"
+                    className="flex-1 p-2 bg-white border border-slate-300 rounded-md font-mono text-slate-700 focus:outline-none focus:border-[#1E5BB4]"
                   />
-                  <span className="text-slate-400">al</span>
+                  <span className="text-slate-400 font-medium">al</span>
                   <input
                     type="date"
                     value={auditToDate}
                     onChange={(e) => handleAuditDateChange('to', e.target.value)}
-                    className="p-1.5 bg-white border border-slate-300 rounded-md font-mono text-slate-700 focus:outline-none focus:border-[#1E5BB4]"
+                    className="flex-1 p-2 bg-white border border-slate-300 rounded-md font-mono text-slate-700 focus:outline-none focus:border-[#1E5BB4]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    setAuditFromDate(`${year}-${month}-01`);
-                    setAuditToDate(`${year}-${month}-15`);
-                    loadAuditDetails(auditEmployee.id, `${year}-${month}-01`, `${year}-${month}-15`);
-                  }}
-                  className="text-xs px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-md text-slate-700 font-semibold transition-colors cursor-pointer"
-                >
-                  1ª Quincena
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-                    setAuditFromDate(`${year}-${month}-16`);
-                    setAuditToDate(`${year}-${month}-${lastDay}`);
-                    loadAuditDetails(auditEmployee.id, `${year}-${month}-16`, `${year}-${month}-${lastDay}`);
-                  }}
-                  className="text-xs px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-md text-slate-700 font-semibold transition-colors cursor-pointer"
-                >
-                  2ª Quincena
-                </button>
-              </div>
+              {loadingAudit ? (
+                <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#1E5BB4]" />
+                  <p className="text-sm font-medium">Cargando turnos e historial del operario...</p>
+                </div>
+              ) : !auditSummary || auditSummary.shifts.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                  <Clock className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                  <p className="font-semibold text-slate-700">
+                    No se registran turnos trabajados en este período.
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Verifica que las novedades de este operario hayan sido imputadas en Carga Diaria.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Acumulados (DoD: Horas Normales, 50%, 100% y Plus) */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-[#1E5BB4]" />
+                      Acumulado de Horas y Plus
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
+                        <div className="text-emerald-700 text-xs font-bold uppercase">Hs. Normales</div>
+                        <div className="text-xl font-bold font-mono text-emerald-900 mt-1">
+                          {auditSummary.regular_hours} hs
+                        </div>
+                      </div>
+                      <div className="bg-sky-50 border border-sky-200 p-3 rounded-xl text-center">
+                        <div className="text-sky-700 text-xs font-bold uppercase">Hs. Extras 50%</div>
+                        <div className="text-xl font-bold font-mono text-sky-900 mt-1">
+                          {auditSummary.overtime_50_hours} hs
+                        </div>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-center">
+                        <div className="text-amber-700 text-xs font-bold uppercase">Hs. Extras 100%</div>
+                        <div className="text-xl font-bold font-mono text-amber-900 mt-1">
+                          {auditSummary.overtime_100_hours} hs
+                        </div>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl text-center">
+                        <div className="text-purple-700 text-xs font-bold uppercase">Plus</div>
+                        <div className="text-xl font-bold font-mono text-purple-900 mt-1">
+                          {auditSummary.plus_amount > 0
+                            ? `$ ${auditSummary.plus_amount.toLocaleString('es-AR')}`
+                            : '$ 0'}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Summary row for total hours and shifts count */}
+                    <div className="bg-slate-100 border border-slate-200 rounded-lg p-2.5 flex justify-between items-center text-xs">
+                      <span className="text-slate-600 font-medium">
+                        Total Turnos: <strong className="text-[#0B1C30]">{auditSummary.shifts_count}</strong>
+                      </span>
+                      <span className="text-slate-600 font-medium">
+                        Total Horas: <strong className="text-[#1E5BB4] font-mono text-sm">{auditSummary.total_hours} hs</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Historial de Turnos */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Briefcase className="h-4 w-4 text-[#1E5BB4]" />
+                      Historial de Turnos ({auditSummary.shifts.length})
+                    </h4>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-600">
+                            <tr>
+                              <th className="py-2.5 px-3 pl-3">Fecha</th>
+                              <th className="py-2.5 px-3">Cliente / Muelle</th>
+                              <th className="py-2.5 px-2 text-center font-mono">Horario</th>
+                              <th className="py-2.5 px-2 text-center font-mono text-emerald-700">Norm</th>
+                              <th className="py-2.5 px-2 text-center font-mono text-sky-700">50%</th>
+                              <th className="py-2.5 px-2 text-center font-mono text-amber-700">100%</th>
+                              <th className="py-2.5 px-2 text-center font-mono font-bold text-[#0B1C30]">Total</th>
+                              <th className="py-2.5 px-3 pr-3 text-right font-mono text-purple-700">Plus ($)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {auditSummary.shifts.map((s) => (
+                              <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="py-2.5 px-3 pl-3 font-mono font-bold text-slate-700 whitespace-nowrap">
+                                  {s.work_date}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-semibold text-[#0B1C30]">{s.client_name}</div>
+                                  <div className="text-[11px] text-slate-400">{s.location_name}</div>
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                                  {s.shift_start_time.slice(0, 5)} - {s.shift_end_time.slice(0, 5)}
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono font-semibold text-emerald-700">
+                                  {s.regular_hours}h
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono font-semibold text-sky-700">
+                                  {s.overtime_50_hours > 0 ? `${s.overtime_50_hours}h` : '-'}
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono font-semibold text-amber-700">
+                                  {s.overtime_100_hours > 0 ? `${s.overtime_100_hours}h` : '-'}
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono font-bold text-[#0B1C30] bg-yellow-50/50">
+                                  {s.total_hours}h
+                                </td>
+                                <td className="py-2.5 px-3 pr-3 text-right font-mono text-purple-700 whitespace-nowrap">
+                                  {s.plus_delta_amount > 0 ? `$ ${s.plus_delta_amount.toLocaleString('es-AR')}` : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs text-[#0B1C30]">
+                            <tr>
+                              <td colSpan={3} className="py-2.5 px-3 pl-3 text-right uppercase text-slate-500">
+                                Totales:
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono text-emerald-800">
+                                {auditSummary.regular_hours}h
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono text-sky-800">
+                                {auditSummary.overtime_50_hours}h
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono text-amber-800">
+                                {auditSummary.overtime_100_hours}h
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono bg-yellow-100 text-[#0B1C30]">
+                                {auditSummary.total_hours}h
+                              </td>
+                              <td className="py-2.5 px-3 pr-3 text-right font-mono text-purple-900 whitespace-nowrap">
+                                {auditSummary.plus_amount > 0
+                                  ? `$ ${auditSummary.plus_amount.toLocaleString('es-AR')}`
+                                  : '$ 0'}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {loadingAudit ? (
-              <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
-                <Loader2 className="h-8 w-8 animate-spin text-[#0EA5E9]" />
-                <p className="text-sm font-medium">Buscando turnos registrados...</p>
-              </div>
-            ) : !auditSummary || auditSummary.shifts.length === 0 ? (
-              <div className="p-12 text-center text-slate-500 border border-dashed border-slate-200 rounded-xl">
-                <Clock className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                <p className="font-semibold text-slate-700">
-                  No se registran turnos trabajados en este período.
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Verifica que las novedades de este operario hayan sido imputadas en Carga Diaria de Horas.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* KPI Summary Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-                  <div className="bg-slate-100 p-3 rounded-xl">
-                    <div className="text-slate-500 text-xs font-semibold uppercase">Turnos</div>
-                    <div className="text-lg font-bold font-mono text-[#0B1C30]">
-                      {auditSummary.shifts_count}
-                    </div>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl">
-                    <div className="text-emerald-700 text-xs font-semibold uppercase">Hs. Normales</div>
-                    <div className="text-lg font-bold font-mono text-emerald-800">
-                      {auditSummary.regular_hours} hs
-                    </div>
-                  </div>
-                  <div className="bg-sky-50 border border-sky-100 p-3 rounded-xl">
-                    <div className="text-sky-700 text-xs font-semibold uppercase">Hs. 50%</div>
-                    <div className="text-lg font-bold font-mono text-sky-800">
-                      {auditSummary.overtime_50_hours} hs
-                    </div>
-                  </div>
-                  <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl">
-                    <div className="text-amber-700 text-xs font-semibold uppercase">Hs. 100%</div>
-                    <div className="text-lg font-bold font-mono text-amber-800">
-                      {auditSummary.overtime_100_hours} hs
-                    </div>
-                  </div>
-                  <div className="bg-[#0B1C30] text-white p-3 rounded-xl col-span-2 sm:col-span-1">
-                    <div className="text-slate-300 text-xs font-semibold uppercase">Total Horas</div>
-                    <div className="text-lg font-bold font-mono text-amber-300">
-                      {auditSummary.total_hours} hs
-                    </div>
-                  </div>
-                </div>
-
-                {/* Shifts Table */}
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
-                    <Layers className="h-4 w-4 text-[#1E5BB4]" />
-                    Detalle de Turnos Trabajados (Orden Cronológico)
-                  </h4>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase text-slate-600">
-                        <tr>
-                          <th className="py-2.5 px-3 pl-4">Fecha</th>
-                          <th className="py-2.5 px-3">Cliente / Servicio</th>
-                          <th className="py-2.5 px-3">Lugar / Muelle</th>
-                          <th className="py-2.5 px-3 text-center font-mono">Horario</th>
-                          <th className="py-2.5 px-3 text-center font-mono text-emerald-700">Norm</th>
-                          <th className="py-2.5 px-3 text-center font-mono text-sky-700">50%</th>
-                          <th className="py-2.5 px-3 text-center font-mono text-amber-700">100%</th>
-                          <th className="py-2.5 px-3 text-center font-mono font-bold text-[#0B1C30]">
-                            Total Hs
-                          </th>
-                          <th className="py-2.5 px-3 pr-4 text-right font-mono">Plus ($)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {auditSummary.shifts.map((s) => (
-                          <tr key={s.id} className="hover:bg-slate-50">
-                            <td className="py-2.5 px-3 pl-4 font-mono font-bold text-slate-700">
-                              {s.work_date}
-                            </td>
-                            <td className="py-2.5 px-3 font-semibold text-[#0B1C30]">{s.client_name}</td>
-                            <td className="py-2.5 px-3 text-slate-500">{s.location_name}</td>
-                            <td className="py-2.5 px-3 text-center font-mono text-slate-600">
-                              {s.shift_start_time.slice(0, 5)} - {s.shift_end_time.slice(0, 5)}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-emerald-700">
-                              {s.regular_hours}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-sky-700">
-                              {s.overtime_50_hours}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-amber-700">
-                              {s.overtime_100_hours}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-mono font-bold text-[#0B1C30] bg-yellow-50/50">
-                              {s.total_hours}
-                            </td>
-                            <td className="py-2.5 px-3 pr-4 text-right font-mono text-slate-600">
-                              {s.plus_delta_amount > 0 ? `$ ${s.plus_delta_amount.toLocaleString('es-AR')}` : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs text-[#0B1C30]">
-                        <tr>
-                          <td colSpan={4} className="py-2.5 px-3 pl-4 text-right uppercase text-slate-500">
-                            Totales Liquidación:
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono text-emerald-800">
-                            {auditSummary.regular_hours} hs
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono text-sky-800">
-                            {auditSummary.overtime_50_hours} hs
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono text-amber-800">
-                            {auditSummary.overtime_100_hours} hs
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono bg-yellow-100 text-[#0B1C30]">
-                            {auditSummary.total_hours} hs
-                          </td>
-                          <td className="py-2.5 px-3 pr-4 text-right font-mono">
-                            {auditSummary.plus_amount > 0
-                              ? `$ ${auditSummary.plus_amount.toLocaleString('es-AR')}`
-                              : '-'}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            {/* Slideover Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => setAuditEmployee(null)}
-                className="px-5 py-2.5 bg-[#0B1C30] hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 bg-[#1E5BB4] hover:bg-[#004392] text-white text-sm font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
               >
                 Cerrar Auditoría
               </button>
@@ -953,6 +1061,7 @@ export default function EmployeesPage() {
           </div>
         </div>
       )}
+
 
       {/* Slide-over (Alta / Edición de Personal) */}
       {isSlideoverOpen && (

@@ -19,11 +19,15 @@ export interface InvoicingRecord {
   proforma_type: string;
   client_id: string;
   client_name?: string;
+  client_tax_id?: string | null;
+  client_billing_email?: string | null;
+  client_phone_number?: string | null;
   fortnight_period: string;
   concept_type: 'general_hours' | 'shuttles' | 'export_tallymen';
   status: 'draft' | 'sent' | 'approved' | 'invoiced' | 'paid' | 'overdue';
   subtotal: number;
   total: number;
+  public_token: string;
   issue_date: string;
   due_date: string;
   vessel_name?: string | null;
@@ -105,6 +109,85 @@ export interface ProformaCalculationResult {
   total_hours?: number;
 }
 
+export interface FiscalYardShiftRow {
+  slotPosition: string;       // 'ENCARGADO PF', 'APUNTADOR PF 01' ... 'APUNTADOR PF 13'
+  employeeName: string;       // Apellido y Nombre
+  workDate: string;           // YYYY-MM-DD
+  timeRange: string;          // '07:00-17:00'
+  totalHours: number;
+  regularHours: number;
+  overtime50Hours: number;
+  overtime100Hours: number;
+  isBonificado?: boolean;
+}
+
+export interface FiscalYardPositionSummary {
+  slotCode: string;           // 'ENCARGADO PF', 'APUNTADOR PF 01' ... 'APUNTADOR PF 13'
+  positionTitle: string;      // 'Encargado Plazoleta' o 'Apuntador Plazoleta'
+  assignedEmployee: string;
+  totalRegular: number;
+  totalOt50: number;
+  totalOt100: number;
+  totalHours: number;
+  regularRate: number;
+  ot50Rate: number;
+  ot100Rate: number;
+  subtotalAmount: number;
+  isBonificado?: boolean;
+}
+
+export interface FiscalYardPayload {
+  proforma_type: 'fiscal_yard';
+  operation_dates: string;
+  client_name: string;
+  discount_percentage: number;
+  consolidado: {
+    plazoleta_fiscal: number;
+    transporte_personal: number;
+    control_expo: number;
+    total_neto: number;
+    iva_21: number;
+    total_factura: number;
+  };
+  tab_plazoleta: {
+    horas_encargado: { norm: number; ot50: number; ot100: number };
+    horas_apuntador: { norm: number; ot50: number; ot100: number };
+    tarifas_encargado: { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number };
+    tarifas_apuntador: { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number };
+    importes: {
+      enc_reg: number;
+      enc_ot50: number;
+      enc_ot100: number;
+      ap_reg: number;
+      ap_ot50: number;
+      ap_ot100: number;
+      neto_sin_bonif: number;
+      bonificacion: number;
+      subtotal_bonificado: number;
+    };
+    shift_rows: FiscalYardShiftRow[];
+    slots_summary: FiscalYardPositionSummary[];
+    totales_grilla: {
+      total_regular: number;
+      total_ot50: number;
+      total_ot100: number;
+      total_hours: number;
+    };
+  };
+  tab_transporte: {
+    viajes: number;
+    tarifa_por_viaje: number;
+    total_transporte: number;
+  };
+  tab_expo: {
+    horas_base: { norm: number; ot50: number; ot100: number };
+    factor_asignacion: number;
+    horas_facturadas: { norm: number; ot50: number; ot100: number };
+    importes: { reg: number; ot50: number; ot100: number; total: number };
+  };
+  notes?: string[];
+}
+
 export interface ProformaStrategy {
   type: string;
   label: string;
@@ -112,4 +195,6 @@ export interface ProformaStrategy {
   defaultConceptType: 'general_hours' | 'shuttles' | 'export_tallymen';
   calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult>;
 }
+
+
 

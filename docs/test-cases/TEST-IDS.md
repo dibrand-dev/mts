@@ -101,6 +101,14 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 | `invoicing-preview-subtotal` | `<span>` | Slideover Alta | Vista previa del subtotal calculado |
 | `invoicing-preview-total` | `<span>` | Slideover Alta | Vista previa del total neto calculado |
 | `invoicing-btn-emitir-proforma` | `<button>` | Slideover Alta | Botón para emitir la proforma definitiva |
+| `invoicing-btn-copy-public-link` | `<button>` | `/invoicing` Tabla | Copiar enlace público directo al portapapeles |
+| `invoicing-btn-open-public-link` | `<a>` | `/invoicing` Tabla | Abrir enlace público en nueva pestaña |
+| `modal-btn-copy-public-link` | `<button>` | Modal Detalle | Copiar enlace público desde modal |
+| `modal-btn-open-public-view` | `<a>` | Modal Detalle | Abrir enlace público desde modal |
+| `modal-btn-download-csv` | `<button>` | Modal Detalle | Descargar detalle en archivo CSV (Excel) |
+| `public-btn-copy-link` | `<button>` | Portal Público | Copiar enlace público en portal |
+| `public-btn-download-csv` | `<button>` | Portal Público | Descargar proforma en CSV desde portal |
+| `public-btn-download-pdf` | `<button>` | Portal Público | Descargar / Imprimir proforma en PDF desde portal |
 
 ---
 
@@ -112,7 +120,8 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 | `payroll-btn-preset-week` | `<button>` | Botón preset "Esta Semana" |
 | `payroll-btn-preset-fortnight` | `<button>` | Botón preset "Esta Quincena" |
 | `payroll-btn-preset-month` | `<button>` | Botón preset "Este Mes" |
-| `payroll-btn-export-csv` | `<button>` | Botón de exportación a CSV |
+| `payroll-btn-export-liquidacion` | `<button>` | Botón de exportación plana para contadora (CSV plano 5 columnas) |
+| `payroll-btn-export-csv` | `<button>` | Botón de exportación a CSV (Pre-liquidación) |
 | `payroll-kpi-personal-liquidado` | `<span>` | Tarjeta KPI: Cantidad de empleados liquidados |
 | `payroll-kpi-total-bruto` | `<span>` | Tarjeta KPI: Total Sueldos Bruto ($) |
 | `payroll-kpi-total-anticipos` | `<span>` | Tarjeta KPI: Total de Anticipos a descontar ($) |
@@ -161,7 +170,9 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
 | `employees-btn-nuevo-empleado` | `<button>` | Botón de cabecera "Nuevo Operario" |
-| `employees-btn-auditar-horas` | `<button>` | Botón en fila para auditar horas del empleado |
+| `employees-btn-export-payroll` | `<button>` | Botón global "Exportar Liquidación" (reporte plano para contadora) |
+| `employees-btn-auditar-horas` | `<button>` | Botón en fila con ícono de Ojo para abrir slideover de auditoría |
+| `employees-slideover-audit` | `<div>` | Panel lateral (Slideover) de auditoría rápida de turnos y acumulados |
 | `employees-btn-edit` | `<button>` | Botón en fila para editar datos del empleado |
 | `employees-btn-delete` | `<button>` | Botón en fila para eliminar empleado |
 | `employees-input-fullname` | `<input type="text">` | Slideover: Nombre completo |
@@ -172,6 +183,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 | `employees-input-phone` | `<input type="text">` | Slideover: Teléfono de contacto |
 | `employees-select-status` | `<select>` | Slideover: Estado (Activo / Licencia / Inactivo) |
 | `employees-btn-guardar` | `<button type="submit">` | Slideover: Botón para guardar empleado |
+
 
 ---
 
@@ -214,6 +226,7 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 
 | data-testid | Elemento HTML | Propósito / Descripción |
 |---|---|---|
+| `cash-flow-btn-ver-proyecciones` | `<Link>` | Cabecera: Acceso exclusivo a la pantalla de Proyecciones (`/cash-flow/projections`) |
 | `cash-flow-btn-nuevo-ingreso` | `<button>` | Botón rápido "Nuevo Ingreso" |
 | `cash-flow-btn-nuevo-movimiento` | `<button>` | Botón principal de cabecera "Nuevo Movimiento" |
 | `cash-flow-kpi-total-ingresos` | `<span>` | Tarjeta KPI: Total Ingresos acumulados del período |
@@ -225,3 +238,29 @@ Este documento lista todos los atributos `data-testid` incorporados en el códig
 | `cash-flow-input-detail` | `<input type="text">` | Slideover: Concepto / detalle del movimiento |
 | `cash-flow-input-amount` | `<input type="number">` | Slideover: Monto del movimiento ($) |
 | `cash-flow-btn-guardar` | `<button type="submit">` | Slideover: Botón para guardar movimiento |
+
+---
+
+## 12. Módulo: Proyecciones de Flujo de Caja (`/cash-flow/projections`)
+**Archivo:** [`src/app/(dashboard)/cash-flow/projections/page.tsx`](src/app/%28dashboard%29/cash-flow/projections/page.tsx)
+
+| data-testid | Elemento HTML | Propósito / Descripción |
+|---|---|---|
+| `projections-btn-volver` | `<Link>` | Botón de retorno "← Volver a Flujo de Caja" |
+| `projections-btn-nuevo-ingreso` | `<button>` | Cabecera: Abrir slideover para nuevo ingreso |
+| `projections-btn-nuevo-movimiento` | `<button>` | Cabecera: Abrir slideover para nuevo egreso |
+| `projections-kpi-ingresos` | `<p>` | Tarjeta KPI: Total ingresos proyectados de facturación |
+| `projections-kpi-egresos` | `<p>` | Tarjeta KPI: Total egresos proyectados (sueldos, ARCA, ARBA, IVA, comisiones) |
+| `projections-kpi-saldo-proyectado` | `<p>` | Tarjeta KPI: Saldo acumulado proyectado a la fecha X |
+| `projections-input-target-date` | `<input type="date">` | Filtro: Selector de fecha de corte "Saldo para fecha X" |
+| `projections-preset-fin-mes` | `<button>` | Preset rápido: Último día del mes actual |
+| `projections-preset-quincena` | `<button>` | Preset rápido: Próxima quincena (15 o fin de mes) |
+| `projections-preset-fin-prox-mes` | `<button>` | Preset rápido: Último día del próximo mes |
+| `projections-preset-plus-30` | `<button>` | Preset rápido: +30 días hacia adelante |
+| `projections-form-input-date` | `<input type="date">` | Slideover: Fecha del movimiento proyectado |
+| `projections-form-select-category` | `<select>` | Slideover: Área / Concepto (ARCA, ARBA, IVA, Sueldos, Comisiones, etc.) |
+| `projections-form-input-title` | `<input type="text">` | Slideover: Detalle o concepto del movimiento |
+| `projections-form-input-amount` | `<input type="number">` | Slideover: Importe del movimiento ($) |
+| `projections-btn-guardar-movimiento` | `<button type="submit">` | Slideover: Guardar movimiento en la proyección |
+| `projections-btn-confirm-delete` | `<button>` | Modal: Confirmar eliminación de movimiento |
+

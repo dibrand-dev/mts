@@ -11,6 +11,10 @@ import {
   Check,
   AlertCircle,
   Layers,
+  ChevronDown,
+  ChevronUp,
+  Table,
+  Users,
 } from 'lucide-react';
 import { ClientRow } from '@/lib/services/clients';
 import {
@@ -53,6 +57,7 @@ export function CreateProformaSlideover({
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
   const [conceptType, setConceptType] = useState<'general_hours' | 'shuttles' | 'export_tallymen'>('general_hours');
   const [dueDays, setDueDays] = useState('15');
+  const [showSlotsPreview, setShowSlotsPreview] = useState(false);
 
   // Calculation State
   const [calculating, setCalculating] = useState(false);
@@ -503,6 +508,13 @@ export function CreateProformaSlideover({
 
               {calculationResult ? (
                 <div className="space-y-2 text-xs">
+                  {calculationResult.total_shifts === 0 && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>No se encontraron turnos aprobados para este cliente en el rango seleccionado (0.0 hs).</span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-slate-600">
                     <span>Turnos Aprobados Computados:</span>
                     <span className="font-mono font-bold text-[#0B1C30]">{calculationResult.total_shifts ?? 0} turnos</span>
@@ -544,6 +556,53 @@ export function CreateProformaSlideover({
                       $ {calculationResult.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
+
+                  {/* Previsualización Estructurada Plantilla Excel (PF 01 al PF 13) */}
+                  {selectedType === 'fiscal_yard' && calculationResult.payload?.tab_plazoleta?.slots_summary && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowSlotsPreview(!showSlotsPreview)}
+                        className="w-full flex items-center justify-between text-xs font-bold text-[#1E5BB4] hover:text-[#004392] py-1 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Table className="h-3.5 w-3.5" />
+                          <span>Previsualizar Plantilla Excel (PF 01 al PF 13)</span>
+                        </span>
+                        {showSlotsPreview ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </button>
+                      {showSlotsPreview && (
+                        <div className="mt-2 border border-slate-200 rounded-lg overflow-x-auto max-h-56 bg-white shadow-inner">
+                          <table className="w-full text-left text-[11px] border-collapse">
+                            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
+                              <tr>
+                                <th className="p-1.5 pl-2">Puesto</th>
+                                <th className="p-1.5">Operario</th>
+                                <th className="p-1.5 text-center">Norm</th>
+                                <th className="p-1.5 text-center">50%</th>
+                                <th className="p-1.5 text-center">100%</th>
+                                <th className="p-1.5 pr-2 text-right">Subtotal ($)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {calculationResult.payload.tab_plazoleta.slots_summary.map((slot: any, idx: number) => (
+                                <tr key={idx} className={slot.slotCode?.includes('ENCARGADO') ? 'bg-sky-50/60 font-semibold' : ''}>
+                                  <td className="p-1.5 pl-2 font-mono text-[10px] text-slate-700">{slot.slotCode}</td>
+                                  <td className="p-1.5 truncate max-w-[120px] text-slate-800">{slot.assignedEmployee}</td>
+                                  <td className="p-1.5 text-center font-mono">{slot.totalRegular}</td>
+                                  <td className="p-1.5 text-center font-mono text-sky-700">{slot.totalOt50}</td>
+                                  <td className="p-1.5 text-center font-mono text-amber-700">{slot.totalOt100}</td>
+                                  <td className="p-1.5 pr-2 text-right font-mono font-medium">
+                                    $ {Number(slot.subtotalAmount || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 !calculating && (

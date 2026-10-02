@@ -263,6 +263,7 @@ export interface Database {
           meal_allowance_count: number
           advance_payment_amount: number
           is_day_off: boolean
+          day_off_count: number
           bonus_applied_amount: number
           is_approved: boolean
           approved_at: string | null
@@ -286,6 +287,7 @@ export interface Database {
           meal_allowance_count?: number
           advance_payment_amount?: number
           is_day_off?: boolean
+          day_off_count?: number
           bonus_applied_amount?: number
           is_approved?: boolean
           approved_at?: string | null
@@ -309,6 +311,7 @@ export interface Database {
           meal_allowance_count?: number
           advance_payment_amount?: number
           is_day_off?: boolean
+          day_off_count?: number
           bonus_applied_amount?: number
           is_approved?: boolean
           approved_at?: string | null
@@ -559,6 +562,32 @@ export interface Database {
           name?: string
           operation_type?: 'vessel' | 'yard' | 'deposit' | 'general'
           is_active?: boolean
+          created_at?: string
+        }
+      }
+      union_bonus_scales: {
+        Row: {
+          id: string
+          min_vehicles: number
+          max_vehicles: number
+          bonus_amount: number
+          effective_from: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          min_vehicles: number
+          max_vehicles: number
+          bonus_amount: number
+          effective_from?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          min_vehicles?: number
+          max_vehicles?: number
+          bonus_amount?: number
+          effective_from?: string
           created_at?: string
         }
       }

@@ -11,7 +11,9 @@ console.log('===============================================================\n')
 
 const suites = [
   { name: 'Cálculos de Horas y Lógica Operativa', file: 'tests/scripts/test-calculations.ts' },
+  { name: 'Criterios de Aceptación DoD - Carga Diaria', file: 'tests/scripts/test-carga-diaria-dod.ts' },
   { name: 'Seguridad de APIs y Mock de Correos', file: 'tests/scripts/test-api-security.ts' },
+  { name: 'Escalas Dinámicas CCT y Cálculo Invisible', file: 'tests/scripts/test-union-scales.ts' },
 ];
 
 let allPassed = true;
@@ -19,7 +21,7 @@ let allPassed = true;
 for (const suite of suites) {
   console.log(`\n>>> Ejecutando Suite: ${suite.name} (${suite.file})`);
   try {
-    const cmd = process.env.TS_RUNNER || 'npx tsx';
+    const cmd = process.env.TS_RUNNER || './node_modules/.bin/jiti';
     execSync(`${cmd} ${suite.file}`, { stdio: 'inherit' });
   } catch (error) {
     console.error(`\n[ERROR] Falló la suite: ${suite.name}`);

@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/client';
-import { Database } from '@/types/database.types';
+import { createClient } from '../supabase/client';
+import { Database } from '../../types/database.types';
 
 export type DailyWorkLogRow = Database['public']['Tables']['daily_work_logs']['Row'];
 export type DailyWorkLogInsert = Database['public']['Tables']['daily_work_logs']['Insert'];
@@ -66,7 +66,7 @@ export function calculateShiftHours(
   let endDt = new Date(`${endDateStr || startDateStr}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
 
   if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
-    // Auto-advance by 1 day if end time is before start time on the same date
+    // Auto-advance by 1 day if end time is before or equal to start time on the same date
     endDt = new Date(endDt.getTime() + 24 * 60 * 60 * 1000);
   }
 
@@ -83,11 +83,7 @@ export function calculateShiftHours(
     };
   }
 
-  // Segment calculation (minute by minute or block evaluation)
-  // Check start day of week
-  const startDayOfWeek = startDt.getDay(); // 0 = Sun, 6 = Sat
-  const isStartSunday = startDayOfWeek === 0;
-
+  // Priority 1 & 2: Holiday (Manual Checkbox or API) forces 100% of all hours
   if (isHoliday) {
     return {
       total_hours,
@@ -98,55 +94,46 @@ export function calculateShiftHours(
     };
   }
 
-  // If start is Sunday:
-  if (isStartSunday) {
-    return {
-      total_hours,
-      regular_hours: 0,
-      overtime_50_hours: 0,
-      overtime_100_hours: total_hours,
-      is_sunday_or_holiday: true,
-    };
+  // Priority 3 & 4: Weekend / Weekday segmentation engine
+  let normalMinutes = 0;
+  let ot50Minutes = 0;
+  let ot100Minutes = 0;
+  let standardMinutesWorked = 0; // Tracks minutes towards 8h regular limit
+
+  const curr = new Date(startDt.getTime());
+  while (curr < endDt) {
+    const dow = curr.getDay(); // 0 = Sun, 6 = Sat
+    const mins = curr.getHours() * 60 + curr.getMinutes();
+
+    // 100% Window: Sundays (all day) OR Saturdays from 13:00:00 onwards until Monday 00:00:00
+    const isSunday = (dow === 0);
+    const isSatAfter13 = (dow === 6 && mins >= 13 * 60);
+
+    if (isSunday || isSatAfter13) {
+      ot100Minutes++;
+    } else {
+      // Standard daytime/workday window: up to 8 hs regular, remainder 50%
+      if (standardMinutesWorked < 8 * 60) {
+        normalMinutes++;
+        standardMinutesWorked++;
+      } else {
+        ot50Minutes++;
+      }
+    }
+
+    curr.setMinutes(curr.getMinutes() + 1);
   }
 
-  // If start is Saturday:
-  if (startDayOfWeek === 6) {
-    // Cut-off at 13:00 on Saturday
-    const satCutoff = new Date(`${startDateStr}T13:00:00`).getTime();
-    const startMs = startDt.getTime();
-    const endMs = endDt.getTime();
-
-    const msBeforeCutoff = Math.max(0, Math.min(endMs, satCutoff) - Math.min(startMs, satCutoff));
-    const msAfterCutoff = Math.max(0, endMs - Math.max(startMs, satCutoff));
-
-    const hoursBefore13 = Math.round((msBeforeCutoff / (1000 * 60 * 60)) * 100) / 100;
-    const hoursAfter13 = Math.round((msAfterCutoff / (1000 * 60 * 60)) * 100) / 100;
-
-    const regular_hours = Math.min(8, hoursBefore13);
-    const overtime_50_hours = Math.max(0, hoursBefore13 - 8);
-    const overtime_100_hours = hoursAfter13;
-
-    return {
-      total_hours,
-      regular_hours: Math.round(regular_hours * 100) / 100,
-      overtime_50_hours: Math.round(overtime_50_hours * 100) / 100,
-      overtime_100_hours: Math.round(overtime_100_hours * 100) / 100,
-      is_sunday_or_holiday: false,
-    };
-  }
-
-  // Weekday (Monday - Friday)
-  // Check if shift extends into Saturday post 13hs or Sunday
-  const regular_hours = Math.min(8, total_hours);
-  const overtime_50_hours = Math.max(0, total_hours - 8);
-  const overtime_100_hours = 0;
+  const regHours = Math.round((normalMinutes / 60) * 100) / 100;
+  const ot50Hours = Math.round((ot50Minutes / 60) * 100) / 100;
+  const ot100Hours = Math.round((ot100Minutes / 60) * 100) / 100;
 
   return {
     total_hours,
-    regular_hours: Math.round(regular_hours * 100) / 100,
-    overtime_50_hours: Math.round(overtime_50_hours * 100) / 100,
-    overtime_100_hours: Math.round(overtime_100_hours * 100) / 100,
-    is_sunday_or_holiday: false,
+    regular_hours: regHours,
+    overtime_50_hours: ot50Hours,
+    overtime_100_hours: ot100Hours,
+    is_sunday_or_holiday: ot100Hours === total_hours && total_hours > 0,
   };
 }
 
@@ -177,7 +164,7 @@ export async function getDailyWorkLogs(filters?: {
         position:positions(id, name)
       )
     `)
-    .order('work_date', { ascending: false });
+    .order('work_date', { ascending: true });
 
   if (filters?.date) {
     query = query.eq('work_date', filters.date);
@@ -199,7 +186,8 @@ export async function getOrCreateDailyWorkLog(
   workDate: string,
   clientId: string,
   locationId?: string | null,
-  vesselName?: string | null
+  vesselName?: string | null,
+  totalVehiclesHandled?: number | null
 ): Promise<DailyWorkLogWithEntries> {
   const supabase = createClient() as any;
 
@@ -213,7 +201,7 @@ export async function getOrCreateDailyWorkLog(
       entries:daily_staff_entries(
         *,
         employee:employees(id, full_name, national_id, file_number),
-        position:positions(id, name)
+        position:positions(id, name, requires_vehicle_bonus)
       )
     `)
     .eq('work_date', workDate)
@@ -235,11 +223,37 @@ export async function getOrCreateDailyWorkLog(
       updates.location_id = locationId;
       existing.location_id = locationId;
     }
+    if (typeof totalVehiclesHandled === 'number' && existing.total_vehicles_handled !== totalVehiclesHandled) {
+      updates.total_vehicles_handled = totalVehiclesHandled;
+      existing.total_vehicles_handled = totalVehiclesHandled;
+    }
+
     if (Object.keys(updates).length > 0) {
       await supabase
         .from('daily_work_logs')
         .update(updates)
         .eq('id', existing.id);
+
+      // Sincronizar bonus_applied_amount si cambiaron las unidades y hay entradas de puestos elegibles
+      if (typeof totalVehiclesHandled === 'number' && updates.total_vehicles_handled !== undefined) {
+        try {
+          const { getUnionBonusScales, calculateBonusForVehicles } = await import('@/lib/services/union-scales');
+          const scales = await getUnionBonusScales();
+          const newBonus = calculateBonusForVehicles(totalVehiclesHandled, scales, workDate);
+
+          for (const entry of existing.entries || []) {
+            if (entry.position?.requires_vehicle_bonus && entry.bonus_applied_amount !== newBonus) {
+              await supabase
+                .from('daily_staff_entries')
+                .update({ bonus_applied_amount: newBonus })
+                .eq('id', entry.id);
+              entry.bonus_applied_amount = newBonus;
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Could not auto-sync bonus scales for existing entries:', syncErr);
+        }
+      }
     }
     return existing as DailyWorkLogWithEntries;
   }
@@ -259,7 +273,7 @@ export async function getOrCreateDailyWorkLog(
       client_id: clientId,
       location_id: locationId || null,
       vessel_name: vesselName || null,
-      total_vehicles_handled: 0,
+      total_vehicles_handled: typeof totalVehiclesHandled === 'number' ? totalVehiclesHandled : 0,
       vehicles_discharged: 0,
       vehicles_loaded: 0,
       vehicles_shifted: 0,
@@ -273,7 +287,7 @@ export async function getOrCreateDailyWorkLog(
       entries:daily_staff_entries(
         *,
         employee:employees(id, full_name, national_id, file_number),
-        position:positions(id, name)
+        position:positions(id, name, requires_vehicle_bonus)
       )
     `)
     .single();
@@ -453,6 +467,7 @@ export interface ClientShiftRecordForBilling {
   meal_allowance_count: number;
   bonus_applied_amount: number;
   is_export_day: boolean;
+  day_off_count?: number;
   is_approved: boolean;
   approved_at: string | null;
   approved_by: string | null;
@@ -586,6 +601,7 @@ export async function getStaffEntriesForClientAndPeriod(
         meal_allowance_count: Number(entry.meal_allowance_count || 0),
         bonus_applied_amount: Number(entry.bonus_applied_amount || 0),
         is_export_day: Boolean(log.is_export_day),
+        day_off_count: Number((entry as any).day_off_count || 0),
         is_approved: isAppr,
         approved_at: entry.approved_at || null,
         approved_by: entry.approved_by || null,

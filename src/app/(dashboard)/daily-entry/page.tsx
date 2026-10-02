@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   Edit2,
@@ -55,6 +55,14 @@ import {
   toggleStaffEntryApproval,
   bulkApproveStaffEntries,
 } from '@/lib/services/daily-entries';
+import {
+  getUnionBonusScales,
+  calculateBonusForVehicles,
+} from '@/lib/services/union-scales';
+import {
+  fetchHolidaysForYear,
+  getHolidayDetails,
+} from '@/lib/services/holidays';
 
 interface FlatDailyStaffEntry {
   id: string;
@@ -63,6 +71,7 @@ interface FlatDailyStaffEntry {
   client_id: string;
   client_name: string;
   vessel_name: string | null;
+  total_vehicles_handled: number;
   location_id: string | null;
   location_name: string;
   employee_id: string;
@@ -81,6 +90,7 @@ interface FlatDailyStaffEntry {
   shuttles_count: number;
   meal_allowance_count: number;
   is_day_off: boolean;
+  day_off_count: number;
   advance_payment_amount: number;
   plus_delta_amount: number;
   bonus_applied_amount: number;
@@ -112,6 +122,10 @@ export default function DailyEntryPage() {
   const { data: clientOperations = [] } = useQuery({
     queryKey: ['client-operations'],
     queryFn: () => getClientOperations(),
+  });
+  const { data: unionScales = [] } = useQuery({
+    queryKey: queryKeys.rates.unionScales,
+    queryFn: () => getUnionBonusScales(),
   });
 
   // Filter Bar State (Optional Filters for the Table)
@@ -148,22 +162,42 @@ export default function DailyEntryPage() {
   const [isSlideoverOpen, setIsSlideoverOpen] = useState<boolean>(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
-  // Slideover Shift Context (Día, Cliente, Ubicación, Buque)
+  // Slideover Shift Context (Día, Cliente, Ubicación, Buque, Unidades Operadas)
   const [formWorkDate, setFormWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formClientId, setFormClientId] = useState<string>('');
   const [formLocationId, setFormLocationId] = useState<string>('');
   const [formVesselName, setFormVesselName] = useState<string>('');
+  const [formVehiclesHandled, setFormVehiclesHandled] = useState<string>('0');
   const [isNewOpModalOpen, setIsNewOpModalOpen] = useState<boolean>(false);
   const [newOpName, setNewOpName] = useState<string>('');
   const [newOpType, setNewOpType] = useState<'vessel' | 'yard' | 'deposit' | 'general'>('vessel');
   const [creatingOp, setCreatingOp] = useState<boolean>(false);
   const [newOpError, setNewOpError] = useState<string | null>(null);
   const [formIsApproved, setFormIsApproved] = useState<boolean>(true);
-  const [formIsHoliday] = useState<boolean>(false);
+  const [formIsForcedHoliday, setFormIsForcedHoliday] = useState<boolean>(false);
+
+  // Fetch National Holidays for the year of the selected shift date
+  const shiftYear = useMemo(() => {
+    return formWorkDate ? new Date(`${formWorkDate}T12:00:00`).getFullYear() : new Date().getFullYear();
+  }, [formWorkDate]);
+
+  const { data: holidaysMap = {} } = useQuery({
+    queryKey: queryKeys.holidays.byYear(shiftYear),
+    queryFn: () => fetchHolidaysForYear(shiftYear),
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
+  });
+
+  const detectedHoliday = useMemo(() => {
+    return getHolidayDetails(formWorkDate, holidaysMap);
+  }, [formWorkDate, holidaysMap]);
+
+  const effectiveIsHoliday = formIsForcedHoliday || Boolean(detectedHoliday);
 
   // Slideover Operario & Hours State
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState<string>('');
+  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState<boolean>(false);
+  const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string>('');
   const [startTime, setStartTime] = useState<string>('06:00');
   const [endTime, setEndTime] = useState<string>('14:00');
@@ -179,8 +213,35 @@ export default function DailyEntryPage() {
   const [shuttlesCount, setShuttlesCount] = useState<string>('0');
   const [mealAllowanceCount, setMealAllowanceCount] = useState<string>('0');
   const [isDayOff, setIsDayOff] = useState<boolean>(false);
+  const [dayOffCount, setDayOffCount] = useState<string>('0');
   const [advancePaymentAmount, setAdvancePaymentAmount] = useState<string>('0');
   const [plusDeltaAmount, setPlusDeltaAmount] = useState<string>('0');
+
+  // Close typeahead dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (evt: MouseEvent) => {
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(evt.target as Node)) {
+        setIsEmployeeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Determine if selected position is Encargado / Encargado PF (for conditional Remises)
+  const isEncargadoPF = useMemo(() => {
+    const pos = positions.find((p) => p.id === selectedPositionId);
+    if (!pos) return false;
+    const name = pos.name.trim().toUpperCase();
+    return name.includes('ENCARGAD');
+  }, [positions, selectedPositionId]);
+
+  // If position changed away from Encargado PF, reset shuttlesCount
+  useEffect(() => {
+    if (!isEncargadoPF && shuttlesCount !== '0') {
+      setShuttlesCount('0');
+    }
+  }, [isEncargadoPF, shuttlesCount]);
 
   // Set catalog defaults for form
   useEffect(() => {
@@ -220,19 +281,25 @@ export default function DailyEntryPage() {
 
   // Determine day type for the slideover day
   const slideoverDayInfo = useMemo(() => {
-    if (!formWorkDate) return { dayName: 'Día Hábil', isSunday: false, isSaturday: false, description: 'Lunes a Viernes (8 hs normales, exceso al 50%)' };
+    if (formIsForcedHoliday) {
+      return { dayName: 'Feriado / Forzado 100%', isSunday: false, isSaturday: false, isHoliday: true, description: 'Turno forzado al 100% de recargo' };
+    }
+    if (detectedHoliday) {
+      return { dayName: `Feriado: ${detectedHoliday.reason}`, isSunday: false, isSaturday: false, isHoliday: true, description: `${detectedHoliday.reason} (${detectedHoliday.type}) - 100% de las horas` };
+    }
+    if (!formWorkDate) return { dayName: 'Día Hábil', isSunday: false, isSaturday: false, isHoliday: false, description: 'Lunes a Viernes (8 hs normales, exceso al 50%)' };
     const d = new Date(`${formWorkDate}T12:00:00`);
     const day = d.getDay();
-    if (day === 0) return { dayName: 'Domingo', isSunday: true, isSaturday: false, description: 'Domingo (100% de las horas)' };
-    if (day === 6) return { dayName: 'Sábado', isSunday: false, isSaturday: true, description: 'Sábado (Hasta 13:00 normal/50%, post 13:00 al 100%)' };
+    if (day === 0) return { dayName: 'Domingo', isSunday: true, isSaturday: false, isHoliday: false, description: 'Domingo (100% de las horas)' };
+    if (day === 6) return { dayName: 'Sábado', isSunday: false, isSaturday: true, isHoliday: false, description: 'Sábado (Hasta 13:00 normal/50%, post 13:00 al 100%)' };
     const names = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    return { dayName: names[day], isSunday: false, isSaturday: false, description: `${names[day]} (8 hs normales, exceso al 50%)` };
-  }, [formWorkDate]);
+    return { dayName: names[day], isSunday: false, isSaturday: false, isHoliday: false, description: `${names[day]} (8 hs normales, exceso al 50%)` };
+  }, [formWorkDate, formIsForcedHoliday, detectedHoliday]);
 
   // Automatic real-time calculation of shift hours for the form
   const liveCalculation = useMemo(() => {
-    return calculateShiftHours(formWorkDate, startTime, formShiftEndDate, endTime, formIsHoliday);
-  }, [formWorkDate, startTime, formShiftEndDate, endTime, formIsHoliday]);
+    return calculateShiftHours(formWorkDate, startTime, formShiftEndDate, endTime, effectiveIsHoliday);
+  }, [formWorkDate, startTime, formShiftEndDate, endTime, effectiveIsHoliday]);
 
   // Automatically synchronize hours unless user toggles manual mode
   useEffect(() => {
@@ -243,6 +310,36 @@ export default function DailyEntryPage() {
     }
   }, [liveCalculation, isManualHoursMode]);
 
+  // Position eligibility and automatic CCT bonus calculation
+  const selectedPositionObj = useMemo(() => {
+    return positions.find((p) => p.id === selectedPositionId);
+  }, [positions, selectedPositionId]);
+
+  const isBonusEligible = useMemo(() => {
+    return Boolean(selectedPositionObj?.requires_vehicle_bonus);
+  }, [selectedPositionObj]);
+
+  const calculatedBonus = useMemo(() => {
+    if (!isBonusEligible) return 0;
+    const units = parseInt(formVehiclesHandled, 10) || 0;
+    if (units <= 0) return 0;
+    return calculateBonusForVehicles(units, unionScales, formWorkDate);
+  }, [isBonusEligible, formVehiclesHandled, unionScales, formWorkDate]);
+
+  // Auto-populate vehicles handled if existing work log already has a count
+  useEffect(() => {
+    if (!editingEntryId && formWorkDate && formClientId) {
+      const existingLog = workLogs.find(
+        (l) =>
+          l.work_date === formWorkDate &&
+          l.client_id === formClientId &&
+          (formVesselName ? l.vessel_name === formVesselName : true)
+      );
+      if (existingLog && existingLog.total_vehicles_handled) {
+        setFormVehiclesHandled(String(existingLog.total_vehicles_handled));
+      }
+    }
+  }, [formWorkDate, formClientId, formVesselName, workLogs, editingEntryId]);
 
   // Flatten all entries from all loaded logs for the table
   const allEntries = useMemo(() => {
@@ -262,6 +359,7 @@ export default function DailyEntryPage() {
           client_id: log.client_id,
           client_name: logClientName,
           vessel_name: log.vessel_name || null,
+          total_vehicles_handled: Number(log.total_vehicles_handled || 0),
           location_id: log.location_id,
           location_name: logLocationName,
           employee_id: entry.employee_id,
@@ -280,6 +378,7 @@ export default function DailyEntryPage() {
           shuttles_count: Number(entry.shuttles_count || 0),
           meal_allowance_count: Number(entry.meal_allowance_count || 0),
           is_day_off: Boolean(entry.is_day_off),
+          day_off_count: Number((entry as any).day_off_count ?? (entry.is_day_off ? 1 : 0)),
           advance_payment_amount: Number(entry.advance_payment_amount || 0),
           plus_delta_amount: Number(entry.plus_delta_amount || 0),
           bonus_applied_amount: Number(entry.bonus_applied_amount || 0),
@@ -289,6 +388,14 @@ export default function DailyEntryPage() {
         });
       }
     }
+
+    // Strict ascending sorting by work_date, then shift_start_time
+    list.sort((a, b) => {
+      const dateCmp = a.work_date.localeCompare(b.work_date);
+      if (dateCmp !== 0) return dateCmp;
+      return (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+    });
+
     return list;
   }, [workLogs, filterLocationId]);
 
@@ -322,11 +429,27 @@ export default function DailyEntryPage() {
           viandas: acc.viandas + curr.meal_allowance_count,
           anticipos: acc.anticipos + curr.advance_payment_amount,
           pluses: acc.pluses + curr.plus_delta_amount,
+          francosGenerados: acc.francosGenerados + (curr.day_off_count > 0 ? curr.day_off_count : 0),
+          francosTomados: acc.francosTomados + (curr.day_off_count < 0 ? Math.abs(curr.day_off_count) : 0),
           approvedCount: acc.approvedCount + (curr.is_approved ? 1 : 0),
           unapprovedCount: acc.unapprovedCount + (curr.is_approved ? 0 : 1),
         };
       },
-      { count: 0, totalHours: 0, regularHours: 0, ot50Hours: 0, ot100Hours: 0, remises: 0, viandas: 0, anticipos: 0, pluses: 0, approvedCount: 0, unapprovedCount: 0 }
+      {
+        count: 0,
+        totalHours: 0,
+        regularHours: 0,
+        ot50Hours: 0,
+        ot100Hours: 0,
+        remises: 0,
+        viandas: 0,
+        anticipos: 0,
+        pluses: 0,
+        francosGenerados: 0,
+        francosTomados: 0,
+        approvedCount: 0,
+        unapprovedCount: 0,
+      }
     );
   }, [filteredTableEntries]);
 
@@ -380,8 +503,10 @@ export default function DailyEntryPage() {
 
     setFormVesselName('');
     setFormIsApproved(true);
+    setFormIsForcedHoliday(false);
     setSelectedEmployeeId('');
     setEmployeeSearchTerm('');
+    setIsEmployeeDropdownOpen(false);
     if (positions.length > 0 && !selectedPositionId) {
       setSelectedPositionId(positions[0].id);
     }
@@ -389,6 +514,7 @@ export default function DailyEntryPage() {
     setShuttlesCount('0');
     setMealAllowanceCount('0');
     setIsDayOff(false);
+    setDayOffCount('0');
     setAdvancePaymentAmount('0');
     setIsManualHoursMode(false);
     setFormError(null);
@@ -397,22 +523,28 @@ export default function DailyEntryPage() {
 
   const handleEmployeeChange = (empId: string) => {
     setSelectedEmployeeId(empId);
-    // Only prefill position if none is selected yet for the shift
-    if (!selectedPositionId) {
-      const emp = employees.find((e) => e.id === empId);
-      if (emp && emp.default_position_id) {
+    const emp = employees.find((e) => e.id === empId);
+    if (emp) {
+      setEmployeeSearchTerm(`${emp.full_name}${emp.file_number ? ` (Leg. ${emp.file_number})` : ''}`);
+      if (!selectedPositionId && emp.default_position_id) {
         setSelectedPositionId(emp.default_position_id);
       }
+    } else {
+      setEmployeeSearchTerm('');
     }
+    setIsEmployeeDropdownOpen(false);
   };
 
   const handleFinalizeShift = () => {
     setSelectedEmployeeId('');
     setEmployeeSearchTerm('');
+    setIsEmployeeDropdownOpen(false);
     setSelectedPositionId('');
     setFormClientId('');
     setFormLocationId('');
     setFormVesselName('');
+    setFormVehiclesHandled('0');
+    setFormIsForcedHoliday(false);
     setStartTime('06:00');
     setEndTime('14:00');
     setIsOvernight(false);
@@ -423,6 +555,7 @@ export default function DailyEntryPage() {
     setShuttlesCount('0');
     setMealAllowanceCount('0');
     setIsDayOff(false);
+    setDayOffCount('0');
     setAdvancePaymentAmount('0');
     setIsManualHoursMode(false);
     setEditingEntryId(null);
@@ -486,8 +619,16 @@ export default function DailyEntryPage() {
     setFormClientId(entry.client_id);
     setFormLocationId(entry.location_id || '');
     setFormVesselName(entry.vessel_name || '');
+    setFormVehiclesHandled(String(entry.total_vehicles_handled || 0));
     setFormIsApproved(entry.is_approved);
     setSelectedEmployeeId(entry.employee_id);
+    const emp = employees.find((e) => e.id === entry.employee_id);
+    if (emp) {
+      setEmployeeSearchTerm(`${emp.full_name}${emp.file_number ? ` (Leg. ${emp.file_number})` : ''}`);
+    } else {
+      setEmployeeSearchTerm(entry.employee_name);
+    }
+    setIsEmployeeDropdownOpen(false);
     setSelectedPositionId(entry.position_id);
     setStartTime(entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '06:00');
     setEndTime(entry.shift_end_time ? entry.shift_end_time.slice(0, 5) : '14:00');
@@ -498,7 +639,9 @@ export default function DailyEntryPage() {
     setPlusDeltaAmount(String(entry.plus_delta_amount || 0));
     setShuttlesCount(String(entry.shuttles_count || 0));
     setMealAllowanceCount(String(entry.meal_allowance_count || 0));
-    setIsDayOff(Boolean(entry.is_day_off));
+    const cnt = (entry as any).day_off_count ?? (entry.is_day_off ? 1 : 0);
+    setDayOffCount(String(cnt));
+    setIsDayOff(cnt !== 0);
     setAdvancePaymentAmount(String(entry.advance_payment_amount || 0));
     setFormError(null);
     setIsSlideoverOpen(true);
@@ -529,21 +672,29 @@ export default function DailyEntryPage() {
       setSubmittingEntry(true);
       setFormError(null);
 
-      // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName)
+      const vehiclesHandled = parseInt(formVehiclesHandled, 10) || 0;
+      const autoBonus = isBonusEligible
+        ? calculateBonusForVehicles(vehiclesHandled, unionScales, formWorkDate)
+        : 0;
+
+      // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName, vehiclesHandled)
       const workLog = await getOrCreateDailyWorkLog(
         formWorkDate,
         formClientId,
         formLocationId || null,
-        formVesselName || null
+        formVesselName || null,
+        vehiclesHandled
       );
 
       const reg = parseFloat(regularHours) || 0;
       const ot50 = parseFloat(ot50Hours) || 0;
       const ot100 = parseFloat(ot100Hours) || 0;
       const plus = parseFloat(plusDeltaAmount) || 0;
-      const shuttles = parseInt(shuttlesCount, 10) || 0;
+      // Remises enabled strictly if Encargado PF
+      const shuttles = isEncargadoPF ? (parseInt(shuttlesCount, 10) || 0) : 0;
       const meals = parseInt(mealAllowanceCount, 10) || 0;
       const advance = parseFloat(advancePaymentAmount) || 0;
+      const francoCount = parseInt(dayOffCount, 10) || (isDayOff ? 1 : 0);
 
       const payload = {
         employee_id: selectedEmployeeId,
@@ -559,8 +710,9 @@ export default function DailyEntryPage() {
         shuttles_count: shuttles,
         meal_allowance_count: meals,
         advance_payment_amount: advance,
-        is_day_off: isDayOff,
-        bonus_applied_amount: 0,
+        is_day_off: francoCount !== 0,
+        day_off_count: francoCount,
+        bonus_applied_amount: autoBonus,
         is_approved: formIsApproved,
       };
 
@@ -574,28 +726,36 @@ export default function DailyEntryPage() {
         setEditingEntryId(null);
         setSelectedEmployeeId('');
         setEmployeeSearchTerm('');
+        setIsEmployeeDropdownOpen(false);
         setPlusDeltaAmount('0');
         setShuttlesCount('0');
         setMealAllowanceCount('0');
         setIsDayOff(false);
+        setDayOffCount('0');
         setAdvancePaymentAmount('0');
         setIsManualHoursMode(false);
       } else {
         await addStaffEntryToWorkLog(workLog.id, payload);
         const empObj = employees.find((e) => e.id === selectedEmployeeId);
         const empName = empObj ? empObj.full_name : 'Personal';
+        const bonusMsg = autoBonus > 0
+          ? ` (Plus CCT: $ ${autoBonus.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`
+          : '';
         setNotification({
           type: 'success',
-          message: `Horas cargadas exitosamente para ${empName}.`,
+          message: `Horas cargadas exitosamente para ${empName}${bonusMsg}.`,
         });
 
-        // Reset employee fields & keep slideover open for next employee
+        // Retain session data (Date, Client, Location, Vessel, Hours, Holiday)
+        // Reset only employee-specific fields to allow rapid entry of the next team member
         setSelectedEmployeeId('');
         setEmployeeSearchTerm('');
+        setIsEmployeeDropdownOpen(false);
         setPlusDeltaAmount('0');
         setShuttlesCount('0');
         setMealAllowanceCount('0');
         setIsDayOff(false);
+        setDayOffCount('0');
         setAdvancePaymentAmount('0');
         setIsManualHoursMode(false);
       }
@@ -655,9 +815,16 @@ export default function DailyEntryPage() {
           <div className="font-semibold text-[#0B1C30] text-xs">
             <div>{row.original.client_name}</div>
             {row.original.vessel_name && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5">
-                🚢 {row.original.vessel_name}
-              </span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+                  🚢 {row.original.vessel_name}
+                </span>
+                {row.original.total_vehicles_handled > 0 && (
+                  <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1 py-0.5 rounded border border-slate-200" title="Unidades operadas">
+                    {row.original.total_vehicles_handled} u.
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ),
@@ -798,19 +965,40 @@ export default function DailyEntryPage() {
         },
       },
       {
-        accessorKey: 'is_day_off',
+        accessorKey: 'day_off_count',
         header: () => <span className="block text-center">Franco</span>,
-        cell: ({ getValue }) => (
-          <div className="text-center text-xs">
-            {getValue() ? (
-              <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                Sí
-              </span>
-            ) : (
-              <span className="text-slate-300">No</span>
-            )}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const count = row.original.day_off_count;
+          if (count > 0) {
+            return (
+              <div className="text-center text-xs">
+                <span
+                  className="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-300"
+                  title="Franco Generado (+1)"
+                >
+                  +{count}
+                </span>
+              </div>
+            );
+          }
+          if (count < 0) {
+            return (
+              <div className="text-center text-xs">
+                <span
+                  className="inline-flex items-center gap-0.5 bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-blue-300"
+                  title="Franco Tomado (-1)"
+                >
+                  {count}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <div className="text-center text-xs text-slate-300">
+              -
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'advance_payment_amount',
@@ -831,6 +1019,18 @@ export default function DailyEntryPage() {
           const val = Number(getValue());
           return (
             <div className="text-right font-mono text-xs text-slate-700">
+              {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'bonus_applied_amount',
+        header: () => <span className="block text-right">Plus CCT</span>,
+        cell: ({ getValue }) => {
+          const val = Number(getValue());
+          return (
+            <div className="text-right font-mono text-xs font-semibold text-emerald-700">
               {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
             </div>
           );
@@ -1290,7 +1490,20 @@ export default function DailyEntryPage() {
                   <td className="p-3.5 text-center font-mono text-sm text-amber-900">
                     {totals.viandas}
                   </td>
-                  <td className="p-3.5 text-center text-slate-400">-</td>
+                  <td className="p-3.5 text-center font-mono text-xs">
+                    {totals.francosGenerados > 0 || totals.francosTomados > 0 ? (
+                      <div className="flex flex-col items-center leading-tight">
+                        {totals.francosGenerados > 0 && (
+                          <span className="text-emerald-700 font-bold">+{totals.francosGenerados} gen</span>
+                        )}
+                        {totals.francosTomados > 0 && (
+                          <span className="text-blue-700 font-bold">-{totals.francosTomados} tom</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
+                  </td>
                   <td className="p-3.5 text-right font-mono text-sm text-slate-900">
                     $ {totals.anticipos.toLocaleString('es-AR')}
                   </td>
@@ -1490,6 +1703,75 @@ export default function DailyEntryPage() {
                     )}
                   </select>
                 </div>
+
+                {/* Campo Unidades Operadas (Buque) */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1" htmlFor="unidades-operadas">
+                      <Car className="h-3 w-3 text-[#1E5BB4]" />
+                      Unidades Operadas
+                    </label>
+                    {isBonusEligible && calculatedBonus > 0 && (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Nivel CCT aplicado: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 }).format(calculatedBonus)}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    id="unidades-operadas"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Ej: 1800"
+                    value={formVehiclesHandled}
+                    data-testid="daily-entry-input-vehicles-handled"
+                    onChange={(e) => setFormVehiclesHandled(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Cantidad de vehículos movilizados en el buque. El sistema asigna automáticamente el nivel salarial de convenio para los puestos habilitados.
+                  </p>
+                </div>
+
+                {/* Checkbox Feriado Manual / Forzar al 100% */}
+                <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer select-none bg-amber-50 hover:bg-amber-100/70 p-2.5 rounded-lg border border-amber-200 transition-colors">
+                    <input
+                      type="checkbox"
+                      data-testid="daily-entry-checkbox-forced-holiday"
+                      checked={formIsForcedHoliday}
+                      onChange={(e) => {
+                        setFormIsForcedHoliday(e.target.checked);
+                        setIsManualHoursMode(false);
+                      }}
+                      className="h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-0 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-amber-700" />
+                        Feriado / Forzar al 100%
+                      </span>
+                      <span className="text-[11px] text-amber-800">
+                        Liquida todas las horas del turno con recargo del 100% (prioridad absoluta).
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Banner if Holiday detected via API and not manually forced */}
+                  {!formIsForcedHoliday && detectedHoliday && (
+                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 flex items-start gap-2 shadow-xs">
+                      <span className="text-sm">🇦🇷</span>
+                      <div>
+                        <span className="font-bold block">
+                          Feriado Nacional ({detectedHoliday.type}): {detectedHoliday.reason}
+                        </span>
+                        <span className="text-[11px] text-blue-700">
+                          Detectado automáticamente por calendario oficial. Horas computadas al 100%.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Group 1: Empleado & Puesto */}
@@ -1499,17 +1781,98 @@ export default function DailyEntryPage() {
                   Datos del Operario
                 </h4>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">Empleado *</label>
+                {/* Buscador Predictivo (Typeahead) para Empleado */}
+                <div className="space-y-1.5 relative" ref={employeeDropdownRef}>
+                  <label className="text-xs font-bold text-slate-700 block">Empleado / Operario *</label>
+
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="text"
+                      data-testid="daily-entry-input-employee-search"
+                      placeholder="Buscar por nombre, legajo o DNI..."
+                      value={employeeSearchTerm}
+                      onFocus={() => setIsEmployeeDropdownOpen(true)}
+                      onChange={(e) => {
+                        setEmployeeSearchTerm(e.target.value);
+                        setIsEmployeeDropdownOpen(true);
+                        // If typed term doesn't match selected employee, keep state responsive
+                      }}
+                      className="w-full pl-9 pr-9 p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
+                      autoComplete="off"
+                    />
+                    {employeeSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEmployeeId('');
+                          setEmployeeSearchTerm('');
+                          setIsEmployeeDropdownOpen(false);
+                        }}
+                        className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Limpiar búsqueda"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown list of matches */}
+                  {isEmployeeDropdownOpen && (
+                    <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 z-50 divide-y divide-slate-100">
+                      {filteredEmployeesForSelect.length === 0 ? (
+                        <div className="p-3 text-xs text-slate-500 text-center">
+                          No se encontraron empleados coincidentes con &quot;{employeeSearchTerm}&quot;
+                        </div>
+                      ) : (
+                        filteredEmployeesForSelect.map((emp) => {
+                          const isSelected = emp.id === selectedEmployeeId;
+                          return (
+                            <div
+                              key={emp.id}
+                              onClick={() => handleEmployeeChange(emp.id)}
+                              className={`p-2.5 text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                                isSelected ? 'bg-sky-50 text-[#1E5BB4] font-bold' : 'hover:bg-slate-50 text-[#0B1C30]'
+                              }`}
+                            >
+                              <div className="flex flex-col gap-0.5">
+                                <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                  <span>{emp.full_name}</span>
+                                  {emp.file_number && (
+                                    <span className="bg-slate-100 text-slate-700 text-[10px] font-mono px-1.5 py-0.2 rounded border border-slate-200">
+                                      Leg. {emp.file_number}
+                                    </span>
+                                  )}
+                                </div>
+                                {emp.national_id && (
+                                  <span className="text-[11px] text-slate-500 font-mono">
+                                    DNI {emp.national_id}
+                                  </span>
+                                )}
+                              </div>
+                              {isSelected && (
+                                <Check className="h-4 w-4 text-[#1E5BB4] shrink-0" />
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {/* Hidden select for backwards test compatibility */}
                   <select
                     value={selectedEmployeeId}
                     data-testid="daily-entry-select-employee"
                     onChange={(e) => handleEmployeeChange(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
-                    required
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
                   >
                     <option value="">Seleccionar Empleado...</option>
-                    {filteredEmployeesForSelect.map((emp) => (
+                    {employees.map((emp) => (
                       <option key={emp.id} value={emp.id}>
                         {emp.file_number ? `[Leg. ${emp.file_number}] ` : ''}
                         {emp.full_name} {emp.national_id ? `(DNI: ${emp.national_id})` : ''}
@@ -1519,7 +1882,14 @@ export default function DailyEntryPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">Función / Puesto *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 block">Función / Puesto *</label>
+                    {isBonusEligible && (
+                      <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+                        Aplica escala vehicular CCT
+                      </span>
+                    )}
+                  </div>
                   <select
                     value={selectedPositionId}
                     data-testid="daily-entry-select-position"
@@ -1674,18 +2044,32 @@ export default function DailyEntryPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <Car className="h-3.5 w-3.5 text-purple-600" />
-                      Remises
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                        <Car className="h-3.5 w-3.5 text-purple-600" />
+                        Remises (Cant.)
+                      </label>
+                      {!isEncargadoPF && (
+                        <span className="text-[10px] text-slate-400 font-normal italic">
+                          Solo Encargado
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="number"
                       min="0"
                       step="1"
+                      disabled={!isEncargadoPF}
                       data-testid="daily-entry-input-shuttles"
                       value={shuttlesCount}
                       onChange={(e) => setShuttlesCount(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
+                      placeholder={isEncargadoPF ? '0' : 'N/A'}
+                      className={`w-full p-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] ${
+                        !isEncargadoPF
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                          : 'bg-white text-[#0B1C30] border-slate-300'
+                      }`}
+                      title={!isEncargadoPF ? 'El campo Remises solo está habilitado para el puesto Encargado' : 'Cantidad de remises'}
                     />
                   </div>
 
@@ -1734,21 +2118,104 @@ export default function DailyEntryPage() {
                   </div>
                 </div>
 
-                {/* Franco switch / checkbox */}
-                <div className="pt-2 border-t border-slate-100">
-                  <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-2.5 rounded-lg border border-slate-200 transition-colors">
-                    <input
-                      type="checkbox"
-                      data-testid="daily-entry-checkbox-day-off"
-                      checked={isDayOff}
-                      onChange={(e) => setIsDayOff(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-[#1E5BB4] focus:ring-0 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-slate-800 block">Día de Franco Trabajado</span>
-                      <span className="text-[11px] text-slate-500">Marca si el operario cumplió guardia en día libre</span>
+                {/* Gestión de Francos por Cantidad (+1 / -1) */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-[#1E5BB4]" />
+                      Gestión de Francos (Cantidad)
+                    </label>
+                    <span className="text-[11px] font-medium text-slate-500">
+                      {dayOffCount === '1' || dayOffCount === '+1' ? (
+                        <span className="text-emerald-700 font-bold">Genera Franco (+1)</span>
+                      ) : dayOffCount === '-1' ? (
+                        <span className="text-blue-700 font-bold">Toma Franco (-1)</span>
+                      ) : (
+                        'Sin Franco (0)'
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Botón rápido -1 */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDayOffCount('-1');
+                        setIsDayOff(true);
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                        dayOffCount === '-1'
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                          : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                      }`}
+                    >
+                      -1 (Toma Franco)
+                    </button>
+
+                    {/* Botón rápido 0 */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDayOffCount('0');
+                        setIsDayOff(false);
+                      }}
+                      className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                        dayOffCount === '0' || !dayOffCount
+                          ? 'bg-slate-700 text-white border-slate-800 shadow-xs'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      0
+                    </button>
+
+                    {/* Botón rápido +1 */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDayOffCount('1');
+                        setIsDayOff(true);
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                        dayOffCount === '1' || dayOffCount === '+1'
+                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                          : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                      }`}
+                    >
+                      +1 (Genera Franco)
+                    </button>
+
+                    {/* Input numérico directo */}
+                    <div className="w-16">
+                      <input
+                        type="number"
+                        step="1"
+                        data-testid="daily-entry-input-day-off"
+                        value={dayOffCount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setDayOffCount(val);
+                          setIsDayOff((parseInt(val, 10) || 0) !== 0);
+                        }}
+                        className="w-full p-1.5 text-center bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-[#0B1C30] focus:ring-2 focus:ring-[#1E5BB4] focus:outline-none"
+                        title="Cantidad de francos (+1 / -1 / 0)"
+                      />
                     </div>
-                  </label>
+                  </div>
+
+                  {/* Hidden checkbox for backwards test compatibility */}
+                  <input
+                    type="checkbox"
+                    data-testid="daily-entry-checkbox-day-off"
+                    checked={isDayOff}
+                    onChange={(e) => {
+                      setIsDayOff(e.target.checked);
+                      setDayOffCount(e.target.checked ? '1' : '0');
+                    }}
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
                 </div>
               </div>
 

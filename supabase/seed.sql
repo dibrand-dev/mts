@@ -144,7 +144,20 @@ BEGIN
     CROSS JOIN public.hour_types ht
     ON CONFLICT (client_id, position_id, hour_type_id, effective_from) DO UPDATE SET
         hourly_rate = EXCLUDED.hourly_rate;
+
+    -- Seed Union Bonus Scales (Escala Dinámica CCT Bonificación Vehicular)
+    INSERT INTO public.union_bonus_scales (min_vehicles, max_vehicles, bonus_amount, effective_from)
+    SELECT v.min_v, v.max_v, v.bonus, CURRENT_DATE
+    FROM (VALUES
+        (0, 1499, 88200.48),
+        (1500, 1999, 102015.99),
+        (2000, 2499, 118540.55),
+        (2500, 2999, 135065.11),
+        (3000, 99999, 155000.00)
+    ) AS v(min_v, max_v, bonus)
+    WHERE NOT EXISTS (SELECT 1 FROM public.union_bonus_scales LIMIT 1);
 END $$;
+
 
 
 

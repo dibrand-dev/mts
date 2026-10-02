@@ -314,3 +314,51 @@ export function exportPayrollToCSV(records: PayrollRecord[], startDate: string, 
   link.click();
   document.body.removeChild(link);
 }
+
+export interface LiquidationFlatRecord {
+  employeeName: string;
+  regularHours: number;
+  overtime50Hours: number;
+  overtime100Hours: number;
+  vehicleBonus: number;
+}
+
+/**
+ * Genera el reporte plano oficial para la contadora / liquidación mensual de sueldos.
+ * Cumple estrictamente con las columnas requeridas (DoD):
+ * Empleado | Horas Normales | Horas 50% | Horas 100% | Plus por Vehículos
+ */
+export function exportLiquidationFlatCSV(
+  records: LiquidationFlatRecord[],
+  periodLabel?: string
+) {
+  const headers = [
+    'Empleado',
+    'Horas Normales',
+    'Horas 50%',
+    'Horas 100%',
+    'Plus por Vehículos',
+  ];
+
+  const rows = records.map((r) => [
+    `"${r.employeeName.replace(/"/g, '""')}"`,
+    r.regularHours,
+    r.overtime50Hours,
+    r.overtime100Hours,
+    r.vehicleBonus,
+  ]);
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const filename = periodLabel
+    ? `Liquidacion_${periodLabel}.csv`
+    : 'Liquidacion_Sueldos.csv';
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+

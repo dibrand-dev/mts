@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   Clock,
   Layers,
-  Briefcase
+  Briefcase,
+  Car,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -36,6 +37,7 @@ import {
   CommercialRateGroup,
 } from '@/lib/services/rates';
 import { ClientServiceRatesTab } from '@/components/rates/ClientServiceRatesTab';
+import { UnionBonusScalesTab } from '@/components/rates/UnionBonusScalesTab';
 
 export default function RatesPage() {
   const queryClient = useQueryClient();
@@ -63,9 +65,10 @@ export default function RatesPage() {
   const clients = mainData?.clients || [];
   const positions = mainData?.positions || [];
 
-  // Active Tab: hourly vs services
-  const [activeTab, setActiveTab] = useState<'hourly' | 'services'>('hourly');
+  // Active Tab: hourly vs services vs union-scales
+  const [activeTab, setActiveTab] = useState<'hourly' | 'services' | 'union-scales'>('hourly');
   const [servicesCount, setServicesCount] = useState<number | null>(null);
+  const [unionScalesCount, setUnionScalesCount] = useState<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -444,6 +447,31 @@ export default function RatesPage() {
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('union-scales')}
+          data-testid="rates-tab-union-scales"
+          className={`flex items-center gap-2 pb-3 px-3 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'union-scales'
+              ? 'border-[#1E5BB4] text-[#1E5BB4]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Car className="h-4 w-4" />
+          <span>Escalas CCT (Vehículos)</span>
+          {unionScalesCount !== null && (
+            <span
+              className={`ml-1 text-xs px-2 py-0.5 rounded-full ${
+                activeTab === 'union-scales'
+                  ? 'bg-sky-100 text-sky-800 font-bold'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {unionScalesCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {activeTab === 'services' ? (
@@ -451,6 +479,11 @@ export default function RatesPage() {
           clients={clients}
           onNotify={showNotification}
           onCountChange={setServicesCount}
+        />
+      ) : activeTab === 'union-scales' ? (
+        <UnionBonusScalesTab
+          onNotify={showNotification}
+          onCountChange={setUnionScalesCount}
         />
       ) : (
         <>

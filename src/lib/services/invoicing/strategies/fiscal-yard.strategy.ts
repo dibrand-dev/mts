@@ -1,4 +1,13 @@
-import { ProformaStrategy, ProformaCalculationContext, ProformaCalculationResult, ProformaCalculationItem, CalculatedShiftAuditItem } from '../types';
+import { 
+  ProformaStrategy, 
+  ProformaCalculationContext, 
+  ProformaCalculationResult, 
+  ProformaCalculationItem, 
+  CalculatedShiftAuditItem,
+  FiscalYardShiftRow,
+  FiscalYardPositionSummary,
+  FiscalYardPayload 
+} from '../types';
 import { fetchClientRatesContext, formatDatesSpan } from '../helpers';
 import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '@/lib/services/daily-entries';
 
@@ -18,7 +27,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const shuttleRate = ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ?? 35594.34;
     const discountPct = inputDiscount !== undefined ? inputDiscount : 3.0;
 
-    // 2. Fetch approved shifts
+    // 2. Fetch approved shifts strictly from daily_staff_entries
     const billingShifts = await getStaffEntriesForClientAndPeriod(clientId, fromDate, toDate, { onlyApproved: true });
     const shifts = billingShifts.records;
     const unapprovedCount = billingShifts.unapprovedCount;
@@ -29,43 +38,47 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const expoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.is_export_day);
     const yardShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.is_export_day);
 
-    // Encargado vs Apuntador in Yard
+    const encargadoShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => s.position_name.toLowerCase().includes('encargad'));
+    const apuntadorShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => !s.position_name.toLowerCase().includes('encargad'));
+
+    // Encargado totals
     let yard_enc_reg = 0;
     let yard_enc_ot50 = 0;
     let yard_enc_ot100 = 0;
+    for (const s of encargadoShifts) {
+      yard_enc_reg += s.regular_hours;
+      yard_enc_ot50 += s.overtime_50_hours;
+      yard_enc_ot100 += s.overtime_100_hours;
+    }
+
+    // Apuntador totals
     let yard_ap_reg = 0;
     let yard_ap_ot50 = 0;
     let yard_ap_ot100 = 0;
-
-    for (const s of yardShifts) {
-      const isEnc = s.position_name.toLowerCase().includes('encargad');
-      if (isEnc) {
-        yard_enc_reg += s.regular_hours;
-        yard_enc_ot50 += s.overtime_50_hours;
-        yard_enc_ot100 += s.overtime_100_hours;
-      } else {
-        yard_ap_reg += s.regular_hours;
-        yard_ap_ot50 += s.overtime_50_hours;
-        yard_ap_ot100 += s.overtime_100_hours;
-      }
+    for (const s of apuntadorShifts) {
+      yard_ap_reg += s.regular_hours;
+      yard_ap_ot50 += s.overtime_50_hours;
+      yard_ap_ot100 += s.overtime_100_hours;
     }
 
-    // Default to authentic figures if zero shifts in period
-    const y_enc_reg_hs = yard_enc_reg || 80.0;
-    const y_enc_ot50_hs = yard_enc_ot50 || 18.0;
-    const y_enc_ot100_hs = yard_enc_ot100 || 0.0;
+    // Round accumulated hours
+    yard_enc_reg = Math.round(yard_enc_reg * 100) / 100;
+    yard_enc_ot50 = Math.round(yard_enc_ot50 * 100) / 100;
+    yard_enc_ot100 = Math.round(yard_enc_ot100 * 100) / 100;
 
-    const y_ap_reg_hs = yard_ap_reg || 1048.0;
-    const y_ap_ot50_hs = yard_ap_ot50 || 264.0;
-    const y_ap_ot100_hs = yard_ap_ot100 || 0.0;
+    yard_ap_reg = Math.round(yard_ap_reg * 100) / 100;
+    yard_ap_ot50 = Math.round(yard_ap_ot50 * 100) / 100;
+    yard_ap_ot100 = Math.round(yard_ap_ot100 * 100) / 100;
 
-    const imp_y_enc_reg = Math.round(y_enc_reg_hs * encargadoRates.REGULAR * 100) / 100;
-    const imp_y_enc_ot50 = Math.round(y_enc_ot50_hs * encargadoRates.OVERTIME_50 * 100) / 100;
-    const imp_y_enc_ot100 = Math.round(y_enc_ot100_hs * encargadoRates.OVERTIME_100 * 100) / 100;
+    // Financial calculation for Encargado
+    const imp_y_enc_reg = Math.round(yard_enc_reg * encargadoRates.REGULAR * 100) / 100;
+    const imp_y_enc_ot50 = Math.round(yard_enc_ot50 * encargadoRates.OVERTIME_50 * 100) / 100;
+    const imp_y_enc_ot100 = Math.round(yard_enc_ot100 * encargadoRates.OVERTIME_100 * 100) / 100;
 
-    const imp_y_ap_reg = Math.round(y_ap_reg_hs * apuntadorRates.REGULAR * 100) / 100;
-    const imp_y_ap_ot50 = Math.round(y_ap_ot50_hs * apuntadorRates.OVERTIME_50 * 100) / 100;
-    const imp_y_ap_ot100 = Math.round(y_ap_ot100_hs * apuntadorRates.OVERTIME_100 * 100) / 100;
+    // Financial calculation for Apuntador
+    const imp_y_ap_reg = Math.round(yard_ap_reg * apuntadorRates.REGULAR * 100) / 100;
+    const imp_y_ap_ot50 = Math.round(yard_ap_ot50 * apuntadorRates.OVERTIME_50 * 100) / 100;
+    const imp_y_ap_ot100 = Math.round(yard_ap_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
 
     const subtotal_personal_plazoleta = Math.round(
       (imp_y_enc_reg + imp_y_enc_ot50 + imp_y_enc_ot100 + imp_y_ap_reg + imp_y_ap_ot50 + imp_y_ap_ot100) * 100
@@ -73,11 +86,130 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const bonif_plazoleta = Math.round(subtotal_personal_plazoleta * (discountPct / 100) * 100) / 100;
     const subtotal_plazoleta_bonif = Math.round((subtotal_personal_plazoleta - bonif_plazoleta) * 100) / 100;
 
-    // Transporte (TTE)
-    const total_viajes_tte = shuttleTripsManual ?? (billingShifts.totalShuttles || 56);
+    // 4. Mapeo a Slots PF 01 al PF 13 (Plantilla Excel Histórica)
+    // Agrupar turnos de apuntadores por operario
+    const apuntadorOperariosMap = new Map<string, { employeeName: string; shifts: ClientShiftRecordForBilling[] }>();
+    for (const s of apuntadorShifts) {
+      const key = s.employee_id || s.employee_name;
+      if (!apuntadorOperariosMap.has(key)) {
+        apuntadorOperariosMap.set(key, { employeeName: s.employee_name, shifts: [] });
+      }
+      apuntadorOperariosMap.get(key)!.shifts.push(s);
+    }
+
+    const uniqueApuntadores = Array.from(apuntadorOperariosMap.entries());
+    const totalSlotsCount = Math.max(13, uniqueApuntadores.length);
+    const slots_summary: FiscalYardPositionSummary[] = [];
+    const employeeToSlotMap = new Map<string, string>();
+
+    for (let i = 0; i < totalSlotsCount; i++) {
+      const slotNumStr = String(i + 1).padStart(2, '0');
+      const slotCode = `APUNTADOR PF ${slotNumStr}`;
+      const isBonificado = (i === 12); // PF 13 en el Excel histórico de CAT figura como BONIFICADO
+
+      if (i < uniqueApuntadores.length) {
+        const [empKey, empData] = uniqueApuntadores[i];
+        employeeToSlotMap.set(empKey, slotCode);
+
+        let reg = 0;
+        let ot50 = 0;
+        let ot100 = 0;
+        for (const sh of empData.shifts) {
+          reg += sh.regular_hours;
+          ot50 += sh.overtime_50_hours;
+          ot100 += sh.overtime_100_hours;
+        }
+        reg = Math.round(reg * 100) / 100;
+        ot50 = Math.round(ot50 * 100) / 100;
+        ot100 = Math.round(ot100 * 100) / 100;
+        const tot = Math.round((reg + ot50 + ot100) * 100) / 100;
+        const sub = Math.round((reg * apuntadorRates.REGULAR + ot50 * apuntadorRates.OVERTIME_50 + ot100 * apuntadorRates.OVERTIME_100) * 100) / 100;
+
+        slots_summary.push({
+          slotCode,
+          positionTitle: 'Apuntador Plazoleta',
+          assignedEmployee: empData.employeeName,
+          totalRegular: reg,
+          totalOt50: ot50,
+          totalOt100: ot100,
+          totalHours: tot,
+          regularRate: apuntadorRates.REGULAR,
+          ot50Rate: apuntadorRates.OVERTIME_50,
+          ot100Rate: apuntadorRates.OVERTIME_100,
+          subtotalAmount: sub,
+          isBonificado,
+        });
+      } else {
+        // Slot sin operario asignado en el período (mantiene la grilla fija 13x1 del Excel)
+        slots_summary.push({
+          slotCode,
+          positionTitle: 'Apuntador Plazoleta',
+          assignedEmployee: isBonificado ? 'BONIFICADO' : '(Sin turno asignado)',
+          totalRegular: 0,
+          totalOt50: 0,
+          totalOt100: 0,
+          totalHours: 0,
+          regularRate: apuntadorRates.REGULAR,
+          ot50Rate: apuntadorRates.OVERTIME_50,
+          ot100Rate: apuntadorRates.OVERTIME_100,
+          subtotalAmount: 0,
+          isBonificado,
+        });
+      }
+    }
+
+    // Encargado summary slot
+    const encargadoSummary: FiscalYardPositionSummary = {
+      slotCode: 'ENCARGADO PF',
+      positionTitle: 'Encargado Plazoleta',
+      assignedEmployee: encargadoShifts[0]?.employee_name || '(Sin turno asignado)',
+      totalRegular: yard_enc_reg,
+      totalOt50: yard_enc_ot50,
+      totalOt100: yard_enc_ot100,
+      totalHours: Math.round((yard_enc_reg + yard_enc_ot50 + yard_enc_ot100) * 100) / 100,
+      regularRate: encargadoRates.REGULAR,
+      ot50Rate: encargadoRates.OVERTIME_50,
+      ot100Rate: encargadoRates.OVERTIME_100,
+      subtotalAmount: Math.round((imp_y_enc_reg + imp_y_enc_ot50 + imp_y_enc_ot100) * 100) / 100,
+      isBonificado: false,
+    };
+
+    // 5. Construcción de Filas de Turnos Diarios (Panel Derecho del Excel)
+    const shift_rows: FiscalYardShiftRow[] = yardShifts.map((s: ClientShiftRecordForBilling) => {
+      const isEnc = s.position_name.toLowerCase().includes('encargad');
+      const empKey = s.employee_id || s.employee_name;
+      const slotPos = isEnc ? 'ENCARGADO PF' : (employeeToSlotMap.get(empKey) || 'APUNTADOR PF');
+      const timeRange = s.shift_start_time && s.shift_end_time
+        ? `${s.shift_start_time.slice(0, 5)}-${s.shift_end_time.slice(0, 5)}`
+        : '07:00-17:00';
+      const tot = Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100;
+
+      return {
+        slotPosition: slotPos,
+        employeeName: s.employee_name,
+        workDate: s.work_date,
+        timeRange,
+        totalHours: tot,
+        regularHours: s.regular_hours,
+        overtime50Hours: s.overtime_50_hours,
+        overtime100Hours: s.overtime_100_hours,
+        isBonificado: slotPos === 'APUNTADOR PF 13',
+      };
+    });
+
+    // Ordenar turnos cronológicamente y luego por puesto
+    shift_rows.sort((a, b) => {
+      if (a.workDate !== b.workDate) return a.workDate.localeCompare(b.workDate);
+      return a.slotPosition.localeCompare(b.slotPosition);
+    });
+
+    // 6. Transporte (TTE)
+    const total_viajes_tte = shuttleTripsManual !== undefined 
+      ? shuttleTripsManual 
+      : (billingShifts.totalShuttles || 0);
     const subtotal_transporte = Math.round(total_viajes_tte * shuttleRate * 100) / 100;
 
-    // Control EXPO (Factor 0.90 de coparticipación / asignación CAT)
+    // 7. Control EXPO (Factor 0.90 de coparticipación / asignación CAT)
     let expo_reg = 0;
     let expo_ot50 = 0;
     let expo_ot100 = 0;
@@ -88,12 +220,12 @@ export const fiscalYardStrategy: ProformaStrategy = {
     }
 
     const expo_factor = 0.90;
-    const expo_base_reg = expo_reg || 176.0;
-    const expo_base_ot50 = expo_ot50 || 38.0;
-    const expo_base_ot100 = expo_ot100 || 0.0;
+    const expo_base_reg = Math.round(expo_reg * 100) / 100;
+    const expo_base_ot50 = Math.round(expo_ot50 * 100) / 100;
+    const expo_base_ot100 = Math.round(expo_ot100 * 100) / 100;
 
-    const expo_fact_reg = Math.round(expo_base_reg * expo_factor * 100) / 100; // 158.4
-    const expo_fact_ot50 = Math.round(expo_base_ot50 * expo_factor * 100) / 100; // 34.2
+    const expo_fact_reg = Math.round(expo_base_reg * expo_factor * 100) / 100;
+    const expo_fact_ot50 = Math.round(expo_base_ot50 * expo_factor * 100) / 100;
     const expo_fact_ot100 = Math.round(expo_base_ot100 * expo_factor * 100) / 100;
 
     const imp_expo_reg = Math.round(expo_fact_reg * apuntadorRates.REGULAR * 100) / 100;
@@ -101,7 +233,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const imp_expo_ot100 = Math.round(expo_fact_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
     const subtotal_expo = Math.round((imp_expo_reg + imp_expo_ot50 + imp_expo_ot100) * 100) / 100;
 
-    // Consolidado General
+    // 8. Consolidado General
     const total_neto = Math.round((subtotal_plazoleta_bonif + subtotal_transporte + subtotal_expo) * 100) / 100;
     const total_iva = Math.round(total_neto * 0.21 * 100) / 100;
     const total_factura = Math.round((total_neto + total_iva) * 100) / 100;
@@ -113,19 +245,25 @@ export const fiscalYardStrategy: ProformaStrategy = {
         unit_price: subtotal_plazoleta_bonif,
         subtotal: subtotal_plazoleta_bonif,
       },
-      {
+    ];
+
+    if (total_viajes_tte > 0 || subtotal_transporte > 0) {
+      items.push({
         description: `Transporte Personal Plazoleta Fiscal (${total_viajes_tte} viajes a $ ${shuttleRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`,
         quantity: total_viajes_tte,
         unit_price: shuttleRate,
         subtotal: subtotal_transporte,
-      },
-      {
+      });
+    }
+
+    if (subtotal_expo > 0 || expo_base_reg > 0) {
+      items.push({
         description: `Control EXPO Plazoleta Fiscal (${operationDates}) - Asignación ${(expo_factor * 100).toFixed(0)}%`,
         quantity: 1,
         unit_price: subtotal_expo,
         subtotal: subtotal_expo,
-      },
-    ];
+      });
+    }
 
     const shift_breakdown: CalculatedShiftAuditItem[] = shifts.map((shift: ClientShiftRecordForBilling) => {
       const isEnc = shift.position_name.toLowerCase().includes('encargad');
@@ -151,7 +289,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
       'PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANÁLISIS DE ESTRUCTURAS DE COSTOS',
     ];
 
-    const payload = {
+    const payload: FiscalYardPayload = {
       proforma_type: 'fiscal_yard',
       operation_dates: operationDates,
       client_name: ratesCtx.clientName,
@@ -165,8 +303,8 @@ export const fiscalYardStrategy: ProformaStrategy = {
         total_factura,
       },
       tab_plazoleta: {
-        horas_encargado: { norm: y_enc_reg_hs, ot50: y_enc_ot50_hs, ot100: y_enc_ot100_hs },
-        horas_apuntador: { norm: y_ap_reg_hs, ot50: y_ap_ot50_hs, ot100: y_ap_ot100_hs },
+        horas_encargado: { norm: yard_enc_reg, ot50: yard_enc_ot50, ot100: yard_enc_ot100 },
+        horas_apuntador: { norm: yard_ap_reg, ot50: yard_ap_ot50, ot100: yard_ap_ot100 },
         tarifas_encargado: encargadoRates,
         tarifas_apuntador: apuntadorRates,
         importes: {
@@ -180,6 +318,14 @@ export const fiscalYardStrategy: ProformaStrategy = {
           bonificacion: bonif_plazoleta,
           subtotal_bonificado: subtotal_plazoleta_bonif,
         },
+        shift_rows,
+        slots_summary: [encargadoSummary, ...slots_summary],
+        totales_grilla: {
+          total_regular: Math.round((yard_enc_reg + yard_ap_reg) * 100) / 100,
+          total_ot50: Math.round((yard_enc_ot50 + yard_ap_ot50) * 100) / 100,
+          total_ot100: Math.round((yard_enc_ot100 + yard_ap_ot100) * 100) / 100,
+          total_hours: Math.round((yard_enc_reg + yard_ap_reg + yard_enc_ot50 + yard_ap_ot50 + yard_enc_ot100 + yard_ap_ot100) * 100) / 100,
+        },
       },
       tab_transporte: {
         viajes: total_viajes_tte,
@@ -192,7 +338,13 @@ export const fiscalYardStrategy: ProformaStrategy = {
         horas_facturadas: { norm: expo_fact_reg, ot50: expo_fact_ot50, ot100: expo_fact_ot100 },
         importes: { reg: imp_expo_reg, ot50: imp_expo_ot50, ot100: imp_expo_ot100, total: subtotal_expo },
       },
+      notes,
     };
+
+    const finalTotalRegular = Math.round((yard_enc_reg + yard_ap_reg + expo_fact_reg) * 100) / 100;
+    const finalTotalOt50 = Math.round((yard_enc_ot50 + yard_ap_ot50 + expo_fact_ot50) * 100) / 100;
+    const finalTotalOt100 = Math.round((yard_enc_ot100 + yard_ap_ot100 + expo_fact_ot100) * 100) / 100;
+    const finalTotalHours = Math.round((finalTotalRegular + finalTotalOt50 + finalTotalOt100) * 100) / 100;
 
     return {
       client_id: clientId,
@@ -203,12 +355,10 @@ export const fiscalYardStrategy: ProformaStrategy = {
       proforma_type: 'fiscal_yard',
       total_shifts: shifts.length,
       unapproved_shifts_count: unapprovedCount,
-      total_regular_hours: Math.round((y_enc_reg_hs + y_ap_reg_hs + expo_fact_reg) * 100) / 100,
-      total_overtime_50_hours: Math.round((y_enc_ot50_hs + y_ap_ot50_hs + expo_fact_ot50) * 100) / 100,
-      total_overtime_100_hours: Math.round((y_enc_ot100_hs + y_ap_ot100_hs + expo_fact_ot100) * 100) / 100,
-      total_hours: Math.round(
-        (y_enc_reg_hs + y_ap_reg_hs + expo_fact_reg + y_enc_ot50_hs + y_ap_ot50_hs + expo_fact_ot50 + y_enc_ot100_hs + y_ap_ot100_hs + expo_fact_ot100) * 100
-      ) / 100,
+      total_regular_hours: finalTotalRegular,
+      total_overtime_50_hours: finalTotalOt50,
+      total_overtime_100_hours: finalTotalOt100,
+      total_hours: finalTotalHours,
       subtotal: total_neto,
       discount_percentage: discountPct,
       discount_amount: bonif_plazoleta,
@@ -223,3 +373,4 @@ export const fiscalYardStrategy: ProformaStrategy = {
     };
   },
 };
+
