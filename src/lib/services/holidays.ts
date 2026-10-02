@@ -21,8 +21,7 @@ const STATIC_ARGENTINE_HOLIDAYS: Record<string, string> = {
 
 /**
  * Fetches national holidays for a given year.
- * Primary: https://nolaborables.com.ar/api/v2/feriados/{year}
- * Backup: https://api.argentinadatos.com/v1/feriados/{year}
+ * Primary: https://api.argentinadatos.com/v1/feriados/{year}
  * Fallback: Static official calendar
  */
 export async function fetchHolidaysForYear(year: number): Promise<Record<string, Holiday>> {
@@ -32,41 +31,7 @@ export async function fetchHolidaysForYear(year: number): Promise<Record<string,
 
   const result: Record<string, Holiday> = {};
 
-  // 1. Try Nolaborables API
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const res = await fetch(`https://nolaborables.com.ar/api/v2/feriados/${year}`, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        for (const item of data) {
-          const m = String(item.mes).padStart(2, '0');
-          const d = String(item.dia).padStart(2, '0');
-          const dateStr = `${year}-${m}-${d}`;
-          result[dateStr] = {
-            date: dateStr,
-            reason: item.motivo || 'Feriado Nacional',
-            type: item.tipo || 'inamovible',
-          };
-        }
-        if (Object.keys(result).length > 0) {
-          memoryCache.set(year, result);
-          return result;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`[Holidays] Nolaborables failed for year ${year}, falling back to ArgentinaDatos:`, err);
-  }
-
-  // 2. Try ArgentinaDatos API (Backup)
+  // 1. Primary: ArgentinaDatos API
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -97,10 +62,10 @@ export async function fetchHolidaysForYear(year: number): Promise<Record<string,
       }
     }
   } catch (err) {
-    console.warn(`[Holidays] ArgentinaDatos failed for year ${year}, falling back to static list:`, err);
+    console.warn(`[Holidays] ArgentinaDatos unavailable for year ${year}, using static calendar fallback:`, err);
   }
 
-  // 3. Fallback: Static holidays
+  // 2. Fallback: Static official calendar
   for (const [mmdd, name] of Object.entries(STATIC_ARGENTINE_HOLIDAYS)) {
     const dateStr = `${year}-${mmdd}`;
     result[dateStr] = {
