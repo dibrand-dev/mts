@@ -28,12 +28,14 @@ export default function DashboardPage() {
     proformas: true,
     facturasEnviar: true,
     facturasCobrar: true,
+    serviciosVencer: true,
   });
 
   const [openAccordionsFlujo, setOpenAccordionsFlujo] = useState<Record<string, boolean>>({
     proformasFlujo: true,
     facturasEnviarFlujo: true,
     facturasCobrarFlujo: true,
+    serviciosPagarFlujo: true,
   });
 
   const toggleAccordionDash = (key: string) => {
@@ -342,6 +344,138 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* Accordion 4: Servicios a Vencer */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+              <button
+                type="button"
+                className="w-full px-5 py-4 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                onClick={() => toggleAccordionDash('serviciosVencer')}
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-[#ba1a1a]" />
+                  <h3 className="text-base sm:text-lg font-bold text-[#0b1c30]">Servicios a Vencer</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 bg-red-50 text-red-700 rounded-full">
+                    4 por vencer
+                  </span>
+                  <span className="hidden sm:inline-block text-xs font-semibold text-slate-500 font-mono">
+                    Total: $95,000.00
+                  </span>
+                </div>
+                <ChevronDown
+                  className={`h-5 w-5 text-slate-400 transition-transform duration-200 ${
+                    openAccordionsDash.serviciosVencer ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {openAccordionsDash.serviciosVencer && (
+                <div className="border-t border-slate-200 overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="py-3 px-5">Servicio / Proveedor</th>
+                        <th className="py-3 px-5">Detalle Operativo</th>
+                        <th className="py-3 px-5 font-mono">Vencimiento</th>
+                        <th className="py-3 px-5">Estado</th>
+                        <th className="py-3 px-5 text-right font-mono pr-5">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">
+                          Telecom Argentina / Fibertel
+                        </td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">
+                          Conectividad Fibra Óptica Muelle y Base Central
+                        </td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">18/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> En 11 días
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $28,500.00
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">
+                          Edenor S.A.
+                        </td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">
+                          Suministro Eléctrico Plazoleta Fiscal
+                        </td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">12/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Próximo (5 días)
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $42,300.00
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">
+                          Remises Zárate-Campana
+                        </td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">
+                          Traslado de Personal Operativo y Encargados
+                        </td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">09/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 inline-flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Vence en 2 días
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $14,200.00
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">
+                          AySA - Saneamiento
+                        </td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">
+                          Agua y Saneamiento Base Zárate
+                        </td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">24/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> En término
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $10,000.00
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50/80 font-semibold border-t border-slate-200">
+                        <td colSpan={4} className="py-3 px-5 text-xs text-slate-600 font-bold uppercase">
+                          Total Servicios a Pagar
+                        </td>
+                        <td className="py-3 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $95,000.00
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs text-slate-500">
+                      Vencimiento y control de egresos proyectados en servicios operativos.
+                    </span>
+                    <Link
+                      href="/cash-flow"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1E5BB4] hover:text-[#002d67] transition-colors"
+                    >
+                      Ver en Flujo de Caja <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         </div>
       )}
@@ -439,8 +573,111 @@ export default function DashboardPage() {
                   </p>
                   <h3 className="text-xl font-bold font-mono text-[#0b1c30]">$95,000</h3>
                 </div>
-                <span className="text-[11px] text-slate-400">Servicios operativos</span>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordionFlujo('serviciosPagarFlujo')}
+                    className="text-[#0EA5E9] hover:text-[#004392] text-xs font-bold hover:underline inline-flex items-center group cursor-pointer"
+                  >
+                    Ver Detalles{' '}
+                    <ArrowRight className="h-3 w-3 ml-1 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                </div>
               </article>
+            </div>
+
+            {/* Accordion Flujo: Servicios a Pagar */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+              <button
+                type="button"
+                className="w-full px-5 py-4 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                onClick={() => toggleAccordionFlujo('serviciosPagarFlujo')}
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-[#ba1a1a]" />
+                  <h3 className="text-base sm:text-lg font-bold text-[#0b1c30]">Detalle de Servicios a Pagar / Vencer</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 bg-red-50 text-red-700 rounded-full font-mono">
+                    $95,000.00
+                  </span>
+                </div>
+                <ChevronDown
+                  className={`h-5 w-5 text-slate-400 transition-transform duration-200 ${
+                    openAccordionsFlujo.serviciosPagarFlujo ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {openAccordionsFlujo.serviciosPagarFlujo && (
+                <div className="border-t border-slate-200 overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="py-3 px-5">Servicio / Proveedor</th>
+                        <th className="py-3 px-5">Detalle Operativo</th>
+                        <th className="py-3 px-5 font-mono">Vencimiento</th>
+                        <th className="py-3 px-5">Estado</th>
+                        <th className="py-3 px-5 text-right font-mono pr-5">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Telecom Argentina / Fibertel</td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">Conectividad Fibra Óptica Muelle y Base Central</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">18/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> En 11 días
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$28,500.00</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Edenor S.A.</td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">Suministro Eléctrico Plazoleta Fiscal</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">12/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Próximo (5 días)
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$42,300.00</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">Remises Zárate-Campana</td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">Traslado de Personal Operativo y Encargados</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">09/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 inline-flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Vence en 2 días
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$14,200.00</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-[#0b1c30]">AySA - Saneamiento</td>
+                        <td className="py-3.5 px-5 text-slate-500 text-xs">Agua y Saneamiento Base Zárate</td>
+                        <td className="py-3.5 px-5 font-mono text-xs text-slate-600">24/10/2026</td>
+                        <td className="py-3.5 px-5">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> En término
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">$10,000.00</td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50/80 font-semibold border-t border-slate-200">
+                        <td colSpan={4} className="py-3 px-5 text-xs text-slate-600 font-bold uppercase">
+                          Total Servicios a Pagar
+                        </td>
+                        <td className="py-3 px-5 text-right font-mono font-bold text-[#0b1c30] pr-5">
+                          $95,000.00
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
 

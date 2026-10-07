@@ -10,7 +10,8 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:status": "supabase status",
-    "cron:invoices": "tsx scripts/check-due-invoices.ts"
+    "cron:invoices": "tsx scripts/check-due-invoices.ts",
+    "validate:okf": "node --experimental-strip-types scripts/validate-okf.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

@@ -198,6 +198,7 @@ export default function DailyEntryPage() {
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState<string>('');
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState<boolean>(false);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
+  const employeeSearchInputRef = useRef<HTMLInputElement>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string>('');
   const [startTime, setStartTime] = useState<string>('06:00');
   const [endTime, setEndTime] = useState<string>('14:00');
@@ -743,21 +744,21 @@ export default function DailyEntryPage() {
           : '';
         setNotification({
           type: 'success',
-          message: `Horas cargadas exitosamente para ${empName}${bonusMsg}.`,
+          message: `Horas cargadas exitosamente para ${empName}${bonusMsg}. Puedes continuar cargando el siguiente operario.`,
         });
 
-        // Retain session data (Date, Client, Location, Vessel, Hours, Holiday)
-        // Reset only employee-specific fields to allow rapid entry of the next team member
+        // Retain ALL shift parameters, date, client, location, vessel, vehicles, position, hours, concepts & extras
+        // Reset ONLY the employee selection and search term for rapid consecutive entry
         setSelectedEmployeeId('');
         setEmployeeSearchTerm('');
         setIsEmployeeDropdownOpen(false);
-        setPlusDeltaAmount('0');
-        setShuttlesCount('0');
-        setMealAllowanceCount('0');
-        setIsDayOff(false);
-        setDayOffCount('0');
-        setAdvancePaymentAmount('0');
-        setIsManualHoursMode(false);
+
+        // Auto-focus employee search input so user can immediately type the next team member
+        setTimeout(() => {
+          if (employeeSearchInputRef.current) {
+            employeeSearchInputRef.current.focus();
+          }
+        }, 50);
       }
 
       invalidateAll();
@@ -1790,6 +1791,7 @@ export default function DailyEntryPage() {
                       <Search className="h-4 w-4" />
                     </div>
                     <input
+                      ref={employeeSearchInputRef}
                       type="text"
                       data-testid="daily-entry-input-employee-search"
                       placeholder="Buscar por nombre, legajo o DNI..."
