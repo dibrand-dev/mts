@@ -18,6 +18,11 @@ export const metadata: Metadata = {
     default: "MTS Gestión Logística - Sistema Operativo",
   },
   description: "Plataforma integral de gestión operativa, facturación y liquidación para MTS Logística",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 
