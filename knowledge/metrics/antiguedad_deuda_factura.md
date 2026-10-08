@@ -22,7 +22,7 @@ $$\text{Días de Mora} = \begin{cases}
 
 ## Segmentación por Estados
 * **Al Día / En Término:** $\text{Días para Vencimiento} > 3$.
-* **Próximo Vence:** $0 < \text{Días para Vencimiento} \le 3$ (Dispara aviso `upcoming_due`).
+* **Próximo Vence:** $0 < \text{Días para Vencimiento} \le 3$ (Dispara aviso `upcoming_3_days`).
 * **Vence Hoy:** $\text{Días para Vencimiento} = 0$ (Dispara aviso `due_today`).
 * **En Mora:** $\text{Días de Mora} > 0$ (Dispara aviso `overdue` cada `OVERDUE_CADENCE_DAYS` días).
 

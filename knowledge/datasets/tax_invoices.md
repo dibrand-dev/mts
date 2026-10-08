@@ -26,7 +26,7 @@ Almacena los comprobantes fiscales definitivos emitidos ante el fisco (ARCA) aso
 | `status` | `ENUM` | Sí | `pending` o `paid`. |
 | `invoice_date` | `DATE` | Sí | Fecha fiscal de emisión del comprobante. |
 | `last_reminder_sent_at` | `TIMESTAMPTZ` | No | Timestamp del último correo de reclamo emitido vía Brevo. |
-| `last_reminder_type` | `TEXT` | No | Tipo del último aviso (`upcoming_due`, `due_today`, `overdue`). |
+| `last_reminder_type` | `TEXT` | No | Tipo del último aviso (`upcoming_3_days`, `due_today`, `overdue`). |
 | `reminders_sent_count` | `INTEGER` | Sí | Contador acumulado de alertas despachadas (`DEFAULT 0`). |
 
 ## Relaciones

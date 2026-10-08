@@ -44,4 +44,5 @@ next-env.d.ts
 supabase/.temp/
 supabase/.branches/
 stitch_mts/
+docs/
 

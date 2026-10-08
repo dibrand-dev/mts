@@ -35,6 +35,7 @@ Entidades transaccionales y catálogos de base de datos (PostgreSQL 17):
 * [union_bonus_scales](./datasets/union_bonus_scales.md) — Escalas salariales dinámicas por volumen de vehículos operados (CCT).
 * [client_position_rates](./datasets/client_position_rates.md) — Tarifario comercial cruzado (Cliente x Puesto x Tipo de Hora).
 * [cash_movements](./datasets/cash_movements.md) — Registro de ingresos y egresos de caja operativa.
+* [projected_obligations](./datasets/projected_obligations.md) — Compromisos financieros futuros y proyecciones de tesorería.
 
 ---
 

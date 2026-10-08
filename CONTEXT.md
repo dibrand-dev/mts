@@ -1,6 +1,7 @@
 # CONTEXT.md - MTS Gestión Logística (Dibrand)
 
-Este documento es la **fuente única de verdad** sobre el estado, arquitectura, diseño y reglas del proyecto MTS Gestión Logística. Se actualiza continuamente ante cualquier cambio.
+Este documento es la **bitácora técnica y de arquitectura viva** sobre el estado, infraestructura, diseño y evolución técnica de MTS Gestión Logística.
+> **Fuente de Verdad Funcional:** Para el desglose detallado de reglas de negocio, métricas y runbooks operativos bajo el estándar Open Knowledge Format (OKF), consultar la base de conocimiento en [`knowledge/index.md`](file:///home/carluis/Work/dibrand/mts/knowledge/index.md).
 
 ---
 
@@ -21,7 +22,7 @@ Plataforma web moderna orientada a automatizar la gestión operativa diaria, fac
 ---
 
 ## 🎨 Diseño e Interfaz (UI/UX - `stitch_mts`)
-El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md`:
+El diseño se rige estrictamente por la especificación de [`stitch_mts/DESIGN.md`](file:///home/carluis/Work/dibrand/mts/stitch_mts/DESIGN.md):
 - **App Shell Layout Inmutable:** Sidebar maestro (`#0F2547`) y TopNav superior. El contenido dinámico se inyecta en `MainContent` (`#F8FAFC`).
 - **Alto Contraste B2B:** Formularios/Tarjetas de carga rápida en celeste (`#0EA5E9`) con inputs en blanco puro (`#FFFFFF`) y bordes oscuros (`#0F2547`).
 - **Paneles Slideovers:** Creación y edición masiva mediante paneles laterales superpuestos para no perder contexto de las grillas.
@@ -30,6 +31,7 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 ---
 
 ## 🗄️ Esquema de Base de Datos PostgreSQL (100% Inglés)
+*Especificación modular detallada por dataset en [`knowledge/datasets/`](file:///home/carluis/Work/dibrand/mts/knowledge/datasets/) y tipado en [`src/types/database.types.ts`](file:///home/carluis/Work/dibrand/mts/src/types/database.types.ts).*
 
 ### 1. Perfiles y Enums
 - `profiles`: `id`, `full_name`, `email`, `role` (`admin` | `accounting_auditor`), `is_active` (`BOOLEAN DEFAULT true`), `created_at`.
@@ -39,50 +41,53 @@ El diseño se rige estrictamente por la especificación de `stitch_mts/DESIGN.md
 - `proforma_concept_type`: `'general_hours'`, `'shuttles'`, `'export_tallymen'`.
 - `proforma_status`: `'draft'`, `'sent'`, `'approved'`, `'invoiced'`, `'paid'`, `'overdue'`.
 - `invoice_status`: `'pending'`, `'paid'`.
+- `cash_movement_type`: `'income'`, `'expense'`.
 - `expense_type`: `'fixed'`, `'variable'`.
 
 ### 2. Catálogos y Mantenedores (ABMs)
-- `clients`: `company_name`, `tax_id` (CUIT), `billing_email`, `phone_number`, `payment_due_days` (default 15), `is_active`.
-- `locations`: `code` (ej. LOC-001), `name`, `port_city`, `capacity`, `status`.
-- `positions`: `name`, `requires_vehicle_bonus`.
-- `hour_types`: `code` (REGULAR, OVERTIME_50, OVERTIME_100), `description`.
-- `client_position_rates`: `client_id`, `position_id`, `hour_type_id`, `hourly_rate`, `effective_from`.
-- `union_bonus_scales`: `min_vehicles`, `max_vehicles`, `bonus_amount`, `effective_from`.
-- `employees`: `national_id` (DNI), `file_number` (Legajo), `tax_id` (CUIL), `full_name`, `default_position_id`, `phone_number`, `status`.
+- `clients`: `company_name`, `tax_id` (CUIT), `billing_email`, `phone_number`, `payment_due_days` (default 15), `overdue_reminder_cadence_days` (default 3), `is_active`.
+- `locations`: `code` (ej. LOC-001), `name`, `port_city`, `status`.
+- `positions`: `name`, `requires_vehicle_bonus`, más tarifas de sueldo de bolsillo (`hourly_rate_regular`, `hourly_rate_overtime_50`, `hourly_rate_overtime_100`, `salary_effective_from`).
+- `hour_types`: `code` (`REGULAR`, `OVERTIME_50`, `OVERTIME_100`), `description`.
+- `client_position_rates`: `client_id`, `position_id`, `hour_type_id`, `hourly_rate`, `effective_from` *(Tarifario comercial facturable)*.
+- `union_bonus_scales`: `min_vehicles`, `max_vehicles`, `bonus_amount`, `effective_from` *(Escalas CCT por buque)*.
+- `employees`: `national_id` (DNI), `file_number` (Legajo), `tax_id` (CUIL), `full_name`, `default_position_id`, `phone_number`, `status`, más valores de sueldo individuales (`hourly_rate_regular`, `hourly_rate_overtime_50`, `hourly_rate_overtime_100`, `salary_effective_from`).
 - `expense_categories`: `name`, `type`.
 - `expenses`: `category_id`, `description`, `amount`, `expense_date`.
 - `cash_movements`: `movement_date`, `type` (`income` | `expense`), `area`, `detail`, `amount`, `created_by`.
+- `projected_obligations`: `due_date`, `type`, `category` (ARCA, ARBA, Sueldos, Proveedores), `title`, `amount`, `status`, `notes`.
 
 ### 3. Operaciones Diarias (Transaccional)
 - `daily_work_logs`: `work_date`, `client_id`, `location_id`, `total_vehicles_handled`, `is_export_day` (boolean), `logged_by`.
-- `daily_staff_entries`: `daily_work_log_id`, `employee_id`, `position_id`, `shift_start_time`, `shift_end_time`, `regular_hours`, `overtime_50_hours`, `overtime_100_hours`, `shuttles_count`, `plus_delta_amount`, `meal_allowance_count`, `advance_payment_amount`, `is_day_off`, `bonus_applied_amount`.
+- `daily_staff_entries`: `daily_work_log_id`, `employee_id`, `position_id`, `shift_start_time`, `shift_end_time`, `regular_hours`, `overtime_50_hours`, `overtime_100_hours`, `shuttles_count`, `plus_delta_amount`, `meal_allowance_count`, `advance_payment_amount`, `is_day_off`, `day_off_count`, `bonus_applied_amount`.
 
-### 4. Facturación, Proformas y ARCA
+### 4. Facturación, Proformas, ARCA y Cobranzas
 - `proformas`: `proforma_number`, `client_id`, `fortnight_period` (ej. '2026-08-Q1'), `concept_type`, `status`, `subtotal`, `total`, `public_token` (UUID público), `issue_date`, `due_date`.
 - `proforma_details`: `proforma_id`, `description`, `quantity`, `unit_price`, `subtotal`.
-- `tax_invoices`: `proforma_id`, `invoice_number`, `pdf_storage_path` (Bucket Supabase), `invoiced_amount`, `status` (`pending` | `paid`), `invoice_date`.
+- `tax_invoices`: `proforma_id`, `invoice_number`, `pdf_storage_path` (Bucket Supabase), `invoiced_amount`, `status` (`pending` | `paid`), `invoice_date`, `last_reminder_sent_at`, `last_reminder_type`, `reminders_sent_count`.
+- `invoice_reminder_logs`: `tax_invoice_id`, `reminder_type` (`upcoming_3_days`, `due_today`, `overdue`), `sent_date`, `recipient_email`, `status`, con clave única `UNIQUE(tax_invoice_id, reminder_type, sent_date)`.
 
 ---
 
 ## ⚡ Reglas Críticas de Negocio
+*El detalle de políticas operacionales y cálculos está centralizado en [`knowledge/rules/`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/) y [`knowledge/metrics/`](file:///home/carluis/Work/dibrand/mts/knowledge/metrics/).*
 
 1. **Ordenamiento de Grillas Operativas:**
    - Toda tabla de horas trabajadas se ordena estrictamente por `work_date ASC` (fecha de la operación), ignorando `created_at`.
-2. **Retención de Memoria en Carga Diaria:**
+2. **Retención de Memoria en Carga Diaria:** ([`retencion_memoria_carga_diaria.md`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/retencion_memoria_carga_diaria.md))
    - Al guardar un empleado en un turno, se conservan fecha, cliente, ubicación y rango horario; solo se blanquea el selector de empleado (con Typeahead). Se limpia al presionar "Finalizar Turno".
-3. **Remises:**
+3. **Bonificación Gremial por Vehículos (CCT):** ([`bonificacion_gremial.md`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/bonificacion_gremial.md))
+   - Cálculo automático e invisible del plus salarial según `total_vehicles_handled` en buque para puestos con `requires_vehicle_bonus = true`.
+4. **División de Proformas Quincenales:** ([`cierre_quincenal_proformas.md`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/cierre_quincenal_proformas.md))
+   - Se generan 3 borradores por cliente y quincena (Q1 del 1-15 y Q2 del 16-fin de mes): `general_hours`, `shuttles` y `export_tallymen`.
+5. **Caducidad y Aprobación Tácita de Proforma:** ([`cierre_quincenal_proformas.md`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/cierre_quincenal_proformas.md))
+   - Pasa de `sent` a `approved` automáticamente tras 5 días corridos sin objeciones del cliente.
+6. **Control de Cobranzas Automáticas (API Brevo):** ([`control_vencimientos_brevo.md`](file:///home/carluis/Work/dibrand/mts/knowledge/rules/control_vencimientos_brevo.md))
+   - Cron diario a medianoche (00:00 hs ART = 03:00 UTC) evaluando `payment_due_days`. Disparadores: -3 días (`upcoming_3_days`), Día 0 (`due_today`) y posvencimiento (`overdue`). Idempotencia con `invoice_reminder_logs`.
+7. **Remises:**
    - Se ingresan como cantidad (unidades) exclusivamente al encargado del turno.
-4. **Solapamiento de Horarios:**
+8. **Solapamiento de Horarios:**
    - Se permite cargar turnos superpuestos para el mismo operario en un mismo día.
-5. **División de Proformas (Plazoleta Fiscal):**
-   - Se generan 3 borradores por quincena: 
-     a) Horas trabajadas.
-     b) Remises utilizados.
-     c) Apuntadores asignados en días con `is_export_day = true`.
-6. **Caducidad de Proforma:**
-   - Pasa de `sent` a `approved` automáticamente tras 5 días corridos sin objeciones.
-7. **Control de Cobranzas (Cron Job 00:00 hs):**
-   - Evalúa `payment_due_days` del cliente vs. fecha de emisión de factura `pending` y envía alertas por Brevo a los -3 días, día 0 y posvencimiento.
 
 ---
 
@@ -94,18 +99,23 @@ src/
 │   ├── (dashboard)/                   # Route Group con App Shell compartida (Sidebar, TopNav, Footer)
 │   │   ├── layout.tsx                 # Contenedor maestro del Dashboard (Metadata: Tablero Principal)
 │   │   ├── page.tsx                   # Ruta raíz (/): Tablero Principal & Flujo de Caja (stitch_mts/Dashboard)
-│   │   ├── cash-flow/                 # /cash-flow (page.tsx, layout.tsx)
-│   │   ├── change-password/           # /change-password (page.tsx, layout.tsx)
-│   │   ├── clients/                   # /clients (page.tsx, layout.tsx)
-│   │   ├── daily-entry/               # /daily-entry (page.tsx, layout.tsx) - Retención de turno y Finalizar Turno
-│   │   ├── employees/                 # /employees (page.tsx, layout.tsx) - Filtro de fechas y auditoría quincenal
-│   │   ├── invoicing/                 # /invoicing (page.tsx, layout.tsx) - Proformas automáticas 100% transaccionales
-│   │   ├── locations/                 # /locations (page.tsx, layout.tsx)
-│   │   ├── payroll/                   # /payroll (page.tsx, layout.tsx)
-│   │   ├── positions/                 # /positions (page.tsx, layout.tsx) - CRUD de Puestos, asignación de personal y tarifas
-│   │   ├── rates/                     # /rates (page.tsx, layout.tsx)
-│   │   ├── reports/                   # /reports (page.tsx, layout.tsx)
-│   │   └── settings/                  # /settings (page.tsx, layout.tsx)
+│   │   ├── cash-flow/                 # /cash-flow - Movimientos de caja y conciliaciones
+│   │   │   └── projections/           # /cash-flow/projections - Proyecciones financieras con saldo dinámico
+│   │   ├── change-password/           # /change-password - Actualización de credenciales
+│   │   ├── clients/                   # /clients - ABM de Clientes y plazos de pago
+│   │   ├── daily-entry/               # /daily-entry - Carga diaria de horas con memoria de turno y buques
+│   │   ├── employees/                 # /employees - Personal, puestos asignados y auditoría de turnos
+│   │   ├── invoicing/                 # /invoicing - Emisión y liquidación transaccional de proformas
+│   │   │   └── due-reminders/         # /invoicing/due-reminders - Monitor y auditoría de cobranzas Brevo
+│   │   ├── locations/                 # /locations - Lugares de Trabajo portuarios
+│   │   ├── payroll/                   # /payroll - Liquidación de jornales y haberes
+│   │   ├── positions/                 # /positions - Puestos de Trabajo y tarifas salariales de bolsillo
+│   │   ├── rates/                     # /rates - Tarifario Comercial de Clientes y Escalas CCT
+│   │   ├── reports/                   # /reports - Centro de reportes y exportaciones
+│   │   ├── settings/                  # /settings - Parámetros generales y cadencia de mora
+│   │   └── users/                     # /users - Gestión de Usuarios, Roles (admin/contable) y estados
+│   ├── p/[token]/                     # Consulta pública de proformas sin login
+│   ├── proforma/[token]/              # Enlace alternativo público de proforma
 │   ├── login/
 │   │   ├── layout.tsx                 # Metadata: Iniciar Sesión
 │   │   └── page.tsx                   # Ruta /login aislada del App Shell
@@ -129,24 +139,29 @@ src/
 │   │   ├── clients.ts                 # CRUD de Clientes
 │   │   ├── daily-entries.ts           # Turnos, horas transaccionales y cálculo automático
 │   │   ├── employees.ts               # CRUD de Empleados y auditoría de horas
+│   │   ├── invoice-reminders.ts       # Cron y evaluación de vencimientos de facturas
 │   │   ├── invoicing.ts               # Proformas, facturación y cruce de tarifas
 │   │   ├── locations.ts               # CRUD de Lugares de Trabajo
-│   │   ├── positions.ts               # CRUD de Puestos de Trabajo, asignación de personal y tarifas
-│   │   └── rates.ts                   # CRUD de Tarifario Comercial y tipos de hora
+│   │   ├── positions.ts               # CRUD de Puestos de Trabajo, asignación de personal y salarios
+│   │   ├── projections.ts             # Obligaciones proyectadas y saldos acumulados
+│   │   ├── rates.ts                   # CRUD de Tarifario Comercial y tipos de hora
+│   │   └── union-scales.ts            # Escalas CCT y bonificaciones
 │   └── supabase/
 │       ├── client.ts                  # createBrowserClient (@supabase/ssr)
 │       └── server.ts                  # createServerClient (@supabase/ssr)
 └── types/
     └── database.types.ts              # Tipos TypeScript derivados de la DB en inglés
 supabase/
-├── migrations/
-│   └── 20260801000000_initial_schema.sql  # Esquema relacional SQL completo + RLS
+├── migrations/                        # Migraciones SQL incrementales con RLS
 └── config.toml                        # Configuración de Supabase Local
 ```
 
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-10-07:** Implementación de **Sueldos Desacoplados del Tarifario Comercial y Alineación de Documentación (OKF)**:
+  1. **Valores Hora de Bolsillo para Liquidación de Personal:** Migraciones `20261007200000_add_salary_rates_to_positions.sql` y `20261007210000_add_salary_rates_to_employees.sql` incorporando columnas de sueldo (`hourly_rate_regular`, `hourly_rate_overtime_50`, `hourly_rate_overtime_100`, `salary_effective_from`) pre-sembradas con los salarios oficiales de Excel (Encargados: $10.777,06 / $16.165,60 / $21.554,13; Apuntadores: $8.983,68 / $13.475,53 / $17.967,37). Desacopla el costo salarial interno del tarifario comercial facturado a clientes (`client_position_rates`).
+  2. **Especialización y Alineación Documental (Opción 1):** Establecimiento formal de [`knowledge/`](file:///home/carluis/Work/dibrand/mts/knowledge) como fuente única de verdad funcional (Open Knowledge Format) y `CONTEXT.md` como bitácora técnica de arquitectura y changelog. Normalización de identificadores de recordatorios Brevo a `upcoming_3_days`, documentación del dataset `projected_obligations` y adición del seguimiento de francos compensatorios (`day_off_count`).
 - **2026-10-02:** Implementación del **Control Automático de Vencimientos de Facturas y Cron de Cobranzas (API Brevo)**:
   1. **Ejecución Diaria Programada (00:00 hs ART):** Configuración de `vercel.json` con cron diario a las 03:00 UTC (00:00 hs Buenos Aires) apuntando a `/api/cron/check-due-invoices` (con alias `/api/cron/invoice-reminders`), y Supabase Edge Function en `supabase/functions/check-due-invoices/index.ts`.
   2. **Motor de Evaluación de Vencimientos y Cruce Comercial (`src/lib/services/invoice-reminders.ts`):** Lectura transaccional de comprobantes fiscales `tax_invoices` con estado `pending`, cálculo de fecha de vencimiento sumando los `payment_due_days` del cliente correspondiente y evaluación precisa de diferencias de días.

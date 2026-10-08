@@ -16,7 +16,7 @@ Describe el circuito operativo para la cobranza de facturas y el control de las 
 1. Diariamente a las 00:00 hs ART, el cron job de Vercel/Supabase invoca `/api/cron/check-due-invoices`.
 2. El servicio evalúa todas las facturas en estado `pending` dentro de [tax_invoices](../datasets/tax_invoices.md).
 3. Contrasta la fecha de emisión más los días pactados del cliente según [Control de Vencimientos y Cobranzas (Brevo)](../rules/control_vencimientos_brevo.md).
-4. Emite los correos correspondientes según el tramo de vencimiento o mora (`upcoming_due`, `due_today`, `overdue`).
+4. Emite los correos correspondientes según el tramo de vencimiento o mora (`upcoming_3_days`, `due_today`, `overdue`).
 
 ## Gestión Manual y Simulación (Panel Web)
 1. En **Facturación** (`/invoicing`), el usuario administrador o contable presiona el botón **Control de Vencimientos**.

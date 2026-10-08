@@ -22,6 +22,7 @@ El dominio de **Flujo de Caja** supervisa la liquidez operativa diaria y las pro
 * [cash_movements](../datasets/cash_movements.md) — Movimientos históricos y del día a día.
 * [tax_invoices](../datasets/tax_invoices.md) — Facturas pendientes proyectadas como ingresos futuros.
 * [proformas](../datasets/proformas.md) — Proformas en estado `approved` o `sent` computables como cobranza esperada.
+* [projected_obligations](../datasets/projected_obligations.md) — Compromisos fiscales y operativos programados a futuro.
 
 ## Métricas
 * [Antigüedad de Deuda y Estado de Mora](../metrics/antiguedad_deuda_factura.md) — Estimación del momento real de cobro según comportamiento histórico.

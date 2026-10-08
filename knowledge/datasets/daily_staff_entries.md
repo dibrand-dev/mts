@@ -32,6 +32,7 @@ Almacena el detalle individual de cada colaborador asignado a un turno dentro de
 | `meal_allowance_count` | `INTEGER` | Sí | Viáticos de comida otorgados. |
 | `advance_payment_amount` | `NUMERIC(12,2)` | Sí | Adelantos de sueldo entregados en mano. |
 | `is_day_off` | `BOOLEAN` | Sí | Flag si el operario prestó servicio en día de descanso. |
+| `day_off_count` | `INTEGER` | Sí | Balance de francos compensatorios (`DEFAULT 0`): `+1` genera franco, `-1` toma franco, `0` jornada normal. |
 | `bonus_applied_amount` | `NUMERIC(12,2)` | Sí | Monto calculado automáticamente según escala gremial. |
 
 ## Reglas de Integridad
