@@ -144,7 +144,15 @@ export function Sidebar() {
           {navItems
             .filter((item) => !item.adminOnly || userRole === 'admin')
             .map((item) => {
-              const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+              const isActive = (() => {
+                if (item.href === '/') return pathname === '/';
+                if (pathname === item.href) return true;
+                const hasMoreSpecificMatch = navItems.some(
+                  (other) => other.href !== item.href && other.href.startsWith(item.href) && pathname.startsWith(other.href)
+                );
+                if (hasMoreSpecificMatch) return false;
+                return pathname.startsWith(item.href + '/');
+              })();
               const Icon = item.icon;
               return (
                 <Link

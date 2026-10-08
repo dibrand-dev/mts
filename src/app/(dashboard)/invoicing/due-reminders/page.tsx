@@ -163,7 +163,7 @@ export default function DueRemindersPage() {
             is_overdue: daysDiff > 0,
             should_send_today: evaluation.shouldSend,
             status_category: statusCategory,
-            badge_text: evaluation.badgeText || (daysDiff > 0 ? `VENCIDA (+${daysDiff}D)` : `FALTAN ${-daysDiff}D`),
+            badge_text: evaluation.badgeText || (daysDiff > 0 ? `Vencida (+${daysDiff} d)` : daysDiff === 0 ? 'Vence hoy' : `Faltan ${-daysDiff} d`),
             reason: evaluation.reason,
           };
         });
@@ -248,14 +248,14 @@ export default function DueRemindersPage() {
               <span>Volver a Facturación</span>
             </Link>
             <span>/</span>
-            <span className="text-[#0B1C30]">Cobranzas Automatizadas</span>
+            <span className="text-[#0B1C30]">Avisos de Cobranza</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B1C30] flex items-center gap-2.5">
             <Clock className="h-7 w-7 text-[#0EA5E9]" />
-            <span>Control de Vencimientos de Facturas</span>
+            <span>Control de Vencimientos y Cobranzas</span>
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Gestión transaccional de cobranzas, cron nocturno diario (00:00 hs) y recordatorios automáticos por API Brevo.
+            Seguimiento de plazos de pago por cliente y envío programado de recordatorios por correo electrónico.
           </p>
         </div>
 
@@ -265,7 +265,7 @@ export default function DueRemindersPage() {
             onClick={loadData}
             disabled={loading}
             className="p-2.5 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-            title="Actualizar datos"
+            title="Actualizar listado"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -277,12 +277,12 @@ export default function DueRemindersPage() {
             className="w-full sm:w-auto bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold text-sm px-5 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Send className="h-4 w-4" />
-            <span>Ejecutar Control / Simular</span>
+            <span>Revisar y Enviar Recordatorios</span>
           </button>
         </div>
       </header>
 
-      {/* Cron Job Info Banner */}
+      {/* Info Banner */}
       <section className="bg-gradient-to-r from-[#0F2547] to-[#1E5BB4] rounded-2xl p-5 sm:p-6 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="h-12 w-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-sky-300 shrink-0">
@@ -290,20 +290,20 @@ export default function DueRemindersPage() {
           </div>
           <div className="space-y-1 text-sm">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-base">Cron Job Nocturno: 00:00 hs (ART / UTC-3)</span>
+              <span className="font-bold text-base">Envío Automático: Todos los días a medianoche (00:00 hs)</span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
                 ACTIVO
               </span>
             </div>
             <p className="text-sky-100 text-xs sm:text-sm leading-relaxed max-w-3xl">
-              Todas las noches a medianoche, el sistema evalúa las facturas en estado <strong className="text-white">Pendiente</strong>, calcula la fecha de vencimiento sumando los <strong className="text-white">Días de Vencimiento</strong> del cliente y dispara los correos correspondientes mediante la API de Brevo sin intervención manual.
+              Cada noche el sistema revisa las facturas pendientes de cobro, calcula la fecha de vencimiento según los días acordados con cada cliente y envía los correos de aviso de forma automática, sin requerir acciones manuales.
             </p>
           </div>
         </div>
 
         <div className="shrink-0 flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl border border-white/15 text-xs text-sky-100">
           <Calendar className="h-4 w-4 text-sky-300" />
-          <span>Hoy: <strong>{todayDate}</strong></span>
+          <span>Fecha de hoy: <strong>{todayDate}</strong></span>
         </div>
       </section>
 
@@ -312,7 +312,7 @@ export default function DueRemindersPage() {
         {/* Card 1: Total Pendiente */}
         <article className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Facturación Pendiente</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Facturación a Cobrar</span>
             <div className="text-2xl font-bold font-mono text-[#0B1C30] mt-1">
               ${totalPendingAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
             </div>
@@ -323,30 +323,30 @@ export default function DueRemindersPage() {
           </div>
         </article>
 
-        {/* Card 2: Próximo Vencimiento (-3 Días) */}
+        {/* Card 2: Por Vencer (3 Días) */}
         <article className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-600">Aviso Próximo (-3 Días)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-600">Por Vencer (en 3 Días)</span>
             <div className="text-2xl font-bold font-mono text-amber-600 mt-1">
               {countUpcoming}
             </div>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Vencen en 3 días exactos</span>
+            <span>Aviso preventivo listo</span>
             <Clock className="h-4 w-4 text-amber-500" />
           </div>
         </article>
 
-        {/* Card 3: Vencimiento Hoy (Día 0) */}
+        {/* Card 3: Vence Hoy */}
         <article className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Vencimiento Hoy (Día 0)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Vencen Hoy</span>
             <div className="text-2xl font-bold font-mono text-amber-700 mt-1">
               {countToday}
             </div>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Vencen en la fecha</span>
+            <span>Fecha límite cumplida</span>
             <AlertCircle className="h-4 w-4 text-amber-600" />
           </div>
         </article>
@@ -360,16 +360,16 @@ export default function DueRemindersPage() {
             </div>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Cadencia de reclamo activa</span>
+            <span>Pendientes de regularización</span>
             <TrendingDown className="h-4 w-4 text-rose-500" />
           </div>
         </article>
       </section>
 
-      {/* Filters Section (Sky Blue B2B Card) */}
+      {/* Filters Section */}
       <section className="bg-[#0EA5E9] rounded-xl p-4 sm:p-5 shadow-sm text-white space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-lg font-bold">Filtros de Control</h2>
+          <h2 className="text-lg font-bold">Filtrar Facturas</h2>
           <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
             <button
               type="button"
@@ -387,7 +387,7 @@ export default function DueRemindersPage() {
                 statusFilter === 'upcoming' ? 'bg-white text-[#0B1C30]' : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              -3 Días ({countUpcoming})
+              Por vencer en 3 días ({countUpcoming})
             </button>
             <button
               type="button"
@@ -396,7 +396,7 @@ export default function DueRemindersPage() {
                 statusFilter === 'today' ? 'bg-white text-[#0B1C30]' : 'bg-white/20 hover:bg-white/30 text-white'
               }`}
             >
-              Vence Hoy ({countToday})
+              Vencen hoy ({countToday})
             </button>
             <button
               type="button"
@@ -412,12 +412,12 @@ export default function DueRemindersPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
           <div className="sm:col-span-2 flex flex-col gap-1">
-            <label className="text-xs font-semibold">Buscar por Factura, Cliente o Correo</label>
+            <label className="text-xs font-semibold">Buscar por número de factura, cliente o correo de contacto</label>
             <div className="relative w-full">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Ej: FC-A-0001, CAT ARGENTINA, facturacion@..."
+                placeholder="Ej: FC-A-0001, CAT ARGENTINA, cobranzas@..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white text-[#0B1C30] rounded-lg pl-9 pr-3 py-2 text-sm border border-[#0F2547] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
@@ -427,7 +427,7 @@ export default function DueRemindersPage() {
 
           <div className="text-right flex items-center justify-end gap-2">
             <span className="text-xs text-white/90">
-              Mostrando <strong>{filteredInvoices.length}</strong> de {invoices.length} comprobantes
+              Mostrando <strong>{filteredInvoices.length}</strong> de {invoices.length} facturas
             </span>
           </div>
         </div>
@@ -437,10 +437,10 @@ export default function DueRemindersPage() {
       <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <h3 className="text-base font-bold text-[#0B1C30]">
-            Facturas Pendientes y Evaluación de Vencimiento
+            Facturas Pendientes y Plazos de Pago
           </h3>
-          <span className="text-xs text-slate-500 font-mono">
-            Cruce: Fecha Emisión + Días Cliente
+          <span className="text-xs text-slate-500">
+            Plazo de pago según acuerdo comercial con cada cliente
           </span>
         </div>
 
@@ -448,14 +448,14 @@ export default function DueRemindersPage() {
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
-                <th className="py-3 px-5">Factura #</th>
-                <th className="py-3 px-5">Cliente & Destinatario</th>
-                <th className="py-3 px-5 text-center">Emisión</th>
-                <th className="py-3 px-5 text-center">Plazo Cliente</th>
-                <th className="py-3 px-5 text-center">Vencimiento</th>
-                <th className="py-3 px-5 text-right">Importe</th>
-                <th className="py-3 px-5 text-center">Estado Cobranza</th>
-                <th className="py-3 px-5 text-center">Último Aviso</th>
+                <th className="py-3 px-5">N° Factura</th>
+                <th className="py-3 px-5">Cliente y Correo de Contacto</th>
+                <th className="py-3 px-5 text-center">Fecha Emisión</th>
+                <th className="py-3 px-5 text-center">Plazo Acordado</th>
+                <th className="py-3 px-5 text-center">Fecha Límite</th>
+                <th className="py-3 px-5 text-right">Importe a Cobrar</th>
+                <th className="py-3 px-5 text-center">Estado del Pago</th>
+                <th className="py-3 px-5 text-center">Último Aviso Enviado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -463,7 +463,7 @@ export default function DueRemindersPage() {
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto text-[#1E5BB4] mb-2" />
-                    Cargando facturas y evaluando vencimientos...
+                    Cargando facturas y verificando plazos de pago...
                   </td>
                 </tr>
               ) : filteredInvoices.length === 0 ? (
@@ -529,10 +529,12 @@ export default function DueRemindersPage() {
                         {inv.last_reminder_sent_at ? (
                           <div className="font-mono text-[11px]">
                             {inv.last_reminder_sent_at.split('T')[0]}
-                            <span className="block text-[10px] text-slate-400">({inv.reminders_sent_count} envíos)</span>
+                            <span className="block text-[10px] text-slate-400">
+                              ({inv.reminders_sent_count} {inv.reminders_sent_count === 1 ? 'aviso enviado' : 'avisos enviados'})
+                            </span>
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic">Nunca</span>
+                          <span className="text-slate-400 italic">Sin envíos aún</span>
                         )}
                       </td>
                     </tr>
@@ -550,21 +552,21 @@ export default function DueRemindersPage() {
           <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
             <h3 className="text-base font-bold text-[#0B1C30] flex items-center gap-2">
               <Mail className="h-4 w-4 text-[#1E5BB4]" />
-              <span>Historial Reciente de Envíos de Cobranza (Brevo)</span>
+              <span>Historial Reciente de Avisos Enviados a Clientes</span>
             </h3>
-            <span className="text-xs text-slate-500 font-mono">Últimos {logs.length} registros</span>
+            <span className="text-xs text-slate-500">Últimos {logs.length} avisos enviados</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                  <th className="py-2.5 px-5">Fecha Envío</th>
-                  <th className="py-2.5 px-5">Factura</th>
-                  <th className="py-2.5 px-5">Cliente & Destinatario</th>
-                  <th className="py-2.5 px-5 text-center">Tipo Recordatorio</th>
-                  <th className="py-2.5 px-5 text-center">Días Dif.</th>
-                  <th className="py-2.5 px-5 text-center">Estado</th>
+                  <th className="py-2.5 px-5">Fecha y Hora</th>
+                  <th className="py-2.5 px-5">N° Factura</th>
+                  <th className="py-2.5 px-5">Cliente y Destinatario</th>
+                  <th className="py-2.5 px-5 text-center">Motivo del Aviso</th>
+                  <th className="py-2.5 px-5 text-center">Días al Vencimiento</th>
+                  <th className="py-2.5 px-5 text-center">Resultado del Envío</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -582,13 +584,17 @@ export default function DueRemindersPage() {
                     </td>
                     <td className="py-2.5 px-5 text-center">
                       <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                        {log.reminder_type === 'upcoming_3_days' && 'Aviso -3 Días'}
-                        {log.reminder_type === 'due_today' && 'Vencimiento Hoy'}
-                        {log.reminder_type === 'overdue' && 'Factura Vencida'}
+                        {log.reminder_type === 'upcoming_3_days' && 'Aviso preventivo (3 días antes)'}
+                        {log.reminder_type === 'due_today' && 'Aviso de vencimiento hoy'}
+                        {log.reminder_type === 'overdue' && 'Reclamo de factura vencida'}
                       </span>
                     </td>
                     <td className="py-2.5 px-5 text-center font-mono font-bold">
-                      {log.days_difference >= 0 ? `+${log.days_difference}` : log.days_difference}d
+                      {log.days_difference === 0
+                        ? 'Hoy'
+                        : log.days_difference > 0
+                        ? `+${log.days_difference} d`
+                        : `${log.days_difference} d`}
                     </td>
                     <td className="py-2.5 px-5 text-center">
                       <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
@@ -598,7 +604,7 @@ export default function DueRemindersPage() {
                           ? 'bg-sky-100 text-sky-800'
                           : 'bg-rose-100 text-rose-800'
                       }`}>
-                        {log.status.toUpperCase()}
+                        {log.status === 'sent' ? 'Enviado' : log.status === 'mocked' ? 'Prueba' : 'Error'}
                       </span>
                     </td>
                   </tr>

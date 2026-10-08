@@ -73,9 +73,9 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
               <Clock className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Control Automático de Vencimientos</h2>
+              <h2 className="text-lg font-bold">Revisión y Envío de Avisos de Cobranza</h2>
               <p className="text-xs text-sky-200">
-                Cron nocturno (00:00 hs) y disparador inteligente de cobranzas vía Brevo
+                Control de plazos de pago y envío de recordatorios por correo a los clientes
               </p>
             </div>
           </div>
@@ -94,20 +94,20 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
             <ShieldCheck className="h-5 w-5 text-[#0EA5E9] shrink-0 mt-0.5" />
             <div className="text-xs space-y-1">
               <p className="font-bold text-[#0F2547]">
-                Programación Activa: Cron Job Nocturno (00:00 hs ART / 03:00 UTC)
+                Envío Automático Programado: Todos los días a medianoche (00:00 hs)
               </p>
               <p className="text-slate-600 leading-relaxed">
-                El sistema evalúa diariamente todas las facturas en estado <span className="font-semibold text-amber-700">Pendiente</span>, cruzando la fecha de emisión con el plazo comercial en días de cada cliente.
+                El sistema revisa a diario las facturas en estado <span className="font-semibold text-amber-700">Pendiente</span> y determina los avisos de pago según los días de crédito acordados con cada cliente:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-[11px]">
                 <div className="bg-white p-2 rounded border border-sky-100 font-medium text-slate-700">
-                  <span className="text-amber-600 font-bold">● -3 Días:</span> Aviso de Próximo Vencimiento
+                  <span className="text-amber-600 font-bold">● 3 Días Antes:</span> Aviso preventivo de próximo vencimiento
                 </div>
                 <div className="bg-white p-2 rounded border border-sky-100 font-medium text-slate-700">
-                  <span className="text-amber-700 font-bold">● Día 0 (Hoy):</span> Vencimiento en la fecha
+                  <span className="text-amber-700 font-bold">● Día de Vencimiento:</span> Aviso de factura que vence hoy
                 </div>
                 <div className="bg-white p-2 rounded border border-sky-100 font-medium text-slate-700">
-                  <span className="text-rose-600 font-bold">● Vencidas:</span> Aviso de Factura Vencida (cada 3/7 días)
+                  <span className="text-rose-600 font-bold">● Facturas Vencidas:</span> Recordatorio periódico de regularización
                 </div>
               </div>
             </div>
@@ -116,13 +116,13 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
           {/* Manual Run Controls */}
           <div className="bg-[#0EA5E9] rounded-xl p-4 sm:p-5 text-white space-y-4 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-sm">Ejecución Manual / Simulación de Fecha</span>
-              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-mono">Vercel & Supabase Ready</span>
+              <span className="font-bold text-sm">Opciones de Envío Manual o Vista Previa</span>
+              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-semibold">Envío de Correos</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold block mb-1">Simular Fecha (Opcional)</label>
+                <label className="text-xs font-semibold block mb-1">Evaluar para otra fecha (Opcional)</label>
                 <div className="relative">
                   <input
                     type="date"
@@ -135,14 +135,14 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
               </div>
 
               <div>
-                <label className="text-xs font-semibold block mb-1">Cadencia Vencidas (Días)</label>
+                <label className="text-xs font-semibold block mb-1">Frecuencia de aviso para vencidas (Días)</label>
                 <input
                   type="number"
                   min="1"
                   max="30"
                   value={cadenceOverride}
                   onChange={(e) => setCadenceOverride(e.target.value)}
-                  placeholder="Por defecto: 3 días (o cliente)"
+                  placeholder="Por defecto: cada 3 días"
                   className="w-full bg-white text-[#0F2547] text-xs font-medium rounded-lg px-3 py-2 border border-[#0F2547] focus:ring-2 focus:ring-sky-300 outline-none placeholder:text-slate-400"
                 />
               </div>
@@ -156,7 +156,7 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
                 className="bg-white/20 hover:bg-white/30 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                <span>Simular (DRY-RUN)</span>
+                <span>Ver vista previa (Sin enviar correos)</span>
               </button>
 
               <button
@@ -170,7 +170,7 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}
-                <span>Ejecutar Control y Disparar Correos</span>
+                <span>Enviar Avisos por Correo Ahora</span>
               </button>
 
               {simulationDate && (
@@ -179,7 +179,7 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
                   onClick={() => setSimulationDate('')}
                   className="text-xs text-white/80 hover:text-white underline ml-auto cursor-pointer"
                 >
-                  Restablecer fecha a hoy
+                  Volver a la fecha de hoy
                 </button>
               )}
             </div>
@@ -199,30 +199,32 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-[#0F2547] flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>Resultado de la Ejecución ({runResult.targetDate})</span>
+                  <span>Resultado de la Verificación ({runResult.targetDate})</span>
                 </h3>
                 {runResult.dryRun && (
                   <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                    Modo Simulación (DRY-RUN)
+                    Modo Vista Previa (Sin envíos reales)
                   </span>
                 )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
-                  <span className="text-xs text-slate-500 block">Analizadas</span>
+                  <span className="text-xs text-slate-500 block">Facturas Revisadas</span>
                   <span className="text-xl font-bold font-mono text-[#0F2547]">{runResult.totalPendingEvaluated}</span>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
-                  <span className="text-xs text-emerald-700 block">Disparadas</span>
+                  <span className="text-xs text-emerald-700 block">
+                    {runResult.dryRun ? 'Avisos a Enviar' : 'Avisos Enviados'}
+                  </span>
                   <span className="text-xl font-bold font-mono text-emerald-700">{runResult.sentCount}</span>
                 </div>
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
-                  <span className="text-xs text-slate-500 block">Omitidas</span>
+                  <span className="text-xs text-slate-500 block">Al Día (Sin aviso)</span>
                   <span className="text-xl font-bold font-mono text-slate-600">{runResult.skippedCount}</span>
                 </div>
                 <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
-                  <span className="text-xs text-rose-700 block">Errores</span>
+                  <span className="text-xs text-rose-700 block">Con Observación</span>
                   <span className="text-xl font-bold font-mono text-rose-700">{runResult.errorCount}</span>
                 </div>
               </div>
@@ -231,7 +233,7 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                 {runResult.details.length === 0 ? (
                   <p className="text-xs text-slate-500 italic text-center py-4">
-                    No se registraron facturas pendientes de evaluación.
+                    No se registraron facturas pendientes para revisar.
                   </p>
                 ) : (
                   runResult.details.map((item, idx) => (
@@ -247,7 +249,7 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
                           <span className="font-mono text-slate-500 text-[11px]">(${item.invoicedAmount.toLocaleString('es-AR')})</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Emisión: {item.invoiceDate} • Vencimiento: <strong className="text-slate-700">{item.dueDate}</strong> ({item.daysDifference >= 0 ? `+${item.daysDifference}` : item.daysDifference} días)
+                          Emisión: {item.invoiceDate} • Vencimiento: <strong className="text-slate-700">{item.dueDate}</strong> ({item.daysDifference >= 0 ? `+${item.daysDifference} días` : `${item.daysDifference} días`})
                         </p>
                         <p className="text-[11px] text-slate-600 italic">
                           {item.reason}
@@ -257,27 +259,27 @@ export function InvoiceRemindersModal({ isOpen, onClose, onSuccess }: InvoiceRem
                       <div className="shrink-0 flex items-center gap-2">
                         {item.action === 'sent' && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> Enviado Brevo
+                            <Mail className="h-3 w-3" /> Enviado por correo
                           </span>
                         )}
                         {item.action === 'mocked' && (
                           <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold text-[10px]">
-                            Simulado (Mock)
+                            Prueba completada
                           </span>
                         )}
                         {item.action === 'dry_run' && (
                           <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                            Disparo Positivo
+                            Listo para enviar
                           </span>
                         )}
                         {item.action === 'skipped' && (
                           <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">
-                            Omitido
+                            Al día / En fecha
                           </span>
                         )}
                         {item.action === 'failed' && (
                           <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">
-                            Error
+                            Error de envío
                           </span>
                         )}
                       </div>
