@@ -160,8 +160,22 @@ export async function getPositionsWithDetails(): Promise<PositionWithDetails[]> 
     const clientRatesMap = ratesByPosition.get(p.id);
     const clientRates = clientRatesMap ? Array.from(clientRatesMap.values()) : [];
 
+    const isEncargado = p.name.toLowerCase().includes('encargado');
+    const defaultReg = isEncargado ? 10777.06 : 8983.68;
+    const defaultOt50 = isEncargado ? 16165.60 : 13475.53;
+    const defaultOt100 = isEncargado ? 21554.13 : 17967.37;
+
+    const regularRate = Number(p.hourly_rate_regular) || defaultReg;
+    const ot50Rate = Number(p.hourly_rate_overtime_50) || defaultOt50;
+    const ot100Rate = Number(p.hourly_rate_overtime_100) || defaultOt100;
+    const salaryEffective = p.salary_effective_from || new Date().toISOString().split('T')[0];
+
     return {
       ...p,
+      hourly_rate_regular: regularRate,
+      hourly_rate_overtime_50: ot50Rate,
+      hourly_rate_overtime_100: ot100Rate,
+      salary_effective_from: salaryEffective,
       employees_count: assigned.length,
       assigned_employees: assigned,
       rates_count: clientRates.length,
@@ -171,20 +185,39 @@ export async function getPositionsWithDetails(): Promise<PositionWithDetails[]> 
 }
 
 /**
- * Creates a new position.
+ * Creates a new position with salary hourly rates.
  */
 export async function createPosition(payload: {
   name: string;
   requires_vehicle_bonus: boolean;
+  hourly_rate_regular?: number;
+  hourly_rate_overtime_50?: number;
+  hourly_rate_overtime_100?: number;
+  salary_effective_from?: string;
 }): Promise<PositionRow> {
   const supabase = createClient() as any;
 
+  const insertData: any = {
+    name: payload.name.trim(),
+    requires_vehicle_bonus: payload.requires_vehicle_bonus,
+  };
+
+  if (payload.hourly_rate_regular !== undefined) {
+    insertData.hourly_rate_regular = payload.hourly_rate_regular;
+  }
+  if (payload.hourly_rate_overtime_50 !== undefined) {
+    insertData.hourly_rate_overtime_50 = payload.hourly_rate_overtime_50;
+  }
+  if (payload.hourly_rate_overtime_100 !== undefined) {
+    insertData.hourly_rate_overtime_100 = payload.hourly_rate_overtime_100;
+  }
+  if (payload.salary_effective_from) {
+    insertData.salary_effective_from = payload.salary_effective_from;
+  }
+
   const { data, error } = await supabase
     .from('positions')
-    .insert({
-      name: payload.name.trim(),
-      requires_vehicle_bonus: payload.requires_vehicle_bonus,
-    })
+    .insert(insertData)
     .select('*')
     .single();
 
@@ -200,23 +233,42 @@ export async function createPosition(payload: {
 }
 
 /**
- * Updates an existing position.
+ * Updates an existing position and its salary hourly rates.
  */
 export async function updatePosition(
   id: string,
   payload: {
     name: string;
     requires_vehicle_bonus: boolean;
+    hourly_rate_regular?: number;
+    hourly_rate_overtime_50?: number;
+    hourly_rate_overtime_100?: number;
+    salary_effective_from?: string;
   }
 ): Promise<PositionRow> {
   const supabase = createClient() as any;
 
+  const updateData: any = {
+    name: payload.name.trim(),
+    requires_vehicle_bonus: payload.requires_vehicle_bonus,
+  };
+
+  if (payload.hourly_rate_regular !== undefined) {
+    updateData.hourly_rate_regular = payload.hourly_rate_regular;
+  }
+  if (payload.hourly_rate_overtime_50 !== undefined) {
+    updateData.hourly_rate_overtime_50 = payload.hourly_rate_overtime_50;
+  }
+  if (payload.hourly_rate_overtime_100 !== undefined) {
+    updateData.hourly_rate_overtime_100 = payload.hourly_rate_overtime_100;
+  }
+  if (payload.salary_effective_from) {
+    updateData.salary_effective_from = payload.salary_effective_from;
+  }
+
   const { data, error } = await supabase
     .from('positions')
-    .update({
-      name: payload.name.trim(),
-      requires_vehicle_bonus: payload.requires_vehicle_bonus,
-    })
+    .update(updateData)
     .eq('id', id)
     .select('*')
     .single();
@@ -227,6 +279,40 @@ export async function updatePosition(
       throw new Error(`Ya existe un puesto de trabajo con el nombre "${payload.name.trim()}".`);
     }
     throw new Error(error.message || 'Error al actualizar el puesto.');
+  }
+
+  return data as PositionRow;
+}
+
+/**
+ * Updates only the salary hourly rates for a position (Valores Hora Hombre / Sueldos).
+ */
+export async function updatePositionSalaryRates(
+  id: string,
+  payload: {
+    hourly_rate_regular: number;
+    hourly_rate_overtime_50: number;
+    hourly_rate_overtime_100: number;
+    salary_effective_from?: string;
+  }
+): Promise<PositionRow> {
+  const supabase = createClient() as any;
+
+  const { data, error } = await supabase
+    .from('positions')
+    .update({
+      hourly_rate_regular: payload.hourly_rate_regular,
+      hourly_rate_overtime_50: payload.hourly_rate_overtime_50,
+      hourly_rate_overtime_100: payload.hourly_rate_overtime_100,
+      salary_effective_from: payload.salary_effective_from || new Date().toISOString().split('T')[0],
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error updating position salary rates:', error);
+    throw new Error(error.message || 'Error al actualizar los valores de sueldo del puesto.');
   }
 
   return data as PositionRow;

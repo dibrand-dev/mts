@@ -155,18 +155,30 @@ export interface Database {
           id: string
           name: string
           requires_vehicle_bonus: boolean
+          hourly_rate_regular: number
+          hourly_rate_overtime_50: number
+          hourly_rate_overtime_100: number
+          salary_effective_from: string
           created_at: string
         }
         Insert: {
           id?: string
           name: string
           requires_vehicle_bonus?: boolean
+          hourly_rate_regular?: number
+          hourly_rate_overtime_50?: number
+          hourly_rate_overtime_100?: number
+          salary_effective_from?: string
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
           requires_vehicle_bonus?: boolean
+          hourly_rate_regular?: number
+          hourly_rate_overtime_50?: number
+          hourly_rate_overtime_100?: number
+          salary_effective_from?: string
           created_at?: string
         }
       }
@@ -180,6 +192,10 @@ export interface Database {
           default_position_id: string | null
           phone_number: string | null
           status: 'active' | 'inactive' | 'on_leave'
+          hourly_rate_regular: number
+          hourly_rate_overtime_50: number
+          hourly_rate_overtime_100: number
+          salary_effective_from: string
           created_at: string
         }
         Insert: {
@@ -191,6 +207,10 @@ export interface Database {
           default_position_id?: string | null
           phone_number?: string | null
           status?: 'active' | 'inactive' | 'on_leave'
+          hourly_rate_regular?: number
+          hourly_rate_overtime_50?: number
+          hourly_rate_overtime_100?: number
+          salary_effective_from?: string
           created_at?: string
         }
         Update: {
@@ -202,6 +222,10 @@ export interface Database {
           default_position_id?: string | null
           phone_number?: string | null
           status?: 'active' | 'inactive' | 'on_leave'
+          hourly_rate_regular?: number
+          hourly_rate_overtime_50?: number
+          hourly_rate_overtime_100?: number
+          salary_effective_from?: string
           created_at?: string
         }
       }

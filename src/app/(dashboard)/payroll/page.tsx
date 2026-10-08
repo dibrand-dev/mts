@@ -398,13 +398,13 @@ export default function PayrollPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <Link
-            href="/rates"
+            href="/employees"
             data-testid="payroll-btn-actualizar-basicos"
             className="flex-1 sm:flex-none px-4 py-2 border border-slate-300 text-[#0B1C30] hover:bg-slate-100 font-semibold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer whitespace-nowrap"
-            title="Abrir Tarifario Comercial para actualizar básicos por hora y recargos por puesto"
+            title="Abrir Gestión de Personal para actualizar los valores de sueldo asignados a cada trabajador"
           >
             <DollarSign className="h-4 w-4 text-[#1E5BB4]" />
-            <span>Actualizar Básicos</span>
+            <span>Actualizar Básicos (Personal)</span>
           </Link>
           <button
             type="button"

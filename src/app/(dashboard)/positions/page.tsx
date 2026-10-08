@@ -36,6 +36,7 @@ import {
   getPositionsWithDetails,
   createPosition,
   updatePosition,
+  updatePositionSalaryRates,
   deletePosition,
   getAllEmployeesForPositionAssignment,
   bulkAssignEmployeesToPosition,
@@ -121,6 +122,23 @@ export default function PositionsPage() {
   const [rateOvertime100, setRateOvertime100] = useState<string>('');
   const [rateAutoCalc, setRateAutoCalc] = useState(true);
 
+  // Salary Rates Modal State (Valores de Sueldo del Personal)
+  const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
+  const [activePositionForSalary, setActivePositionForSalary] = useState<PositionWithDetails | null>(null);
+  const [salaryRegular, setSalaryRegular] = useState<string>('');
+  const [salaryOvertime50, setSalaryOvertime50] = useState<string>('');
+  const [salaryOvertime100, setSalaryOvertime100] = useState<string>('');
+  const [salaryEffectiveFrom, setSalaryEffectiveFrom] = useState<string>('');
+  const [salaryAutoCalc, setSalaryAutoCalc] = useState(true);
+  const [savingSalary, setSavingSalary] = useState(false);
+
+  // Form fields inside slideover for position salary rates
+  const [posRegularRate, setPosRegularRate] = useState<string>('');
+  const [posOt50Rate, setPosOt50Rate] = useState<string>('');
+  const [posOt100Rate, setPosOt100Rate] = useState<string>('');
+  const [posSalaryEffectiveFrom, setPosSalaryEffectiveFrom] = useState<string>('');
+  const [posSalaryAutoCalc, setPosSalaryAutoCalc] = useState(true);
+
   // Delete Position Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [positionToDelete, setPositionToDelete] = useState<PositionWithDetails | null>(null);
@@ -135,6 +153,81 @@ export default function PositionsPage() {
   };
 
   // ----------------------------------------------------
+  // Salary Modal Handlers
+  // ----------------------------------------------------
+  const handleOpenSalaryModal = (pos: PositionWithDetails) => {
+    setError(null);
+    setActivePositionForSalary(pos);
+    const isEnc = pos.name.toLowerCase().includes('encargado');
+    const defaultReg = isEnc ? 10777.06 : 8983.68;
+    const defaultOt50 = isEnc ? 16165.60 : 13475.53;
+    const defaultOt100 = isEnc ? 21554.13 : 17967.37;
+
+    const reg = pos.hourly_rate_regular || defaultReg;
+    const ot50 = pos.hourly_rate_overtime_50 || defaultOt50;
+    const ot100 = pos.hourly_rate_overtime_100 || defaultOt100;
+
+    setSalaryRegular(String(reg));
+    setSalaryOvertime50(String(ot50));
+    setSalaryOvertime100(String(ot100));
+    setSalaryEffectiveFrom(pos.salary_effective_from || new Date().toISOString().split('T')[0]);
+    setSalaryAutoCalc(true);
+    setIsSalaryModalOpen(true);
+  };
+
+  const handleSalaryRegularChange = (val: string) => {
+    setSalaryRegular(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0 && salaryAutoCalc) {
+      setSalaryOvertime50((Math.round(num * 1.5 * 100) / 100).toFixed(2));
+      setSalaryOvertime100((Math.round(num * 2.0 * 100) / 100).toFixed(2));
+    }
+  };
+
+  const handlePosRegularChange = (val: string) => {
+    setPosRegularRate(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0 && posSalaryAutoCalc) {
+      setPosOt50Rate((Math.round(num * 1.5 * 100) / 100).toFixed(2));
+      setPosOt100Rate((Math.round(num * 2.0 * 100) / 100).toFixed(2));
+    }
+  };
+
+  const handleSaveSalaryRates = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activePositionForSalary) return;
+
+    const regNum = parseFloat(salaryRegular);
+    const ot50Num = parseFloat(salaryOvertime50);
+    const ot100Num = parseFloat(salaryOvertime100);
+
+    if (isNaN(regNum) || regNum < 0) {
+      setError('El valor de la hora normal de sueldo debe ser válido.');
+      return;
+    }
+
+    try {
+      setSavingSalary(true);
+      setError(null);
+      await updatePositionSalaryRates(activePositionForSalary.id, {
+        hourly_rate_regular: regNum,
+        hourly_rate_overtime_50: !isNaN(ot50Num) ? ot50Num : Math.round(regNum * 1.5 * 100) / 100,
+        hourly_rate_overtime_100: !isNaN(ot100Num) ? ot100Num : Math.round(regNum * 2.0 * 100) / 100,
+        salary_effective_from: salaryEffectiveFrom || new Date().toISOString().split('T')[0],
+      });
+      showNotification(`Valores de sueldo actualizados para "${activePositionForSalary.name}".`);
+      setIsSalaryModalOpen(false);
+      setActivePositionForSalary(null);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error saving salary rates:', err);
+      setError(err.message || 'Error al actualizar los valores de sueldo.');
+    } finally {
+      setSavingSalary(false);
+    }
+  };
+
+  // ----------------------------------------------------
   // CRUD Slideover Handlers
   // ----------------------------------------------------
   const handleOpenSlideover = (pos?: PositionWithDetails) => {
@@ -143,10 +236,26 @@ export default function PositionsPage() {
       setEditingPosition(pos);
       setPosName(pos.name);
       setPosRequiresVehicleBonus(pos.requires_vehicle_bonus);
+
+      const isEnc = pos.name.toLowerCase().includes('encargado');
+      const defaultReg = isEnc ? 10777.06 : 8983.68;
+      const defaultOt50 = isEnc ? 16165.60 : 13475.53;
+      const defaultOt100 = isEnc ? 21554.13 : 17967.37;
+
+      setPosRegularRate(String(pos.hourly_rate_regular || defaultReg));
+      setPosOt50Rate(String(pos.hourly_rate_overtime_50 || defaultOt50));
+      setPosOt100Rate(String(pos.hourly_rate_overtime_100 || defaultOt100));
+      setPosSalaryEffectiveFrom(pos.salary_effective_from || new Date().toISOString().split('T')[0]);
+      setPosSalaryAutoCalc(true);
     } else {
       setEditingPosition(null);
       setPosName('');
       setPosRequiresVehicleBonus(false);
+      setPosRegularRate('8983.68');
+      setPosOt50Rate('13475.53');
+      setPosOt100Rate('17967.37');
+      setPosSalaryEffectiveFrom(new Date().toISOString().split('T')[0]);
+      setPosSalaryAutoCalc(true);
     }
     setIsSlideoverOpen(true);
   };
@@ -156,6 +265,9 @@ export default function PositionsPage() {
     setEditingPosition(null);
     setPosName('');
     setPosRequiresVehicleBonus(false);
+    setPosRegularRate('');
+    setPosOt50Rate('');
+    setPosOt100Rate('');
   };
 
   const handleSavePosition = async (e: React.FormEvent) => {
@@ -169,16 +281,28 @@ export default function PositionsPage() {
       setSaving(true);
       setError(null);
 
+      const reg = parseFloat(posRegularRate) || 8983.68;
+      const ot50 = parseFloat(posOt50Rate) || Math.round(reg * 1.5 * 100) / 100;
+      const ot100 = parseFloat(posOt100Rate) || Math.round(reg * 2.0 * 100) / 100;
+
       if (editingPosition) {
         await updatePosition(editingPosition.id, {
           name: posName.trim(),
           requires_vehicle_bonus: posRequiresVehicleBonus,
+          hourly_rate_regular: reg,
+          hourly_rate_overtime_50: ot50,
+          hourly_rate_overtime_100: ot100,
+          salary_effective_from: posSalaryEffectiveFrom || new Date().toISOString().split('T')[0],
         });
         showNotification(`Puesto "${posName.trim()}" actualizado correctamente.`);
       } else {
         await createPosition({
           name: posName.trim(),
           requires_vehicle_bonus: posRequiresVehicleBonus,
+          hourly_rate_regular: reg,
+          hourly_rate_overtime_50: ot50,
+          hourly_rate_overtime_100: ot100,
+          salary_effective_from: posSalaryEffectiveFrom || new Date().toISOString().split('T')[0],
         });
         showNotification(`Puesto "${posName.trim()}" creado correctamente.`);
       }
@@ -467,8 +591,43 @@ export default function PositionsPage() {
         },
       },
       {
+        id: 'salary_rates',
+        header: 'Valores de Sueldo (Personal)',
+        cell: ({ row }) => {
+          const pos = row.original;
+          const reg = Number(pos.hourly_rate_regular) || 0;
+          const ot50 = Number(pos.hourly_rate_overtime_50) || 0;
+          const ot100 = Number(pos.hourly_rate_overtime_100) || 0;
+
+          return (
+            <div className="flex flex-col gap-1 min-w-[210px]">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-xs text-[#0B1C30]">
+                  Normal: ${reg.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+                <button
+                  type="button"
+                  data-testid="positions-btn-edit-salary"
+                  onClick={() => handleOpenSalaryModal(pos)}
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold text-[11px] px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Actualizar valores hora de sueldo para este puesto"
+                >
+                  <DollarSign className="h-3 w-3 text-emerald-700" />
+                  <span>Editar Sueldo</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                <span>50%: ${ot50.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                <span>•</span>
+                <span>100%: ${ot100.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
         id: 'client_rates',
-        header: 'Tarifario Comercial por Cliente',
+        header: 'Facturación Clientes (Tarifario)',
         cell: ({ row }) => {
           const pos = row.original;
           const hasRates = pos.rates_count > 0;
@@ -657,6 +816,30 @@ export default function PositionsPage() {
             <DollarSign className="h-6 w-6" />
           </div>
         </div>
+      </div>
+
+      {/* Banner explicativo: Separación Sueldos vs Tarifario Comercial */}
+      <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
+            <DollarSign className="h-5 w-5" />
+          </div>
+          <div className="text-xs">
+            <p className="font-bold text-sm text-emerald-900">
+              Valores Oficiales de Sueldo del Personal Precargados (MTS)
+            </p>
+            <p className="text-emerald-800 mt-0.5">
+              Los básicos para el cálculo de sueldos de <b>Encargado ($10.777,06)</b> y <b>Apuntador ($8.983,68)</b> están asignados al puesto y desacoplados de la facturación comercial a clientes.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/payroll"
+          className="bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs px-3.5 py-2 rounded-lg transition-colors shrink-0 shadow-2xs flex items-center gap-1.5"
+        >
+          <span>Ir a Cálculo de Sueldos</span>
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       {/* Section: Filters (Celeste B2B Card) */}
@@ -876,6 +1059,80 @@ export default function PositionsPage() {
                       Al activarse, las jornadas cumplidas en este puesto aplicarán la escala salarial de bonificación
                       por vehículos computados en el parte de operaciones según convenio colectivo (CCT).
                     </p>
+                  </div>
+
+                  {/* Valores de Sueldo del Personal (Hora Hombre) */}
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs uppercase tracking-wider">
+                        <DollarSign className="h-4 w-4 text-emerald-700" />
+                        <span>Valores de Sueldo del Personal (Bolsillo)</span>
+                      </div>
+                      <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={posSalaryAutoCalc}
+                          onChange={(e) => setPosSalaryAutoCalc(e.target.checked)}
+                          className="h-3.5 w-3.5 text-emerald-600 rounded"
+                        />
+                        <span>Auto 1.5x / 2.0x</span>
+                      </label>
+                    </div>
+
+                    <p className="text-[11px] text-emerald-800">
+                      Importes de bolsillo para el cálculo de sueldos de los colaboradores (desvinculados de las tarifas a clientes).
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#0B1C30] mb-1" htmlFor="pos-salary-reg">
+                          Hora Normal ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="pos-salary-reg"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          value={posRegularRate}
+                          onChange={(e) => handlePosRegularChange(e.target.value)}
+                          placeholder="Ej: 8983.68"
+                          className="w-full px-2.5 py-1.5 bg-white border border-[#0F2547] rounded-lg text-xs font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#0B1C30] mb-1" htmlFor="pos-salary-ot50">
+                          Extra 50% ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="pos-salary-ot50"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          value={posOt50Rate}
+                          onChange={(e) => setPosOt50Rate(e.target.value)}
+                          placeholder="Ej: 13475.53"
+                          className="w-full px-2.5 py-1.5 bg-white border border-[#0F2547] rounded-lg text-xs font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#0B1C30] mb-1" htmlFor="pos-salary-ot100">
+                          Extra 100% ($) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="pos-salary-ot100"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          value={posOt100Rate}
+                          onChange={(e) => setPosOt100Rate(e.target.value)}
+                          placeholder="Ej: 17967.37"
+                          className="w-full px-2.5 py-1.5 bg-white border border-[#0F2547] rounded-lg text-xs font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Information Box */}
@@ -1328,6 +1585,144 @@ export default function PositionsPage() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: ACTUALIZAR VALORES DE SUELDO (HORA HOMBRE)        */}
+      {/* ======================================================== */}
+      {isSalaryModalOpen && activePositionForSalary && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-emerald-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0B1C30]">
+                    Valores de Sueldo: {activePositionForSalary.name}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Básicos de bolsillo por hora para liquidación del personal
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSalaryModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSalaryRates} className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-600 font-semibold">
+                  Cálculo automático de horas extras:
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={salaryAutoCalc}
+                    onChange={(e) => setSalaryAutoCalc(e.target.checked)}
+                    className="h-3.5 w-3.5 text-emerald-600 rounded"
+                  />
+                  <span>50% = x1.5, 100% = x2.0</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1" htmlFor="salary-modal-reg">
+                    Hora Normal ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="salary-modal-reg"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={salaryRegular}
+                    onChange={(e) => handleSalaryRegularChange(e.target.value)}
+                    placeholder="Ej: 10777.06"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1" htmlFor="salary-modal-ot50">
+                    Hora Extra 50% ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="salary-modal-ot50"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={salaryOvertime50}
+                    onChange={(e) => setSalaryOvertime50(e.target.value)}
+                    placeholder="Ej: 16165.60"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1" htmlFor="salary-modal-ot100">
+                    Hora Extra 100% ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="salary-modal-ot100"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={salaryOvertime100}
+                    onChange={(e) => setSalaryOvertime100(e.target.value)}
+                    placeholder="Ej: 21554.13"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#0B1C30] mb-1" htmlFor="salary-modal-date">
+                  Fecha de Vigencia
+                </label>
+                <div className="relative">
+                  <Calendar className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="salary-modal-date"
+                    type="date"
+                    value={salaryEffectiveFrom}
+                    onChange={(e) => setSalaryEffectiveFrom(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg text-xs text-sky-800">
+                ℹ️ Estos valores se aplican directamente al motor de liquidación en <b>Cálculo de Sueldos</b> para todos los colaboradores con el puesto <b>{activePositionForSalary.name}</b>. Son independientes de las tarifas comerciales facturadas a los clientes.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSalaryModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSalary}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  {savingSalary && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>Guardar Valores de Sueldo</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

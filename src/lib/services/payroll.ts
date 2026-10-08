@@ -57,7 +57,7 @@ export async function getPayrollData(
 ): Promise<PayrollRecord[]> {
   const supabase = createClient() as any;
 
-  // 1. Fetch all active employees
+  // 1. Fetch all active employees with their individual salary hourly rates
   const { data: employeesData, error: empErr } = await supabase
     .from('employees')
     .select(`
@@ -66,7 +66,11 @@ export async function getPayrollData(
       file_number,
       full_name,
       status,
-      default_position:positions(id, name)
+      hourly_rate_regular,
+      hourly_rate_overtime_50,
+      hourly_rate_overtime_100,
+      salary_effective_from,
+      default_position:positions(id, name, hourly_rate_regular, hourly_rate_overtime_50, hourly_rate_overtime_100)
     `)
     .order('full_name', { ascending: true });
 
@@ -75,41 +79,52 @@ export async function getPayrollData(
     throw new Error(`Error al obtener empleados: ${empErr.message}`);
   }
 
-  // 2. Fetch all rates with positions and hour types
-  const { data: ratesData, error: ratesErr } = await supabase
-    .from('client_position_rates')
-    .select(`
-      *,
-      position:positions(id, name),
-      hour_type:hour_types(id, code)
-    `);
+  // 2. Fetch positions with their official salary hourly rates (Valores Hora Hombre / Sueldos)
+  const { data: positionsData, error: posErr } = await supabase
+    .from('positions')
+    .select('id, name, hourly_rate_regular, hourly_rate_overtime_50, hourly_rate_overtime_100');
 
-  if (ratesErr) {
-    console.error('Error fetching rates for payroll:', ratesErr);
+  if (posErr) {
+    console.error('Error fetching positions for payroll:', posErr);
   }
 
-  // Create rate lookup: `${clientId}_${positionId}` -> { REGULAR: number, OVERTIME_50: number, OVERTIME_100: number }
-  const ratesMap = new Map<string, { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number }>();
-  // Also position fallback lookup: `${positionId}` -> { REGULAR: number, OVERTIME_50: number, OVERTIME_100: number }
-  const posFallbackRates = new Map<string, { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number }>();
+  // Position fallback map: position_id -> { REGULAR, OVERTIME_50, OVERTIME_100 }
+  const positionSalaryMap = new Map<string, { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number }>();
+  for (const p of positionsData || []) {
+    const isEncargado = (p.name || '').toLowerCase().includes('encargado');
+    const defaultReg = isEncargado ? 10777.06 : 8983.68;
+    const defaultOt50 = isEncargado ? 16165.60 : 13475.53;
+    const defaultOt100 = isEncargado ? 21554.13 : 17967.37;
 
-  for (const r of ratesData || []) {
-    const code = r.hour_type?.code as 'REGULAR' | 'OVERTIME_50' | 'OVERTIME_100';
-    if (!code) continue;
-    const rateVal = Number(r.hourly_rate || 0);
+    const regular = Number(p.hourly_rate_regular) || defaultReg;
+    const ot50 = Number(p.hourly_rate_overtime_50) || defaultOt50;
+    const ot100 = Number(p.hourly_rate_overtime_100) || defaultOt100;
 
-    const clientPosKey = `${r.client_id}_${r.position_id}`;
-    if (!ratesMap.has(clientPosKey)) {
-      ratesMap.set(clientPosKey, { REGULAR: 0, OVERTIME_50: 0, OVERTIME_100: 0 });
-    }
-    ratesMap.get(clientPosKey)![code] = rateVal;
+    positionSalaryMap.set(p.id, {
+      REGULAR: regular,
+      OVERTIME_50: ot50,
+      OVERTIME_100: ot100,
+    });
+  }
 
-    if (!posFallbackRates.has(r.position_id)) {
-      posFallbackRates.set(r.position_id, { REGULAR: 0, OVERTIME_50: 0, OVERTIME_100: 0 });
-    }
-    if (posFallbackRates.get(r.position_id)![code] === 0) {
-      posFallbackRates.get(r.position_id)![code] = rateVal;
-    }
+  // Employee Direct Salary Lookup: employee_id -> { REGULAR, OVERTIME_50, OVERTIME_100 }
+  // Asignación directa al personal (con fallback a la escala del puesto)
+  const employeeSalaryMap = new Map<string, { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number }>();
+  for (const emp of employeesData || []) {
+    const isEncargado = (emp.default_position?.name || '').toLowerCase().includes('encargado');
+    const defaultReg = isEncargado ? 10777.06 : 8983.68;
+    const defaultOt50 = isEncargado ? 16165.60 : 13475.53;
+    const defaultOt100 = isEncargado ? 21554.13 : 17967.37;
+
+    const regular = Number(emp.hourly_rate_regular) || Number(emp.default_position?.hourly_rate_regular) || defaultReg;
+    const ot50 = Number(emp.hourly_rate_overtime_50) || Number(emp.default_position?.hourly_rate_overtime_50) || defaultOt50;
+    const ot100 = Number(emp.hourly_rate_overtime_100) || Number(emp.default_position?.hourly_rate_overtime_100) || defaultOt100;
+
+    employeeSalaryMap.set(emp.id, {
+      REGULAR: regular,
+      OVERTIME_50: ot50,
+      OVERTIME_100: ot100,
+    });
   }
 
   // 3. Fetch staff entries within the date range
@@ -160,13 +175,17 @@ export async function getPayrollData(
         employeeShiftsMap.set(empId, []);
       }
 
-      const clientPosKey = `${log.client_id}_${entry.position_id}`;
-      const posRates = ratesMap.get(clientPosKey) ||
-        posFallbackRates.get(entry.position_id) || {
-          REGULAR: 10000,
-          OVERTIME_50: 15000,
-          OVERTIME_100: 20000,
-        };
+      const isEncargado = (entry.position?.name || '').toLowerCase().includes('encargado');
+      const defaultReg = isEncargado ? 10777.06 : 8983.68;
+      const defaultOt50 = isEncargado ? 16165.60 : 13475.53;
+      const defaultOt100 = isEncargado ? 21554.13 : 17967.37;
+
+      // Priorizar el sueldo asignado directamente al empleado
+      const empRates = employeeSalaryMap.get(empId) || positionSalaryMap.get(entry.position_id) || {
+        REGULAR: defaultReg,
+        OVERTIME_50: defaultOt50,
+        OVERTIME_100: defaultOt100,
+      };
 
       const regHours = Number(entry.regular_hours || 0);
       const ot50Hours = Number(entry.overtime_50_hours || 0);
@@ -175,9 +194,9 @@ export async function getPayrollData(
       const bonusApplied = Number(entry.bonus_applied_amount || 0);
       const advance = Number(entry.advance_payment_amount || 0);
 
-      const regRate = posRates.REGULAR || 10000;
-      const ot50Rate = posRates.OVERTIME_50 || Math.round(regRate * 1.5);
-      const ot100Rate = posRates.OVERTIME_100 || Math.round(regRate * 2.0);
+      const regRate = empRates.REGULAR;
+      const ot50Rate = empRates.OVERTIME_50;
+      const ot100Rate = empRates.OVERTIME_100;
 
       const shiftGross =
         regHours * regRate +

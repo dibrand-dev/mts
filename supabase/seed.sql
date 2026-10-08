@@ -83,12 +83,15 @@ ON CONFLICT (tax_id) DO UPDATE SET
     company_name = EXCLUDED.company_name,
     payment_due_days = EXCLUDED.payment_due_days;
 
--- Seed default Positions (Puestos)
-INSERT INTO public.positions (name, requires_vehicle_bonus)
+-- Seed default Positions (Puestos) con Valores de Sueldo Oficiales (Excel MTS)
+INSERT INTO public.positions (name, requires_vehicle_bonus, hourly_rate_regular, hourly_rate_overtime_50, hourly_rate_overtime_100)
 VALUES 
-    ('Encargado', true),
-    ('Apuntador', false)
-ON CONFLICT (name) DO NOTHING;
+    ('Encargado', true, 10777.06, 16165.60, 21554.13),
+    ('Apuntador', false, 8983.68, 13475.53, 17967.37)
+ON CONFLICT (name) DO UPDATE SET
+    hourly_rate_regular = EXCLUDED.hourly_rate_regular,
+    hourly_rate_overtime_50 = EXCLUDED.hourly_rate_overtime_50,
+    hourly_rate_overtime_100 = EXCLUDED.hourly_rate_overtime_100;
 
 -- Seed default Hour Types (Tipos de Hora)
 INSERT INTO public.hour_types (code, description)

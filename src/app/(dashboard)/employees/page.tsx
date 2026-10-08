@@ -19,6 +19,7 @@ import {
   Filter,
   Eye,
   Download,
+  DollarSign,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -116,7 +117,21 @@ export default function EmployeesPage() {
     default_position_id: '',
     phone_number: '',
     status: 'active' as 'active' | 'inactive' | 'on_leave',
+    hourly_rate_regular: '',
+    hourly_rate_overtime_50: '',
+    hourly_rate_overtime_100: '',
+    salary_effective_from: '',
   });
+  const [salaryAutoCalc, setSalaryAutoCalc] = useState(true);
+
+  // Quick Employee Salary Modal State
+  const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
+  const [activeEmployeeForSalary, setActiveEmployeeForSalary] = useState<EmployeeRow | null>(null);
+  const [quickSalaryRegular, setQuickSalaryRegular] = useState('');
+  const [quickSalaryOt50, setQuickSalaryOt50] = useState('');
+  const [quickSalaryOt100, setQuickSalaryOt100] = useState('');
+  const [quickSalaryEffectiveFrom, setQuickSalaryEffectiveFrom] = useState('');
+  const [quickSalaryAutoCalc, setQuickSalaryAutoCalc] = useState(true);
 
   const createMutation = useMutation({
     mutationFn: createEmployee,
@@ -288,21 +303,37 @@ export default function EmployeesPage() {
 
   const handleOpenCreate = () => {
     setEditingEmployee(null);
+    const firstPos = positions[0];
+    const isEnc = firstPos?.name?.toLowerCase().includes('encargado');
+    const defaultReg = isEnc ? '10777.06' : '8983.68';
+    const defaultOt50 = isEnc ? '16165.60' : '13475.53';
+    const defaultOt100 = isEnc ? '21554.13' : '17967.37';
+
     setFormData({
       national_id: '',
       full_name: '',
       file_number: '',
       tax_id: '',
-      default_position_id: positions[0]?.id || '',
+      default_position_id: firstPos?.id || '',
       phone_number: '',
       status: 'active',
+      hourly_rate_regular: firstPos?.hourly_rate_regular ? String(firstPos.hourly_rate_regular) : defaultReg,
+      hourly_rate_overtime_50: firstPos?.hourly_rate_overtime_50 ? String(firstPos.hourly_rate_overtime_50) : defaultOt50,
+      hourly_rate_overtime_100: firstPos?.hourly_rate_overtime_100 ? String(firstPos.hourly_rate_overtime_100) : defaultOt100,
+      salary_effective_from: new Date().toISOString().split('T')[0],
     });
+    setSalaryAutoCalc(true);
     setFormError(null);
     setIsSlideoverOpen(true);
   };
 
   const handleOpenEdit = (emp: EmployeeRow) => {
     setEditingEmployee(emp);
+    const isEnc = emp.default_position?.name?.toLowerCase().includes('encargado');
+    const defaultReg = isEnc ? '10777.06' : '8983.68';
+    const defaultOt50 = isEnc ? '16165.60' : '13475.53';
+    const defaultOt100 = isEnc ? '21554.13' : '17967.37';
+
     setFormData({
       national_id: emp.national_id || '',
       full_name: emp.full_name || '',
@@ -311,9 +342,105 @@ export default function EmployeesPage() {
       default_position_id: emp.default_position_id || '',
       phone_number: emp.phone_number || '',
       status: emp.status || 'active',
+      hourly_rate_regular: emp.hourly_rate_regular ? String(emp.hourly_rate_regular) : defaultReg,
+      hourly_rate_overtime_50: emp.hourly_rate_overtime_50 ? String(emp.hourly_rate_overtime_50) : defaultOt50,
+      hourly_rate_overtime_100: emp.hourly_rate_overtime_100 ? String(emp.hourly_rate_overtime_100) : defaultOt100,
+      salary_effective_from: emp.salary_effective_from || new Date().toISOString().split('T')[0],
     });
+    setSalaryAutoCalc(true);
     setFormError(null);
     setIsSlideoverOpen(true);
+  };
+
+  const handlePositionSelectChange = (posId: string) => {
+    const pos = positions.find((p) => p.id === posId);
+    const isEnc = pos?.name?.toLowerCase().includes('encargado');
+    const defaultReg = isEnc ? '10777.06' : '8983.68';
+    const defaultOt50 = isEnc ? '16165.60' : '13475.53';
+    const defaultOt100 = isEnc ? '21554.13' : '17967.37';
+
+    setFormData((prev) => ({
+      ...prev,
+      default_position_id: posId,
+      hourly_rate_regular: pos?.hourly_rate_regular ? String(pos.hourly_rate_regular) : defaultReg,
+      hourly_rate_overtime_50: pos?.hourly_rate_overtime_50 ? String(pos.hourly_rate_overtime_50) : defaultOt50,
+      hourly_rate_overtime_100: pos?.hourly_rate_overtime_100 ? String(pos.hourly_rate_overtime_100) : defaultOt100,
+    }));
+  };
+
+  const handleRegularSalaryChange = (val: string) => {
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0 && salaryAutoCalc) {
+      setFormData((prev) => ({
+        ...prev,
+        hourly_rate_regular: val,
+        hourly_rate_overtime_50: (Math.round(num * 1.5 * 100) / 100).toFixed(2),
+        hourly_rate_overtime_100: (Math.round(num * 2.0 * 100) / 100).toFixed(2),
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        hourly_rate_regular: val,
+      }));
+    }
+  };
+
+  const handleOpenQuickSalaryModal = (emp: EmployeeRow) => {
+    setActiveEmployeeForSalary(emp);
+    const isEnc = emp.default_position?.name?.toLowerCase().includes('encargado');
+    const defaultReg = isEnc ? 10777.06 : 8983.68;
+    const defaultOt50 = isEnc ? 16165.60 : 13475.53;
+    const defaultOt100 = isEnc ? 21554.13 : 17967.37;
+
+    const reg = emp.hourly_rate_regular || defaultReg;
+    const ot50 = emp.hourly_rate_overtime_50 || defaultOt50;
+    const ot100 = emp.hourly_rate_overtime_100 || defaultOt100;
+
+    setQuickSalaryRegular(String(reg));
+    setQuickSalaryOt50(String(ot50));
+    setQuickSalaryOt100(String(ot100));
+    setQuickSalaryEffectiveFrom(emp.salary_effective_from || new Date().toISOString().split('T')[0]);
+    setQuickSalaryAutoCalc(true);
+    setIsSalaryModalOpen(true);
+  };
+
+  const handleQuickRegularSalaryChange = (val: string) => {
+    setQuickSalaryRegular(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0 && quickSalaryAutoCalc) {
+      setQuickSalaryOt50((Math.round(num * 1.5 * 100) / 100).toFixed(2));
+      setQuickSalaryOt100((Math.round(num * 2.0 * 100) / 100).toFixed(2));
+    }
+  };
+
+  const handleSaveQuickSalary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeEmployeeForSalary) return;
+
+    const regNum = parseFloat(quickSalaryRegular);
+    const ot50Num = parseFloat(quickSalaryOt50);
+    const ot100Num = parseFloat(quickSalaryOt100);
+
+    if (isNaN(regNum) || regNum < 0) {
+      alert('El valor de la hora normal de sueldo debe ser válido.');
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        id: activeEmployeeForSalary.id,
+        payload: {
+          hourly_rate_regular: regNum,
+          hourly_rate_overtime_50: !isNaN(ot50Num) ? ot50Num : Math.round(regNum * 1.5 * 100) / 100,
+          hourly_rate_overtime_100: !isNaN(ot100Num) ? ot100Num : Math.round(regNum * 2.0 * 100) / 100,
+          salary_effective_from: quickSalaryEffectiveFrom || new Date().toISOString().split('T')[0],
+        },
+      });
+      setIsSalaryModalOpen(false);
+      setActiveEmployeeForSalary(null);
+    } catch (err: any) {
+      alert(`Error al actualizar el sueldo del colaborador: ${err.message}`);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -329,6 +456,10 @@ export default function EmployeesPage() {
 
     setFormError(null);
 
+    const reg = parseFloat(formData.hourly_rate_regular) || 8983.68;
+    const ot50 = parseFloat(formData.hourly_rate_overtime_50) || Math.round(reg * 1.5 * 100) / 100;
+    const ot100 = parseFloat(formData.hourly_rate_overtime_100) || Math.round(reg * 2.0 * 100) / 100;
+
     const payload = {
       full_name: formData.full_name.trim(),
       national_id: formData.national_id.trim(),
@@ -337,6 +468,10 @@ export default function EmployeesPage() {
       default_position_id: formData.default_position_id || null,
       phone_number: formData.phone_number.trim() || null,
       status: formData.status,
+      hourly_rate_regular: reg,
+      hourly_rate_overtime_50: ot50,
+      hourly_rate_overtime_100: ot100,
+      salary_effective_from: formData.salary_effective_from || new Date().toISOString().split('T')[0],
     };
 
     if (editingEmployee) {
@@ -426,16 +561,59 @@ export default function EmployeesPage() {
       },
       {
         id: 'position',
-        header: 'Puesto',
-        cell: ({ row }) =>
-          row.original.default_position?.name ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#004392] border border-blue-200">
+        header: 'Puesto Habitual',
+        cell: ({ row }) => {
+          const pos = row.original.default_position;
+          if (!pos?.name) {
+            return <span className="text-xs text-slate-400 italic">Sin puesto asignado</span>;
+          }
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#004392] border border-blue-200 w-fit">
               <Briefcase className="h-3 w-3 text-[#1E5BB4]" />
-              {row.original.default_position.name}
+              {pos.name}
             </span>
-          ) : (
-            <span className="text-xs text-slate-400 italic">Sin puesto asignado</span>
-          ),
+          );
+        },
+      },
+      {
+        id: 'employee_salary',
+        header: 'Valores de Sueldo del Trabajador',
+        cell: ({ row }) => {
+          const emp = row.original;
+          const isEnc = emp.default_position?.name?.toLowerCase().includes('encargado');
+          const defaultReg = isEnc ? 10777.06 : 8983.68;
+          const defaultOt50 = isEnc ? 16165.60 : 13475.53;
+          const defaultOt100 = isEnc ? 21554.13 : 17967.37;
+
+          const reg = Number(emp.hourly_rate_regular) || defaultReg;
+          const ot50 = Number(emp.hourly_rate_overtime_50) || defaultOt50;
+          const ot100 = Number(emp.hourly_rate_overtime_100) || defaultOt100;
+
+          return (
+            <div className="flex flex-col gap-1 min-w-[210px]">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-xs text-[#0B1C30]">
+                  Normal: ${reg.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+                <button
+                  type="button"
+                  data-testid="employees-btn-edit-salary"
+                  onClick={() => handleOpenQuickSalaryModal(emp)}
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold text-[11px] px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Editar valor hora de sueldo para este empleado"
+                >
+                  <DollarSign className="h-3 w-3 text-emerald-700" />
+                  <span>Editar Sueldo</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                <span>50%: ${ot50.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                <span>•</span>
+                <span>100%: ${ot100.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          );
+        },
       },
     ];
 
@@ -558,7 +736,7 @@ export default function EmployeesPage() {
             className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
           >
             <Briefcase className="h-4 w-4 text-[#1E5BB4]" />
-            <span>Puestos de Trabajo</span>
+            <span>Puestos y Valores de Sueldo</span>
           </Link>
           <button
             type="button"
@@ -1146,7 +1324,7 @@ export default function EmployeesPage() {
                 <select
                   value={formData.default_position_id}
                   data-testid="employees-select-position"
-                  onChange={(e) => setFormData({ ...formData, default_position_id: e.target.value })}
+                  onChange={(e) => handlePositionSelectChange(e.target.value)}
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                 >
                   <option value="">Seleccionar Puesto...</option>
@@ -1156,6 +1334,63 @@ export default function EmployeesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Valores de Sueldo Asignados al Trabajador */}
+              <div className="p-3.5 bg-emerald-950/40 border border-emerald-400/30 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                    <DollarSign className="h-4 w-4 text-emerald-400" />
+                    <span>Valores de Sueldo (Asignación Directa)</span>
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-emerald-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={salaryAutoCalc}
+                      onChange={(e) => setSalaryAutoCalc(e.target.checked)}
+                      className="h-3 w-3 text-emerald-500 rounded"
+                    />
+                    <span>Auto 1.5x / 2.0x</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-white block mb-1">Hora Normal ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.hourly_rate_regular}
+                      onChange={(e) => handleRegularSalaryChange(e.target.value)}
+                      placeholder="Ej: 8983.68"
+                      className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-white block mb-1">Extra 50% ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.hourly_rate_overtime_50}
+                      onChange={(e) => setFormData({ ...formData, hourly_rate_overtime_50: e.target.value })}
+                      placeholder="Ej: 13475.53"
+                      className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-white block mb-1">Extra 100% ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.hourly_rate_overtime_100}
+                      onChange={(e) => setFormData({ ...formData, hourly_rate_overtime_100: e.target.value })}
+                      placeholder="Ej: 17967.37"
+                      className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -1192,6 +1427,138 @@ export default function EmployeesPage() {
                   className="w-full bg-[#1E5BB4] hover:bg-[#004392] text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? 'Guardando...' : editingEmployee ? 'Guardar Cambios' : 'Crear Empleado'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Salary Modal for Employee */}
+      {isSalaryModalOpen && activeEmployeeForSalary && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-emerald-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0B1C30]">
+                    Valores de Sueldo: {activeEmployeeForSalary.full_name}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Asignación directa de básicos de bolsillo por hora para este colaborador
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSalaryModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickSalary} className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-600 font-semibold">
+                  Cálculo automático de extras:
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={quickSalaryAutoCalc}
+                    onChange={(e) => setQuickSalaryAutoCalc(e.target.checked)}
+                    className="h-3.5 w-3.5 text-emerald-600 rounded"
+                  />
+                  <span>50% = x1.5, 100% = x2.0</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1">
+                    Hora Normal ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={quickSalaryRegular}
+                    onChange={(e) => handleQuickRegularSalaryChange(e.target.value)}
+                    placeholder="Ej: 10777.06"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1">
+                    Hora Extra 50% ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={quickSalaryOt50}
+                    onChange={(e) => setQuickSalaryOt50(e.target.value)}
+                    placeholder="Ej: 16165.60"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#0B1C30] mb-1">
+                    Hora Extra 100% ($) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={quickSalaryOt100}
+                    onChange={(e) => setQuickSalaryOt100(e.target.value)}
+                    placeholder="Ej: 21554.13"
+                    className="w-full px-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#0B1C30] mb-1">
+                  Fecha de Vigencia
+                </label>
+                <div className="relative">
+                  <Calendar className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="date"
+                    value={quickSalaryEffectiveFrom}
+                    onChange={(e) => setQuickSalaryEffectiveFrom(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-[#0F2547] rounded-lg text-xs text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg text-xs text-sky-800">
+                ℹ️ Estos importes quedan asignados directamente a <b>{activeEmployeeForSalary.full_name}</b> y se usarán para todas sus jornadas en <b>Cálculo de Sueldos</b>.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSalaryModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  {updateMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>Guardar Sueldo de Colaborador</span>
                 </button>
               </div>
             </form>
