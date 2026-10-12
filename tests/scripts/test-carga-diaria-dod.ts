@@ -110,14 +110,12 @@ assertTest(
 );
 
 // -------------------------------------------------------------
-// 2. Lógica de Remises: Solo Encargado PF
+// 2. Lógica de Remises: Habilitación General en Carga Diaria
 // -------------------------------------------------------------
-console.log('\n>>> 2. Lógica de Remises (Habilitación exclusiva Encargado PF)');
+console.log('\n>>> 2. Lógica de Remises (Habilitación para cualquier puesto con traslados)');
 
-function getRemisesAllowed(positionName: string, requestedShuttles: number): number {
-  const clean = positionName.trim().toUpperCase();
-  const isEncargado = clean.includes('ENCARGAD');
-  return isEncargado ? Math.max(0, Math.floor(requestedShuttles)) : 0;
+function getRemisesAllowed(_positionName: string, requestedShuttles: number): number {
+  return Math.max(0, Math.floor(requestedShuttles));
 }
 
 assertTest(
@@ -136,16 +134,16 @@ assertTest(
 
 assertTest(
   'DOD-REMIS-02',
-  'Apuntador con 2 remises solicitados -> Se anula a 0 (deshabilitado)',
+  'Apuntador (ej. Delta Dock Depósito Nacional) con 2 remises solicitados -> Acepta 2 remises enteros',
   getRemisesAllowed('APUNTADOR', 2),
-  0
+  2
 );
 
 assertTest(
   'DOD-REMIS-03',
-  'Conductor con 1 remis solicitado -> Se anula a 0',
+  'Conductor con 1 remis solicitado -> Acepta 1 remis entero',
   getRemisesAllowed('CONDUCTOR', 1),
-  0
+  1
 );
 
 // -------------------------------------------------------------

@@ -27,7 +27,7 @@ Almacena el detalle individual de cada colaborador asignado a un turno dentro de
 | `regular_hours` | `NUMERIC(5,2)` | Sí | Cantidad de horas normales. |
 | `overtime_50_hours` | `NUMERIC(5,2)` | Sí | Horas extraordinarias al 50%. |
 | `overtime_100_hours` | `NUMERIC(5,2)` | Sí | Horas extraordinarias al 100%. |
-| `shuttles_count` | `INTEGER` | Sí | Cantidad de traslados/remises asignados al encargado. |
+| `shuttles_count` | `INTEGER` | Sí | Cantidad de traslados/remises asignados al colaborador o encargado del servicio. |
 | `plus_delta_amount` | `NUMERIC(12,2)`| Sí | Importe adicional fijo por complejidad o turno. |
 | `meal_allowance_count` | `INTEGER` | Sí | Viáticos de comida otorgados. |
 | `advance_payment_amount` | `NUMERIC(12,2)` | Sí | Adelantos de sueldo entregados en mano. |
@@ -37,7 +37,7 @@ Almacena el detalle individual de cada colaborador asignado a un turno dentro de
 
 ## Reglas de Integridad
 * Se permite solapamiento horario para el mismo operario si participó en múltiples roles.
-* Los remises (`shuttles_count`) se asignan como unidades exclusivamente al encargado del turno.
+* Los remises (`shuttles_count`) se registran como unidades de traslado contratadas para la cuadrilla o colaborador (ej. encargado en Plazoleta Fiscal, o apuntador en servicios como Delta Dock / Depósito Nacional).
 
 ## Relaciones
 * **Cabecera:** [daily_work_logs](./daily_work_logs.md)

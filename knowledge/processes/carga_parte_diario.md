@@ -22,7 +22,7 @@ Guía de procedimiento para supervisores y despachantes en muelle para el regist
 1. Definir el horario de inicio y fin del turno.
 2. En el campo de colaborador con autocompletado (Typeahead), buscar por Nombre, Apellido, DNI o Legajo.
 3. El sistema verificará el puesto asignado por defecto y aplicará la [Bonificación Gremial](../rules/bonificacion_gremial.md) de forma transparente si el puesto lo exige.
-4. Si el operario es el encargado, ingresar la cantidad de remises/combis (`shuttles_count`).
+4. Ingresar la cantidad de remises/combis (`shuttles_count`) si el servicio requirió traslados (ej. encargado en Plazoleta Fiscal, o apuntador en Delta Dock / Depósito Nacional).
 5. Presionar **Guardar Colaborador**.
 
 ## Paso 3: Aprovechar la Retención de Contexto

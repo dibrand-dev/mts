@@ -128,13 +128,13 @@ if (endDt <= startDt && (!endDateStr || endDateStr === startDateStr)) {
 
 ---
 
-## S-08 · Remises solo para el encargado del turno
+## S-08 · Carga de remises en partes diarios
 
-**Regla:** Los remises se ingresan como cantidad y solo son para el encargado del turno.
+**Regla:** Los remises (`shuttles_count`) se ingresan como cantidad entera para cualquier colaborador o encargado que haya requerido servicio de transporte/remis (ej. Encargado en Plazoleta Fiscal, o Apuntador en Delta Dock / Depósito Nacional).
 
-**Código:** El campo `shuttles_count` en `daily_staff_entries` es un INT que se puede cargar en cualquier entrada. No hay validación de que sea solo para "encargado". La regla es de negocio no enforzada por código.
+**Código:** En `src/app/(dashboard)/daily-entry/page.tsx`, el campo Remises está habilitado en el formulario sin restricción de puesto y se persiste directamente en `daily_staff_entries.shuttles_count`.
 
-**Estado:** ⚠️ Regla de negocio según CONTEXT.md (L73-74) pero no hay validación en el código.
+**Estado:** ✅ Implementado y habilitado de forma general.
 
 ---
 

@@ -229,21 +229,6 @@ export default function DailyEntryPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Determine if selected position is Encargado / Encargado PF (for conditional Remises)
-  const isEncargadoPF = useMemo(() => {
-    const pos = positions.find((p) => p.id === selectedPositionId);
-    if (!pos) return false;
-    const name = pos.name.trim().toUpperCase();
-    return name.includes('ENCARGAD');
-  }, [positions, selectedPositionId]);
-
-  // If position changed away from Encargado PF, reset shuttlesCount
-  useEffect(() => {
-    if (!isEncargadoPF && shuttlesCount !== '0') {
-      setShuttlesCount('0');
-    }
-  }, [isEncargadoPF, shuttlesCount]);
-
   // Set catalog defaults for form
   useEffect(() => {
     if (clients.length > 0 && !formClientId) {
@@ -691,8 +676,7 @@ export default function DailyEntryPage() {
       const ot50 = parseFloat(ot50Hours) || 0;
       const ot100 = parseFloat(ot100Hours) || 0;
       const plus = parseFloat(plusDeltaAmount) || 0;
-      // Remises enabled strictly if Encargado PF
-      const shuttles = isEncargadoPF ? (parseInt(shuttlesCount, 10) || 0) : 0;
+      const shuttles = Math.max(0, parseInt(shuttlesCount, 10) || 0);
       const meals = parseInt(mealAllowanceCount, 10) || 0;
       const advance = parseFloat(advancePaymentAmount) || 0;
       const francoCount = parseInt(dayOffCount, 10) || (isDayOff ? 1 : 0);
@@ -2046,32 +2030,20 @@ export default function DailyEntryPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                        <Car className="h-3.5 w-3.5 text-purple-600" />
-                        Remises (Cant.)
-                      </label>
-                      {!isEncargadoPF && (
-                        <span className="text-[10px] text-slate-400 font-normal italic">
-                          Solo Encargado
-                        </span>
-                      )}
-                    </div>
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Car className="h-3.5 w-3.5 text-purple-600" />
+                      Remises (Cant.)
+                    </label>
                     <input
                       type="number"
                       min="0"
                       step="1"
-                      disabled={!isEncargadoPF}
                       data-testid="daily-entry-input-shuttles"
                       value={shuttlesCount}
                       onChange={(e) => setShuttlesCount(e.target.value)}
-                      placeholder={isEncargadoPF ? '0' : 'N/A'}
-                      className={`w-full p-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] ${
-                        !isEncargadoPF
-                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                          : 'bg-white text-[#0B1C30] border-slate-300'
-                      }`}
-                      title={!isEncargadoPF ? 'El campo Remises solo está habilitado para el puesto Encargado' : 'Cantidad de remises'}
+                      placeholder="0"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
+                      title="Cantidad de remises / traslados del servicio"
                     />
                   </div>
 
