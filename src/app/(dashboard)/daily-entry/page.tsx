@@ -25,6 +25,7 @@ import {
   Filter,
   XCircle,
   Ship,
+  PackageCheck,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,7 +41,7 @@ import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import { getClients } from '@/lib/services/clients';
 import { getLocations } from '@/lib/services/locations';
 import { getEmployees } from '@/lib/services/employees';
-import { getPositions } from '@/lib/services/rates';
+import { getPositions, getClientServiceRates } from '@/lib/services/rates';
 import {
   getClientOperations,
   createClientOperation,
@@ -94,6 +95,7 @@ interface FlatDailyStaffEntry {
   advance_payment_amount: number;
   plus_delta_amount: number;
   bonus_applied_amount: number;
+  is_export_day: boolean;
   is_approved: boolean;
   approved_at: string | null;
   approved_by: string | null;
@@ -127,6 +129,17 @@ export default function DailyEntryPage() {
     queryKey: queryKeys.rates.unionScales,
     queryFn: () => getUnionBonusScales(),
   });
+  const { data: clientServiceRates = [] } = useQuery({
+    queryKey: ['client-service-rates'],
+    queryFn: () => getClientServiceRates(),
+  });
+
+  const getShuttleRateForClient = (clientId: string): number => {
+    const rate = clientServiceRates.find(
+      (r) => r.client_id === clientId && (r.service_code === 'SHUTTLE' || r.service_code === 'SHUTTLE_TRAMO')
+    );
+    return rate ? Number(rate.rate_value) : 35594.34;
+  };
 
   // Filter Bar State (Optional Filters for the Table)
   const [filterDate, setFilterDate] = useState<string>('');
@@ -175,6 +188,7 @@ export default function DailyEntryPage() {
   const [newOpError, setNewOpError] = useState<string | null>(null);
   const [formIsApproved, setFormIsApproved] = useState<boolean>(true);
   const [formIsForcedHoliday, setFormIsForcedHoliday] = useState<boolean>(false);
+  const [formIsExportDay, setFormIsExportDay] = useState<boolean>(false);
 
   // Fetch National Holidays for the year of the selected shift date
   const shiftYear = useMemo(() => {
@@ -312,7 +326,7 @@ export default function DailyEntryPage() {
     return calculateBonusForVehicles(units, unionScales, formWorkDate);
   }, [isBonusEligible, formVehiclesHandled, unionScales, formWorkDate]);
 
-  // Auto-populate vehicles handled if existing work log already has a count
+  // Auto-populate vehicles handled & export day if existing work log already has values
   useEffect(() => {
     if (!editingEntryId && formWorkDate && formClientId) {
       const existingLog = workLogs.find(
@@ -321,8 +335,11 @@ export default function DailyEntryPage() {
           l.client_id === formClientId &&
           (formVesselName ? l.vessel_name === formVesselName : true)
       );
-      if (existingLog && existingLog.total_vehicles_handled) {
-        setFormVehiclesHandled(String(existingLog.total_vehicles_handled));
+      if (existingLog) {
+        if (existingLog.total_vehicles_handled) {
+          setFormVehiclesHandled(String(existingLog.total_vehicles_handled));
+        }
+        setFormIsExportDay(Boolean(existingLog.is_export_day));
       }
     }
   }, [formWorkDate, formClientId, formVesselName, workLogs, editingEntryId]);
@@ -368,6 +385,7 @@ export default function DailyEntryPage() {
           advance_payment_amount: Number(entry.advance_payment_amount || 0),
           plus_delta_amount: Number(entry.plus_delta_amount || 0),
           bonus_applied_amount: Number(entry.bonus_applied_amount || 0),
+          is_export_day: Boolean(log.is_export_day),
           is_approved: Boolean(entry.is_approved),
           approved_at: entry.approved_at || null,
           approved_by: entry.approved_by || null,
@@ -405,6 +423,8 @@ export default function DailyEntryPage() {
   const totals = useMemo(() => {
     return filteredTableEntries.reduce(
       (acc, curr) => {
+        const shuttleRate = getShuttleRateForClient(curr.client_id);
+        const remisCost = curr.shuttles_count * shuttleRate;
         return {
           count: acc.count + 1,
           totalHours: acc.totalHours + curr.regular_hours + curr.overtime_50_hours + curr.overtime_100_hours,
@@ -412,6 +432,7 @@ export default function DailyEntryPage() {
           ot50Hours: acc.ot50Hours + curr.overtime_50_hours,
           ot100Hours: acc.ot100Hours + curr.overtime_100_hours,
           remises: acc.remises + curr.shuttles_count,
+          remisesAmount: acc.remisesAmount + remisCost,
           viandas: acc.viandas + curr.meal_allowance_count,
           anticipos: acc.anticipos + curr.advance_payment_amount,
           pluses: acc.pluses + curr.plus_delta_amount,
@@ -428,6 +449,7 @@ export default function DailyEntryPage() {
         ot50Hours: 0,
         ot100Hours: 0,
         remises: 0,
+        remisesAmount: 0,
         viandas: 0,
         anticipos: 0,
         pluses: 0,
@@ -437,7 +459,7 @@ export default function DailyEntryPage() {
         unapprovedCount: 0,
       }
     );
-  }, [filteredTableEntries]);
+  }, [filteredTableEntries, clientServiceRates]);
 
   // Toggle approval for a single shift
   const handleToggleApproval = async (entry: FlatDailyStaffEntry) => {
@@ -531,6 +553,7 @@ export default function DailyEntryPage() {
     setFormVesselName('');
     setFormVehiclesHandled('0');
     setFormIsForcedHoliday(false);
+    setFormIsExportDay(false);
     setStartTime('06:00');
     setEndTime('14:00');
     setIsOvernight(false);
@@ -606,6 +629,7 @@ export default function DailyEntryPage() {
     setFormLocationId(entry.location_id || '');
     setFormVesselName(entry.vessel_name || '');
     setFormVehiclesHandled(String(entry.total_vehicles_handled || 0));
+    setFormIsExportDay(Boolean(entry.is_export_day));
     setFormIsApproved(entry.is_approved);
     setSelectedEmployeeId(entry.employee_id);
     const emp = employees.find((e) => e.id === entry.employee_id);
@@ -663,13 +687,14 @@ export default function DailyEntryPage() {
         ? calculateBonusForVehicles(vehiclesHandled, unionScales, formWorkDate)
         : 0;
 
-      // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName, vehiclesHandled)
+      // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName, vehiclesHandled, formIsExportDay)
       const workLog = await getOrCreateDailyWorkLog(
         formWorkDate,
         formClientId,
         formLocationId || null,
         formVesselName || null,
-        vehiclesHandled
+        vehiclesHandled,
+        formIsExportDay
       );
 
       const reg = parseFloat(regularHours) || 0;
@@ -798,7 +823,17 @@ export default function DailyEntryPage() {
         header: 'Cliente',
         cell: ({ row }) => (
           <div className="font-semibold text-[#0B1C30] text-xs">
-            <div>{row.original.client_name}</div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>{row.original.client_name}</span>
+              {row.original.is_export_day && (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-blue-800 bg-blue-50 border border-blue-300 px-1.5 py-0.5 rounded shadow-2xs"
+                  title="Día con operativo de EXPO (Exportación)"
+                >
+                  📦 EXPO
+                </span>
+              )}
+            </div>
             {row.original.vessel_name && (
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1E5BB4] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
@@ -916,12 +951,17 @@ export default function DailyEntryPage() {
       {
         accessorKey: 'shuttles_count',
         header: () => <span className="block text-center">Remises</span>,
-        cell: ({ getValue }) => {
+        cell: ({ row, getValue }) => {
           const val = Number(getValue());
+          const rate = getShuttleRateForClient(row.original.client_id);
+          const amount = val * rate;
           return (
             <div className="text-center font-mono text-xs">
               {val > 0 ? (
-                <span className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200">
+                <span
+                  className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200 inline-block cursor-help"
+                  title={`${val} viajes de remis ($ ${amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`}
+                >
                   {val}
                 </span>
               ) : (
@@ -1295,8 +1335,14 @@ export default function DailyEntryPage() {
           <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-md font-bold">
             🔥 {totals.ot100Hours.toFixed(1)} hs 100%
           </span>
-          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-md font-bold">
-            🚗 {totals.remises} Remises
+          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-md font-bold flex items-center gap-1.5">
+            <Car className="h-3.5 w-3.5 text-purple-600" />
+            <span>{totals.remises} Remises</span>
+            {totals.remises > 0 && (
+              <span className="font-mono text-xs text-purple-950 bg-purple-100/90 px-1.5 py-0.5 rounded border border-purple-300">
+                $ {totals.remisesAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </span>
+            )}
           </span>
           <span className="bg-orange-50 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-md font-bold">
             🥪 {totals.viandas} Viandas
@@ -1470,7 +1516,12 @@ export default function DailyEntryPage() {
                     {totals.ot100Hours.toFixed(1)} hs
                   </td>
                   <td className="p-3.5 text-center font-mono text-sm text-purple-800">
-                    {totals.remises}
+                    <div className="font-bold">{totals.remises}</div>
+                    {totals.remisesAmount > 0 && (
+                      <div className="text-[10px] text-purple-900 font-semibold leading-tight whitespace-nowrap">
+                        $ {totals.remisesAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </div>
+                    )}
                   </td>
                   <td className="p-3.5 text-center font-mono text-sm text-amber-900">
                     {totals.viandas}
@@ -1756,6 +1807,26 @@ export default function DailyEntryPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Checkbox Día de Exportación (EXPO) */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none bg-blue-50/70 hover:bg-blue-100/70 p-2.5 rounded-lg border border-blue-200 transition-colors">
+                    <input
+                      type="checkbox"
+                      data-testid="daily-entry-checkbox-is-export"
+                      checked={formIsExportDay}
+                      onChange={(e) => setFormIsExportDay(e.target.checked)}
+                      className="h-4 w-4 rounded border-blue-400 text-[#1E5BB4] focus:ring-0 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-[#0B1C30] flex items-center gap-1.5">
+                        <PackageCheck className="h-3.5 w-3.5 text-[#1E5BB4]" />
+                        Día de EXPO (Exportación)
+                      </span>
+                      <span className="text-[11px] text-blue-900">
+                        Marca la jornada como recepción de exportación para liquidar en la proforma de Control EXPO.
+                      </span>
+                    </div>
+                  </label>
                 </div>
               </div>
 

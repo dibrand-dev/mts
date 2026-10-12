@@ -527,6 +527,33 @@ export function CreateProformaSlideover({
                     </span>
                   </div>
 
+                  {Boolean(calculationResult.payload?.tab_transporte?.viajes) && (
+                    <div className="flex justify-between items-center text-purple-900 bg-purple-50/70 px-2.5 py-1.5 rounded-lg border border-purple-200">
+                      <span className="font-medium">Transporte Personal (Remises):</span>
+                      <span className="font-mono font-bold">
+                        {calculationResult.payload.tab_transporte.viajes} viajes • $ {Number(calculationResult.payload.tab_transporte.total_transporte || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {Boolean(calculationResult.payload?.transporte?.tramos) && (
+                    <div className="flex justify-between items-center text-purple-900 bg-purple-50/70 px-2.5 py-1.5 rounded-lg border border-purple-200">
+                      <span className="font-medium">Transporte Personal (Remises):</span>
+                      <span className="font-mono font-bold">
+                        {calculationResult.payload.transporte.tramos} tramos • $ {Number(calculationResult.payload.transporte.total_transporte || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {Boolean(calculationResult.payload?.tab_expo?.horas_facturadas?.norm) && (
+                    <div className="flex justify-between items-center text-blue-900 bg-blue-50/70 px-2.5 py-1.5 rounded-lg border border-blue-200">
+                      <span className="font-medium">Control EXPO (Asignación 90%):</span>
+                      <span className="font-mono font-bold">
+                        $ {Number(calculationResult.payload.tab_expo.importes?.total || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal Neto Servicios:</span>
                     <span data-testid="invoicing-preview-subtotal" className="font-mono font-semibold text-[#0B1C30]">

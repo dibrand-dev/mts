@@ -187,7 +187,8 @@ export async function getOrCreateDailyWorkLog(
   clientId: string,
   locationId?: string | null,
   vesselName?: string | null,
-  totalVehiclesHandled?: number | null
+  totalVehiclesHandled?: number | null,
+  isExportDay?: boolean | null
 ): Promise<DailyWorkLogWithEntries> {
   const supabase = createClient() as any;
 
@@ -226,6 +227,10 @@ export async function getOrCreateDailyWorkLog(
     if (typeof totalVehiclesHandled === 'number' && existing.total_vehicles_handled !== totalVehiclesHandled) {
       updates.total_vehicles_handled = totalVehiclesHandled;
       existing.total_vehicles_handled = totalVehiclesHandled;
+    }
+    if (typeof isExportDay === 'boolean' && existing.is_export_day !== isExportDay) {
+      updates.is_export_day = isExportDay;
+      existing.is_export_day = isExportDay;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -277,7 +282,7 @@ export async function getOrCreateDailyWorkLog(
       vehicles_discharged: 0,
       vehicles_loaded: 0,
       vehicles_shifted: 0,
-      is_export_day: false,
+      is_export_day: isExportDay === true,
       logged_by: userId,
     })
     .select(`
@@ -505,6 +510,7 @@ export async function getStaffEntriesForClientAndPeriod(
       vehicles_loaded,
       vehicles_shifted,
       total_vehicles_handled,
+      is_export_day,
       client:clients(id, company_name),
       entries:daily_staff_entries(
         id,

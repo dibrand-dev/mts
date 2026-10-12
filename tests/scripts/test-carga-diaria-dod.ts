@@ -146,6 +146,64 @@ assertTest(
   1
 );
 
+// Cálculo del acumulado de viajes e importes
+function calculateRemisTotals(shifts: { shuttles: number; clientId: string }[], rates: Record<string, number>) {
+  let totalTrips = 0;
+  let totalAmount = 0;
+  for (const s of shifts) {
+    const rate = rates[s.clientId] ?? 35594.34;
+    totalTrips += s.shuttles;
+    totalAmount += s.shuttles * rate;
+  }
+  return {
+    totalTrips,
+    totalAmount: Math.round(totalAmount * 100) / 100,
+  };
+}
+
+const mockShiftsForRemis = [
+  { shuttles: 10, clientId: 'cat-01' },       // 10 * 35.594,34 = 355.943,40
+  { shuttles: 5, clientId: 'delta-dock-01' }, // 5 * 37.249,77 = 186.248,85
+];
+const mockRates = {
+  'cat-01': 35594.34,
+  'delta-dock-01': 37249.77,
+};
+const remisTotals = calculateRemisTotals(mockShiftsForRemis, mockRates);
+
+assertTest(
+  'DOD-REMIS-TOTALS-01',
+  'Acumulador de remises: 15 viajes consolidan correctamente trips e importe total ($)',
+  remisTotals,
+  { totalTrips: 15, totalAmount: 542192.25 }
+);
+
+// -------------------------------------------------------------
+// 2B. Casilla y Flag de Día de EXPO (Exportación)
+// -------------------------------------------------------------
+console.log('\n>>> 2B. Casilla y Flag de Día de EXPO (Exportación)');
+
+function evaluateExpoFlag(isExportChecked: boolean) {
+  return {
+    is_export_day: isExportChecked,
+    billingConcept: isExportChecked ? 'export_tallymen' : 'general_hours',
+  };
+}
+
+assertTest(
+  'DOD-EXPO-01',
+  'Casilla EXPO tildada (true) -> is_export_day = true, imputa a export_tallymen',
+  evaluateExpoFlag(true),
+  { is_export_day: true, billingConcept: 'export_tallymen' }
+);
+
+assertTest(
+  'DOD-EXPO-02',
+  'Casilla EXPO destildada (false) -> is_export_day = false, imputa a general_hours',
+  evaluateExpoFlag(false),
+  { is_export_day: false, billingConcept: 'general_hours' }
+);
+
 // -------------------------------------------------------------
 // 3. Gestión de Francos por Cantidad (+1 / -1)
 // -------------------------------------------------------------
