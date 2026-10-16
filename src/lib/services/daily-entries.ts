@@ -314,10 +314,39 @@ export async function addStaffEntryToWorkLog(
 ): Promise<DailyStaffEntryRow> {
   const supabase = createClient() as any;
 
+  // Defensive: if bonus_applied_amount is 0/falsy, check if work log has vehicles and position requires bonus
+  let bonusToApply = Number(entry.bonus_applied_amount || 0);
+  if (bonusToApply === 0 && entry.position_id) {
+    try {
+      const { data: log } = await supabase
+        .from('daily_work_logs')
+        .select('work_date, total_vehicles_handled')
+        .eq('id', dailyWorkLogId)
+        .single();
+
+      if (log && log.total_vehicles_handled > 0) {
+        const { data: pos } = await supabase
+          .from('positions')
+          .select('requires_vehicle_bonus')
+          .eq('id', entry.position_id)
+          .single();
+
+        if (pos?.requires_vehicle_bonus) {
+          const { getUnionBonusScales, calculateBonusForVehicles } = await import('@/lib/services/union-scales');
+          const scales = await getUnionBonusScales();
+          bonusToApply = calculateBonusForVehicles(log.total_vehicles_handled, scales, log.work_date);
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Could not auto-check bonus for new staff entry:', syncErr);
+    }
+  }
+
   const { data, error } = await supabase
     .from('daily_staff_entries')
     .insert({
       ...entry,
+      bonus_applied_amount: bonusToApply,
       daily_work_log_id: dailyWorkLogId,
     })
     .select(`
@@ -387,6 +416,35 @@ export async function updateDailyWorkLog(
   if (error) {
     console.error('Error updating daily work log:', error);
     throw new Error(error.message);
+  }
+
+  // If total_vehicles_handled was updated, synchronize bonus_applied_amount for all eligible entries in this log
+  if (typeof updates.total_vehicles_handled === 'number') {
+    try {
+      const { getUnionBonusScales, calculateBonusForVehicles } = await import('@/lib/services/union-scales');
+      const scales = await getUnionBonusScales();
+      const newBonus = calculateBonusForVehicles(updates.total_vehicles_handled, scales, data.work_date);
+
+      const { data: entries } = await supabase
+        .from('daily_staff_entries')
+        .select(`
+          id,
+          bonus_applied_amount,
+          position:positions(id, requires_vehicle_bonus)
+        `)
+        .eq('daily_work_log_id', logId);
+
+      for (const entry of entries || []) {
+        if (entry.position?.requires_vehicle_bonus && entry.bonus_applied_amount !== newBonus) {
+          await supabase
+            .from('daily_staff_entries')
+            .update({ bonus_applied_amount: newBonus })
+            .eq('id', entry.id);
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Could not auto-sync bonus scales on updateDailyWorkLog:', syncErr);
+    }
   }
 
   return data as DailyWorkLogRow;

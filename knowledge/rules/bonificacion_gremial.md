@@ -3,7 +3,7 @@ id: rule_bonificacion_gremial
 type: business_rule
 title: Regla: Bonificación Gremial por Manipulación de Vehículos (CCT)
 status: verified
-last_updated: 2026-10-07
+last_updated: 2026-10-16
 owner: rrhh@mts.com
 tags: [business_rule, union, payroll, bonus, cct]
 ---
@@ -13,7 +13,7 @@ tags: [business_rule, union, payroll, bonus, cct]
 Establece el mecanismo automático e invisible para computar el adicional salarial que perciben los trabajadores portuarios en función del volumen total de unidades automotrices manipuladas en la jornada de buque.
 
 ## Criterios de Aplicación
-1. **Condición de Puesto:** Solo aplica si el puesto asignado en el turno (`position_id`) tiene el flag `requires_vehicle_bonus = true` (por ejemplo: *Encargado de Turno*, *Chofer de Muelle*). Puestos como *Apuntador* tienen este flag en `false` y reciben `$ 0`.
+1. **Condición de Puesto:** Aplica a los puestos operativos asignados a la cuadrilla de buque que cuenten con el flag `requires_vehicle_bonus = true` (tanto *Encargado* como *Apuntador*). Puestos no operativos o administrativos en buque mantienen este flag en `false` y reciben `$ 0`.
 2. **Volumen de Buque:** Se toma el valor de `total_vehicles_handled` registrado en la cabecera del parte diario ([daily_work_logs](../datasets/daily_work_logs.md)).
 3. **Escala CCT Vigente:** Se busca en [union_bonus_scales](../datasets/union_bonus_scales.md) el registro cuya vigencia sea aplicable a la fecha del parte y donde:
    $$\text{min\_vehicles} \le \text{total\_vehicles\_handled} \le \text{max\_vehicles}$$

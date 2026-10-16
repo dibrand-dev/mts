@@ -171,7 +171,8 @@ assertTest(
 
 // 7. Simulación de Cruce de Puesto con `requires_vehicle_bonus`
 const positionEncargado = { name: 'Encargado', requires_vehicle_bonus: true };
-const positionApuntador = { name: 'Apuntador', requires_vehicle_bonus: false };
+const positionApuntador = { name: 'Apuntador', requires_vehicle_bonus: true };
+const positionAdministrativo = { name: 'Administrativo', requires_vehicle_bonus: false };
 const testUnits = 1800;
 
 const bonusForEncargado = positionEncargado.requires_vehicle_bonus
@@ -179,6 +180,10 @@ const bonusForEncargado = positionEncargado.requires_vehicle_bonus
   : 0;
 
 const bonusForApuntador = positionApuntador.requires_vehicle_bonus
+  ? calculateBonusForVehicles(testUnits, DEFAULT_UNION_SCALES, '2026-10-02')
+  : 0;
+
+const bonusForAdmin = positionAdministrativo.requires_vehicle_bonus
   ? calculateBonusForVehicles(testUnits, DEFAULT_UNION_SCALES, '2026-10-02')
   : 0;
 
@@ -191,8 +196,15 @@ assertTest(
 
 assertTest(
   'CROSS-POS-02',
-  'Puesto Apuntador (requires_vehicle_bonus=false) con 1800u -> Recibe $0.00',
+  'Puesto Apuntador (requires_vehicle_bonus=true en buque) con 1800u -> Recibe $102.015,99',
   bonusForApuntador,
+  102015.99
+);
+
+assertTest(
+  'CROSS-POS-03',
+  'Puesto No Operativo (requires_vehicle_bonus=false) con 1800u -> Recibe $0.00',
+  bonusForAdmin,
   0
 );
 

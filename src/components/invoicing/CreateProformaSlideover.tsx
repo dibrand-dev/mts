@@ -52,6 +52,7 @@ export function CreateProformaSlideover({
   const [calcToDate, setCalcToDate] = useState('');
   const [fortnightPeriod, setFortnightPeriod] = useState('');
   const [vesselNameInput, setVesselNameInput] = useState('');
+  const [isCustomVessel, setIsCustomVessel] = useState(false);
   const [discountPercentageInput, setDiscountPercentageInput] = useState('3.0');
   const [depositSector, setDepositSector] = useState<'both' | 'nacional' | 'fiscal' | 'arroz'>('both');
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
@@ -70,6 +71,8 @@ export function CreateProformaSlideover({
     if (isOpen) {
       initDatePresets();
       loadOperations();
+      setIsCustomVessel(false);
+      setVesselNameInput('');
       if (clients.length > 0 && !selectedClientId) {
         handleClientSelectionChange(clients[0].id);
       }
@@ -104,6 +107,8 @@ export function CreateProformaSlideover({
 
   const handleClientSelectionChange = (newClientId: string) => {
     setSelectedClientId(newClientId);
+    setIsCustomVessel(false);
+    setVesselNameInput('');
     const client = clients.find((c) => c.id === newClientId);
     if (client) {
       if (client.payment_due_days) {
@@ -121,10 +126,13 @@ export function CreateProformaSlideover({
     }
   };
 
-  // Re-run reactive calculation whenever inputs change
+  // Re-run reactive calculation whenever inputs change (debounced to avoid typing interference)
   useEffect(() => {
     if (isOpen && selectedClientId && calcFromDate && calcToDate) {
-      runCalculation();
+      const timer = setTimeout(() => {
+        runCalculation();
+      }, 300);
+      return () => clearTimeout(timer);
     }
   }, [
     isOpen,
@@ -157,7 +165,7 @@ export function CreateProformaSlideover({
       });
 
       setCalculationResult(result);
-      if (result.vessel_name && !vesselNameInput && selectedType === 'vessel') {
+      if (result.vessel_name && !vesselNameInput && !isCustomVessel && selectedType === 'vessel') {
         setVesselNameInput(result.vessel_name);
       }
     } catch (err: any) {
@@ -324,12 +332,14 @@ export function CreateProformaSlideover({
                     <div className="space-y-1.5">
                       <select
                         value={
-                          clientOperations.some(
-                            (op) =>
-                              op.client_id === selectedClientId &&
-                              op.operation_type === 'vessel' &&
-                              op.name === vesselNameInput
-                          )
+                          isCustomVessel
+                            ? 'CUSTOM'
+                            : clientOperations.some(
+                                (op) =>
+                                  op.client_id === selectedClientId &&
+                                  op.operation_type === 'vessel' &&
+                                  op.name === vesselNameInput
+                              )
                             ? vesselNameInput
                             : vesselNameInput
                             ? 'CUSTOM'
@@ -337,8 +347,10 @@ export function CreateProformaSlideover({
                         }
                         onChange={(e) => {
                           if (e.target.value === 'CUSTOM') {
+                            setIsCustomVessel(true);
                             setVesselNameInput('');
                           } else {
+                            setIsCustomVessel(false);
                             setVesselNameInput(e.target.value);
                           }
                         }}
@@ -356,18 +368,20 @@ export function CreateProformaSlideover({
                           ))}
                         <option value="CUSTOM">Otro / Escribir manualmente...</option>
                       </select>
-                      {!clientOperations.some(
-                        (op) =>
-                          op.client_id === selectedClientId &&
-                          op.operation_type === 'vessel' &&
-                          op.name === vesselNameInput
-                      ) && (
+                      {(isCustomVessel ||
+                        (!clientOperations.some(
+                          (op) =>
+                            op.client_id === selectedClientId &&
+                            op.operation_type === 'vessel' &&
+                            op.name === vesselNameInput
+                        ) && vesselNameInput !== '')) && (
                         <input
                           type="text"
+                          autoFocus={isCustomVessel}
                           value={vesselNameInput}
                           onChange={(e) => setVesselNameInput(e.target.value.toUpperCase())}
                           placeholder="Escribir nombre del buque (ej. HOEGH TARGET)..."
-                          className="w-full p-2 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none"
+                          className="w-full p-2 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                         />
                       )}
                     </div>
