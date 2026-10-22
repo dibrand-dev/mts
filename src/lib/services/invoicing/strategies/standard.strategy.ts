@@ -4,8 +4,8 @@ import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '
 
 export const standardStrategy: ProformaStrategy = {
   type: 'standard',
-  label: 'Servicios Directos y Horas Operativas',
-  description: 'Liquidación directa basada en horas de turnos reales aprobados, viandas y transporte según tarifas comerciales pactadas.',
+  label: 'PLAZOLETA FISCAL TERMINAL ZARATE (Sergio Danchuk / Servicios Directos)',
+  description: 'Liquidación Terminal Zárate: Horas Apuntador TZ, Viandas y Transporte Viajes Campana-TZ / Zárate-TZ.',
   defaultConceptType: 'general_hours',
 
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {

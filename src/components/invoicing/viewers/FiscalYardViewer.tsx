@@ -7,6 +7,7 @@ import {
   Car,
   Layers,
   Info,
+  ClipboardCheck,
 } from 'lucide-react';
 import { InvoicingRecord } from '@/lib/services/invoicing';
 
@@ -15,19 +16,21 @@ interface Props {
 }
 
 export function FiscalYardViewer({ proforma }: Props) {
-  const [activeTab, setActiveTab] = useState<'consolidado' | 'plazoleta' | 'transporte' | 'expo'>('consolidado');
+  const [activeTab, setActiveTab] = useState<'consolidado' | 'plazoleta' | 'inspecciones' | 'transporte' | 'expo'>('consolidado');
 
   const payload = proforma.calculation_payload as any;
   const consolidado = payload?.consolidado;
   const tabPlazoleta = payload?.tab_plazoleta;
+  const tabInspecciones = payload?.tab_inspecciones;
   const tabTransporte = payload?.tab_transporte;
   const tabExpo = payload?.tab_expo;
+  const hasInspecciones = Boolean(tabInspecciones?.activa || Number(consolidado?.inspecciones_especiales || 0) > 0);
   const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
 
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
+      <div className="flex flex-wrap border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
         <button
           type="button"
           onClick={() => setActiveTab('consolidado')}
@@ -38,7 +41,7 @@ export function FiscalYardViewer({ proforma }: Props) {
           }`}
         >
           <Layers className="h-4 w-4" />
-          <span>Resumen Consolidado</span>
+          <span>FACTURA PF</span>
         </button>
         <button
           type="button"
@@ -52,6 +55,20 @@ export function FiscalYardViewer({ proforma }: Props) {
           <Users className="h-4 w-4" />
           <span>PLAZOLETA FISCAL</span>
         </button>
+        {hasInspecciones && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('inspecciones')}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'inspecciones'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <ClipboardCheck className="h-4 w-4" />
+            <span>INSPECCIONES ESPECIALES</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setActiveTab('transporte')}
@@ -62,7 +79,7 @@ export function FiscalYardViewer({ proforma }: Props) {
           }`}
         >
           <Car className="h-4 w-4" />
-          <span>TRANSPORTE (TTE)</span>
+          <span>TTE</span>
         </button>
         <button
           type="button"
@@ -74,14 +91,14 @@ export function FiscalYardViewer({ proforma }: Props) {
           }`}
         >
           <FileSpreadsheet className="h-4 w-4" />
-          <span>CONTROL EXPO</span>
+          <span>EXPO</span>
         </button>
       </div>
 
       {/* TAB 1: RESUMEN CONSOLIDADO */}
       {activeTab === 'consolidado' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${hasInspecciones ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
             <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold uppercase text-slate-500 block">Plazoleta Fiscal</span>
               <span className="text-xl font-mono font-extrabold text-[#0B1C30] block">
@@ -89,6 +106,16 @@ export function FiscalYardViewer({ proforma }: Props) {
               </span>
               <span className="text-[11px] text-slate-400 block">Horas de encargados y apuntadores con 3% bonif.</span>
             </div>
+
+            {hasInspecciones && (
+              <div className="bg-white border-2 border-indigo-200 rounded-xl p-4 shadow-2xs space-y-1">
+                <span className="text-[11px] font-bold uppercase text-indigo-700 block">Inspecciones Especiales</span>
+                <span className="text-xl font-mono font-extrabold text-indigo-900 block">
+                  $ {Number(consolidado?.inspecciones_especiales || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+                <span className="text-[11px] text-slate-400 block">Subtotal con bonificación del 3%</span>
+              </div>
+            )}
 
             <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
               <span className="text-[11px] font-bold uppercase text-slate-500 block">Transporte Personal (TTE)</span>
@@ -360,6 +387,98 @@ export function FiscalYardViewer({ proforma }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 2B: INSPECCIONES ESPECIALES */}
+      {activeTab === 'inspecciones' && tabInspecciones && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="lg:col-span-5 space-y-4">
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white">
+                <div className="bg-[#0B1C30] text-white px-4 py-3 border-b border-slate-800">
+                  <h4 className="text-xs font-bold uppercase tracking-wider">
+                    Liquidación Inspecciones Especiales
+                  </h4>
+                </div>
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase">
+                    <tr>
+                      <th className="p-2.5 pl-3">Concepto</th>
+                      <th className="p-2.5 text-center">Hs</th>
+                      <th className="p-2.5 pr-3 text-right">Importe ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                    <tr>
+                      <td className="p-2.5 pl-3 font-semibold text-[#0B1C30]">Hs Normales Apuntador</td>
+                      <td className="p-2.5 text-center font-mono">{tabInspecciones.horas_apuntador?.norm ?? 0}</td>
+                      <td className="p-2.5 pr-3 text-right font-mono font-semibold">$ {Number(tabInspecciones.importes?.ap_reg || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 pl-3 font-semibold text-[#0B1C30]">Hs 50% Apuntador</td>
+                      <td className="p-2.5 text-center font-mono">{tabInspecciones.horas_apuntador?.ot50 ?? 0}</td>
+                      <td className="p-2.5 pr-3 text-right font-mono font-semibold">$ {Number(tabInspecciones.importes?.ap_ot50 || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 pl-3 font-semibold text-[#0B1C30]">Hs 100% Apuntador</td>
+                      <td className="p-2.5 text-center font-mono">{tabInspecciones.horas_apuntador?.ot100 ?? 0}</td>
+                      <td className="p-2.5 pr-3 text-right font-mono font-semibold">$ {Number(tabInspecciones.importes?.ap_ot100 || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2 text-xs shadow-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Importe Personal (Neto):</span>
+                  <span className="font-mono font-bold text-slate-800">$ {Number(tabInspecciones.importes?.neto_sin_bonif || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-emerald-700">
+                  <span>Bonificación ({proforma.discount_percentage || 3}%):</span>
+                  <span className="font-mono font-medium">- $ {Number(tabInspecciones.importes?.bonificacion || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-extrabold text-[#1E5BB4] border-t border-slate-200 pt-2 text-sm">
+                  <span>Subtotal Inspecciones Especiales:</span>
+                  <span className="font-mono text-base">$ {Number(tabInspecciones.importes?.subtotal_bonificado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-7 border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white">
+              <div className="bg-slate-100 px-4 py-3 border-b border-slate-200">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Turnos de Inspecciones Especiales ({tabInspecciones.shift_rows?.length || 0} turnos)
+                </h4>
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase sticky top-0">
+                    <tr>
+                      <th className="p-2.5 pl-3">Fecha</th>
+                      <th className="p-2.5">Apellido y Nombre</th>
+                      <th className="p-2.5 text-center">Horario</th>
+                      <th className="p-2.5 text-center">Norm</th>
+                      <th className="p-2.5 text-center">50%</th>
+                      <th className="p-2.5 pr-3 text-center">100%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                    {(tabInspecciones.shift_rows || []).map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="p-2.5 pl-3 font-mono text-slate-600">{row.workDate}</td>
+                        <td className="p-2.5 text-slate-800">{row.employeeName}</td>
+                        <td className="p-2.5 text-center font-mono text-slate-600">{row.timeRange}</td>
+                        <td className="p-2.5 text-center font-mono">{row.regularHours}</td>
+                        <td className="p-2.5 text-center font-mono text-sky-700">{row.overtime50Hours}</td>
+                        <td className="p-2.5 pr-3 text-center font-mono text-amber-700">{row.overtime100Hours}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

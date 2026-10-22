@@ -4,8 +4,8 @@ import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '
 
 export const sharedExpoStrategy: ProformaStrategy = {
   type: 'shared_expo',
-  label: 'Horas Compartidas / Coparticipación Porcentual',
-  description: 'Liquidación donde el cliente coparticipa con un porcentaje (ej. 10% Cooptacord) sobre las horas totales de la locación/servicio.',
+  label: 'COOPTACORD - DELTA DOCK (Apuntadores Plazoleta Fiscal 10%)',
+  description: 'Liquidación para Cooptacord SA con factor 10% sobre las horas de Apuntadores Plazoleta Fiscal (PF 01 y PF 02).',
   defaultConceptType: 'export_tallymen',
 
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {

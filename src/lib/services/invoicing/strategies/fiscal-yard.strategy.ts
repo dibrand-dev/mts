@@ -13,8 +13,8 @@ import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '
 
 export const fiscalYardStrategy: ProformaStrategy = {
   type: 'fiscal_yard',
-  label: 'Plazoleta Fiscal Quincenal Consolidada',
-  description: 'Liquidación quincenal que consolida Horas de Plazoleta (con 3% bonif.), Transporte Personal (remises) y Control EXPO.',
+  label: 'PLAZOLETA FISCAL (Plazoleta + Inspecciones Especiales + TTE + Control EXPO)',
+  description: 'Liquidación quincenal (5 pestañas Excel: Factura PF, Plazoleta Fiscal PF 01 al PF 13, Inspecciones Especiales, TTE y EXPO 90%).',
   defaultConceptType: 'general_hours',
 
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
@@ -34,9 +34,14 @@ export const fiscalYardStrategy: ProformaStrategy = {
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '01-15 SEPTIEMBRE 2026';
 
-    // 3. Separate standard yard shifts vs expo shifts
-    const expoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.is_export_day);
-    const yardShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.is_export_day);
+    // 3. Separate standard yard shifts vs inspecciones especiales vs expo shifts
+    const isInspecShift = (s: ClientShiftRecordForBilling) =>
+      (s.vessel_name || '').toLowerCase().includes('inspec') ||
+      (s.position_name || '').toLowerCase().includes('inspec');
+
+    const expoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.is_export_day && !isInspecShift(s));
+    const inspecShifts = shifts.filter((s: ClientShiftRecordForBilling) => isInspecShift(s));
+    const yardShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.is_export_day && !isInspecShift(s));
 
     const encargadoShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => s.position_name.toLowerCase().includes('encargad'));
     const apuntadorShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => !s.position_name.toLowerCase().includes('encargad'));
@@ -233,8 +238,39 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const imp_expo_ot100 = Math.round(expo_fact_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
     const subtotal_expo = Math.round((imp_expo_reg + imp_expo_ot50 + imp_expo_ot100) * 100) / 100;
 
+    // 7b. Inspecciones Especiales (Hoja 3 en el Excel de Octubre)
+    let inspec_reg = 0;
+    let inspec_ot50 = 0;
+    let inspec_ot100 = 0;
+    for (const s of inspecShifts) {
+      inspec_reg += s.regular_hours;
+      inspec_ot50 += s.overtime_50_hours;
+      inspec_ot100 += s.overtime_100_hours;
+    }
+    inspec_reg = Math.round(inspec_reg * 100) / 100;
+    inspec_ot50 = Math.round(inspec_ot50 * 100) / 100;
+    inspec_ot100 = Math.round(inspec_ot100 * 100) / 100;
+
+    const imp_inspec_reg = Math.round(inspec_reg * apuntadorRates.REGULAR * 100) / 100;
+    const imp_inspec_ot50 = Math.round(inspec_ot50 * apuntadorRates.OVERTIME_50 * 100) / 100;
+    const imp_inspec_ot100 = Math.round(inspec_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
+    const neto_inspec_sin_bonif = Math.round((imp_inspec_reg + imp_inspec_ot50 + imp_inspec_ot100) * 100) / 100;
+    const bonif_inspec = Math.round(neto_inspec_sin_bonif * (discountPct / 100) * 100) / 100;
+    const subtotal_inspec_bonif = Math.round((neto_inspec_sin_bonif - bonif_inspec) * 100) / 100;
+
+    const inspec_shift_rows: FiscalYardShiftRow[] = inspecShifts.map((s) => ({
+      slotPosition: 'INSPEC ESPECIALES',
+      employeeName: s.employee_name,
+      workDate: s.work_date,
+      timeRange: s.shift_start_time && s.shift_end_time ? `${s.shift_start_time.slice(0, 5)}-${s.shift_end_time.slice(0, 5)}` : '07:00-17:00',
+      totalHours: Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100,
+      regularHours: s.regular_hours,
+      overtime50Hours: s.overtime_50_hours,
+      overtime100Hours: s.overtime_100_hours,
+    }));
+
     // 8. Consolidado General
-    const total_neto = Math.round((subtotal_plazoleta_bonif + subtotal_transporte + subtotal_expo) * 100) / 100;
+    const total_neto = Math.round((subtotal_plazoleta_bonif + subtotal_inspec_bonif + subtotal_transporte + subtotal_expo) * 100) / 100;
     const total_iva = Math.round(total_neto * 0.21 * 100) / 100;
     const total_factura = Math.round((total_neto + total_iva) * 100) / 100;
 
@@ -246,6 +282,15 @@ export const fiscalYardStrategy: ProformaStrategy = {
         subtotal: subtotal_plazoleta_bonif,
       },
     ];
+
+    if (subtotal_inspec_bonif > 0) {
+      items.push({
+        description: `Inspecciones Especiales (${operationDates}) - Bonificado ${discountPct}%`,
+        quantity: 1,
+        unit_price: subtotal_inspec_bonif,
+        subtotal: subtotal_inspec_bonif,
+      });
+    }
 
     if (total_viajes_tte > 0 || subtotal_transporte > 0) {
       items.push({
@@ -296,6 +341,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
       discount_percentage: discountPct,
       consolidado: {
         plazoleta_fiscal: subtotal_plazoleta_bonif,
+        inspecciones_especiales: subtotal_inspec_bonif,
         transporte_personal: subtotal_transporte,
         control_expo: subtotal_expo,
         total_neto,
@@ -337,6 +383,19 @@ export const fiscalYardStrategy: ProformaStrategy = {
         factor_asignacion: expo_factor,
         horas_facturadas: { norm: expo_fact_reg, ot50: expo_fact_ot50, ot100: expo_fact_ot100 },
         importes: { reg: imp_expo_reg, ot50: imp_expo_ot50, ot100: imp_expo_ot100, total: subtotal_expo },
+      },
+      tab_inspecciones: {
+        horas_apuntador: { norm: inspec_reg, ot50: inspec_ot50, ot100: inspec_ot100 },
+        tarifas_apuntador: apuntadorRates,
+        importes: {
+          ap_reg: imp_inspec_reg,
+          ap_ot50: imp_inspec_ot50,
+          ap_ot100: imp_inspec_ot100,
+          neto_sin_bonif: neto_inspec_sin_bonif,
+          bonificacion: bonif_inspec,
+          subtotal_bonificado: subtotal_inspec_bonif,
+        },
+        shift_rows: inspec_shift_rows,
       },
       notes,
     };

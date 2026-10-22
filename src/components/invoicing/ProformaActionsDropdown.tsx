@@ -10,8 +10,9 @@ import {
   FileText,
   CheckCircle2,
   Trash2,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { InvoicingRecord } from '@/lib/services/invoicing';
+import { InvoicingRecord, downloadProformaExcel } from '@/lib/services/invoicing';
 
 interface ProformaActionsDropdownProps {
   record: InvoicingRecord;
@@ -117,9 +118,28 @@ export function ProformaActionsDropdown({
           >
             <div className="flex items-center gap-2.5">
               <Eye className="h-4 w-4 text-slate-400 group-hover:text-[#1E5BB4] transition-colors" />
-              <span>Ver Desglose</span>
+              <span>Ver Desglose / Hoja Excel</span>
             </div>
             <span className="text-[10px] text-slate-400 font-normal">Cálculo</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="invoicing-btn-download-excel"
+            onClick={() => {
+              setIsOpen(false);
+              downloadProformaExcel(record);
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer group text-left"
+            role="menuitem"
+          >
+            <div className="flex items-center gap-2.5">
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600 transition-colors" />
+              <span>Descargar Excel (.xls)</span>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+              XLS
+            </span>
           </button>
 
           <button

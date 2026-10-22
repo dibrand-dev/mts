@@ -15,6 +15,7 @@ export * from './types';
 export * from './registry';
 export * from './helpers';
 export * from './csv-export';
+export * from './excel-export';
 
 export async function calculateProforma(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
   const strategyType = context.proformaType || 'vessel';

@@ -11,10 +11,9 @@ import {
   Check,
   AlertCircle,
   Layers,
-  ChevronDown,
-  ChevronUp,
-  Table,
-  Users,
+  FileSpreadsheet,
+  Download,
+  Settings2,
 } from 'lucide-react';
 import { ClientRow } from '@/lib/services/clients';
 import {
@@ -23,11 +22,14 @@ import {
   getAllStrategies,
   getDefaultStrategyForClient,
   ProformaCalculationResult,
+  downloadProformaExcel,
 } from '@/lib/services/invoicing';
 import {
   getClientOperations,
   ClientOperationRow,
 } from '@/lib/services/client-operations';
+import { ExcelWorkbookPreviewModal } from './ExcelWorkbookPreviewModal';
+import { ProformaTypesAndOperationsModal } from './ProformaTypesAndOperationsModal';
 
 interface Props {
   isOpen: boolean;
@@ -58,7 +60,10 @@ export function CreateProformaSlideover({
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
   const [conceptType, setConceptType] = useState<'general_hours' | 'shuttles' | 'export_tallymen'>('general_hours');
   const [dueDays, setDueDays] = useState('15');
-  const [showSlotsPreview, setShowSlotsPreview] = useState(false);
+
+  // Full-Screen Excel Modal & Catalog Modal
+  const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
+  const [isTypesCatalogOpen, setIsTypesCatalogOpen] = useState(false);
 
   // Calculation State
   const [calculating, setCalculating] = useState(false);
@@ -114,11 +119,9 @@ export function CreateProformaSlideover({
       if (client.payment_due_days) {
         setDueDays(client.payment_due_days.toString());
       }
-      // Auto-suggest the default proforma type for this client
       const suggestedType = getDefaultStrategyForClient(client.company_name);
       setSelectedType(suggestedType);
-      
-      // Auto-set default concept type from strategy
+
       const strat = strategies.find((s) => s.type === suggestedType);
       if (strat) {
         setConceptType(strat.defaultConceptType);
@@ -165,7 +168,7 @@ export function CreateProformaSlideover({
       });
 
       setCalculationResult(result);
-      if (result.vessel_name && !vesselNameInput && !isCustomVessel && selectedType === 'vessel') {
+      if (result.vessel_name && !vesselNameInput && !isCustomVessel && (selectedType === 'vessel' || selectedType === 'plus_incidence')) {
         setVesselNameInput(result.vessel_name);
       }
     } catch (err: any) {
@@ -240,6 +243,10 @@ export function CreateProformaSlideover({
 
   if (!isOpen) return null;
 
+  const vesselOpsForClient = clientOperations.filter(
+    (op) => op.client_id === selectedClientId && (op.operation_type === 'vessel' || op.operation_type === 'general')
+  );
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div
@@ -257,16 +264,27 @@ export function CreateProformaSlideover({
               <div>
                 <h2 className="text-xl font-bold">Nueva Proforma Comercial</h2>
                 <p className="text-xs text-sky-200 mt-0.5">
-                  Motor de liquidación automática multi-modelo y configurable.
+                  Liquidación oficial alineada a plantillas Excel por tipo de proforma.
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsTypesCatalogOpen(true)}
+                className="text-xs font-bold bg-white/10 hover:bg-white/20 text-sky-200 px-3 py-1.5 rounded-lg border border-white/15 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Cargar o administrar el listado de tipos de proformas, buques y depósitos"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                <span>Cargar Tipos / Buques</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Form Body with Sky Blue Card */}
@@ -294,9 +312,19 @@ export function CreateProformaSlideover({
 
               {/* Selector de Tipo de Proforma / Modelo */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                  <Layers className="h-3.5 w-3.5" /> Modelo / Tipo de Proforma *
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" /> Tipo de Proforma *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsTypesCatalogOpen(true)}
+                    className="text-[11px] font-extrabold text-white underline hover:text-sky-100 cursor-pointer flex items-center gap-1"
+                  >
+                    <Settings2 className="h-3 w-3" />
+                    <span>+ Cargar / Editar Listado de Tipos y Buques</span>
+                  </button>
+                </div>
                 <select
                   value={selectedType}
                   data-testid="invoicing-select-model"
@@ -321,25 +349,18 @@ export function CreateProformaSlideover({
               </div>
 
               {/* Parámetros Específicos según el Tipo de Proforma */}
-              {selectedType === 'vessel' && (
+              {(selectedType === 'vessel' || selectedType === 'plus_incidence') && (
                 <div className="flex flex-col gap-1 animate-in fade-in duration-150">
                   <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                    <Ship className="h-3.5 w-3.5" /> Nombre del Buque *
+                    <Ship className="h-3.5 w-3.5" /> Nombre del Buque / Servicio *
                   </label>
-                  {clientOperations.filter(
-                    (op) => op.client_id === selectedClientId && op.operation_type === 'vessel'
-                  ).length > 0 ? (
+                  {vesselOpsForClient.length > 0 ? (
                     <div className="space-y-1.5">
                       <select
                         value={
                           isCustomVessel
                             ? 'CUSTOM'
-                            : clientOperations.some(
-                                (op) =>
-                                  op.client_id === selectedClientId &&
-                                  op.operation_type === 'vessel' &&
-                                  op.name === vesselNameInput
-                              )
+                            : vesselOpsForClient.some((op) => op.name === vesselNameInput)
                             ? vesselNameInput
                             : vesselNameInput
                             ? 'CUSTOM'
@@ -357,30 +378,21 @@ export function CreateProformaSlideover({
                         className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-semibold focus:outline-none focus:border-[#1E5BB4]"
                       >
                         <option value="">-- Seleccionar Buque del Cliente --</option>
-                        {clientOperations
-                          .filter(
-                            (op) => op.client_id === selectedClientId && op.operation_type === 'vessel'
-                          )
-                          .map((v) => (
-                            <option key={v.id} value={v.name}>
-                              🚢 {v.name}
-                            </option>
-                          ))}
+                        {vesselOpsForClient.map((v) => (
+                          <option key={v.id} value={v.name}>
+                            🚢 {v.name}
+                          </option>
+                        ))}
                         <option value="CUSTOM">Otro / Escribir manualmente...</option>
                       </select>
                       {(isCustomVessel ||
-                        (!clientOperations.some(
-                          (op) =>
-                            op.client_id === selectedClientId &&
-                            op.operation_type === 'vessel' &&
-                            op.name === vesselNameInput
-                        ) && vesselNameInput !== '')) && (
+                        (!vesselOpsForClient.some((op) => op.name === vesselNameInput) && vesselNameInput !== '')) && (
                         <input
                           type="text"
                           autoFocus={isCustomVessel}
                           value={vesselNameInput}
                           onChange={(e) => setVesselNameInput(e.target.value.toUpperCase())}
-                          placeholder="Escribir nombre del buque (ej. HOEGH TARGET)..."
+                          placeholder="Escribir nombre del buque (ej. GOODWOOD, BRASILIA HWY, INQUEBRANTABLE)..."
                           className="w-full p-2 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                         />
                       )}
@@ -390,7 +402,7 @@ export function CreateProformaSlideover({
                       type="text"
                       value={vesselNameInput}
                       onChange={(e) => setVesselNameInput(e.target.value.toUpperCase())}
-                      placeholder="Ej. BRASILIA HWY, INQUEBRANTABLE..."
+                      placeholder="Ej. GOODWOOD, BRASILIA HWY, INQUEBRANTABLE..."
                       className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                     />
                   )}
@@ -400,17 +412,19 @@ export function CreateProformaSlideover({
               {selectedType === 'fixed_deposit' && (
                 <div className="flex flex-col gap-1 animate-in fade-in duration-150">
                   <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5" /> Sector de Depósito
+                    <Building2 className="h-3.5 w-3.5" /> Depósitos a Incluir en la Proforma
                   </label>
                   <select
                     value={depositSector}
                     onChange={(e) => setDepositSector(e.target.value as any)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:border-[#1E5BB4]"
+                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-bold focus:outline-none focus:border-[#1E5BB4]"
                   >
-                    <option value="both">Depósito Nacional + Depósito Fiscal (Abono Completo)</option>
+                    <option value="both">
+                      Los Dos Depósitos: Depósito Nacional (Apuntador 1) + Depósito Fiscal (Apuntador 2)
+                    </option>
+                    <option value="arroz">Depósito Arroz - Despacho Bolsones</option>
                     <option value="nacional">Depósito Nacional Solamente</option>
                     <option value="fiscal">Depósito Fiscal Solamente</option>
-                    <option value="arroz">Depósito Arroz - Despacho Bolsones</option>
                   </select>
                 </div>
               )}
@@ -521,7 +535,7 @@ export function CreateProformaSlideover({
               )}
 
               {calculationResult ? (
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2.5 text-xs">
                   {calculationResult.total_shifts === 0 && (
                     <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
@@ -541,6 +555,62 @@ export function CreateProformaSlideover({
                     </span>
                   </div>
 
+                  {/* Si es Depósitos Delta Dock, mostrar explícitamente los 2 depósitos y su detalle día por día */}
+                  {selectedType === 'fixed_deposit' &&
+                    Array.isArray(calculationResult.payload?.depositos) &&
+                    calculationResult.payload.depositos.map((dep: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="text-sky-950 bg-sky-50/80 rounded-lg border border-sky-200 overflow-hidden"
+                      >
+                        <div className="flex justify-between items-center px-2.5 py-1.5 bg-sky-100/70 border-b border-sky-200">
+                          <span className="font-bold text-[11px]">
+                            {dep.title} ({dep.apuntadorLabel} • TTE: {Number(dep.totalTte || 0).toFixed(2)}):
+                          </span>
+                          <span className="font-mono font-extrabold text-[11px]">
+                            $ {Number(dep.importeTotalBlock || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        {Array.isArray(dep.turnos) && dep.turnos.length > 0 && (
+                          <div className="max-h-36 overflow-y-auto bg-white">
+                            <table className="w-full text-[10px] border-collapse">
+                              <thead className="bg-slate-100 text-slate-600 font-bold uppercase sticky top-0">
+                                <tr>
+                                  <th className="p-1 pl-2 text-left">Fecha</th>
+                                  <th className="p-1 text-left">Puesto</th>
+                                  <th className="p-1 text-left">Apellido y Nombre</th>
+                                  <th className="p-1 text-center">Horario</th>
+                                  <th className="p-1 text-center">Norm</th>
+                                  <th className="p-1 pr-2 text-center text-purple-800">TTE</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {dep.turnos.map((t: any, rIdx: number) => {
+                                  const isFeriado = Boolean(t.isHoliday) || String(t.apellido || '').toUpperCase() === 'FERIADO';
+                                  const rawDate = String(t.fecha || '');
+                                  const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+                                    ? rawDate.split('-').reverse().join('/')
+                                    : rawDate;
+                                  return (
+                                    <tr key={rIdx} className={isFeriado ? 'bg-amber-50 font-bold text-amber-900' : 'hover:bg-slate-50'}>
+                                      <td className="p-1 pl-2 font-mono whitespace-nowrap">{formattedDate}</td>
+                                      <td className="p-1 font-mono text-slate-600 whitespace-nowrap">{t.puesto}</td>
+                                      <td className="p-1 font-semibold whitespace-nowrap">{t.apellido}</td>
+                                      <td className="p-1 text-center font-mono text-slate-500">{t.desdeHasta}</td>
+                                      <td className="p-1 text-center font-mono">{isFeriado ? '-' : t.normales}</td>
+                                      <td className="p-1 pr-2 text-center font-mono font-bold text-purple-800">
+                                        {isFeriado ? '-' : Number(t.tte || 0).toFixed(t.tte % 1 !== 0 ? 2 : 1)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
                   {Boolean(calculationResult.payload?.tab_transporte?.viajes) && (
                     <div className="flex justify-between items-center text-purple-900 bg-purple-50/70 px-2.5 py-1.5 rounded-lg border border-purple-200">
                       <span className="font-medium">Transporte Personal (Remises):</span>
@@ -552,9 +622,9 @@ export function CreateProformaSlideover({
 
                   {Boolean(calculationResult.payload?.transporte?.tramos) && (
                     <div className="flex justify-between items-center text-purple-900 bg-purple-50/70 px-2.5 py-1.5 rounded-lg border border-purple-200">
-                      <span className="font-medium">Transporte Personal (Remises):</span>
+                      <span className="font-medium">Transporte Diario Personal (Remises):</span>
                       <span className="font-mono font-bold">
-                        {calculationResult.payload.transporte.tramos} tramos • $ {Number(calculationResult.payload.transporte.total_transporte || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        {Number(calculationResult.payload.transporte.tramos).toFixed(2)} tramos • $ {Number(calculationResult.payload.transporte.total_transporte || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
                   )}
@@ -598,52 +668,28 @@ export function CreateProformaSlideover({
                     </span>
                   </div>
 
-                  {/* Previsualización Estructurada Plantilla Excel (PF 01 al PF 13) */}
-                  {selectedType === 'fiscal_yard' && calculationResult.payload?.tab_plazoleta?.slots_summary && (
-                    <div className="pt-2 border-t border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setShowSlotsPreview(!showSlotsPreview)}
-                        className="w-full flex items-center justify-between text-xs font-bold text-[#1E5BB4] hover:text-[#004392] py-1 cursor-pointer"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Table className="h-3.5 w-3.5" />
-                          <span>Previsualizar Plantilla Excel (PF 01 al PF 13)</span>
-                        </span>
-                        {showSlotsPreview ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </button>
-                      {showSlotsPreview && (
-                        <div className="mt-2 border border-slate-200 rounded-lg overflow-x-auto max-h-56 bg-white shadow-inner">
-                          <table className="w-full text-left text-[11px] border-collapse">
-                            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
-                              <tr>
-                                <th className="p-1.5 pl-2">Puesto</th>
-                                <th className="p-1.5">Operario</th>
-                                <th className="p-1.5 text-center">Norm</th>
-                                <th className="p-1.5 text-center">50%</th>
-                                <th className="p-1.5 text-center">100%</th>
-                                <th className="p-1.5 pr-2 text-right">Subtotal ($)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {calculationResult.payload.tab_plazoleta.slots_summary.map((slot: any, idx: number) => (
-                                <tr key={idx} className={slot.slotCode?.includes('ENCARGADO') ? 'bg-sky-50/60 font-semibold' : ''}>
-                                  <td className="p-1.5 pl-2 font-mono text-[10px] text-slate-700">{slot.slotCode}</td>
-                                  <td className="p-1.5 truncate max-w-[120px] text-slate-800">{slot.assignedEmployee}</td>
-                                  <td className="p-1.5 text-center font-mono">{slot.totalRegular}</td>
-                                  <td className="p-1.5 text-center font-mono text-sky-700">{slot.totalOt50}</td>
-                                  <td className="p-1.5 text-center font-mono text-amber-700">{slot.totalOt100}</td>
-                                  <td className="p-1.5 pr-2 text-right font-mono font-medium">
-                                    $ {Number(slot.subtotalAmount || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* PREVISUALIZACIÓN Y DESCARGA DE HOJA EXCEL REAL PARA TODOS LOS MODELOS (BUQUE, PLAZOLETA FISCAL, DEPOSITOS, INCIDENCIA PLUS, ETC.) */}
+                  <div className="pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      data-testid="invoicing-btn-open-excel-preview"
+                      onClick={() => setIsExcelPreviewOpen(true)}
+                      className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-[#107C41] border-2 border-[#107C41] rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                      <span>Previsualización Hoja Excel</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="invoicing-btn-download-excel-preview"
+                      onClick={() => downloadProformaExcel(calculationResult)}
+                      className="w-full py-2.5 px-3 bg-[#107C41] hover:bg-emerald-800 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Download className="h-4 w-4 shrink-0" />
+                      <span>Abrir / Descargar Excel (.xls)</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 !calculating && (
@@ -669,7 +715,21 @@ export function CreateProformaSlideover({
           </form>
         </div>
       </div>
+
+      {/* Modal de Hoja Excel a Pantalla Completa */}
+      <ExcelWorkbookPreviewModal
+        isOpen={isExcelPreviewOpen}
+        onClose={() => setIsExcelPreviewOpen(false)}
+        source={calculationResult}
+      />
+
+      {/* Modal de Administración de Tipos de Proforma, Buques y Depósitos */}
+      <ProformaTypesAndOperationsModal
+        isOpen={isTypesCatalogOpen}
+        onClose={() => setIsTypesCatalogOpen(false)}
+        clients={clients}
+        onOperationsChanged={loadOperations}
+      />
     </div>
   );
 }
-

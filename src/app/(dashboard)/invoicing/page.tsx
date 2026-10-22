@@ -15,6 +15,7 @@ import {
   Link2,
   ExternalLink,
   Check,
+  Settings2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,13 +41,15 @@ import { ProformaDetailModal } from '@/components/invoicing/ProformaDetailModal'
 import { CreateProformaSlideover } from '@/components/invoicing/CreateProformaSlideover';
 import { ProformaActionsDropdown } from '@/components/invoicing/ProformaActionsDropdown';
 import { InvoiceRemindersModal } from '@/components/invoicing/InvoiceRemindersModal';
+import { ProformaTypesAndOperationsModal } from '@/components/invoicing/ProformaTypesAndOperationsModal';
 
 const PROFORMA_TYPE_BADGES: Record<string, { label: string; color: string }> = {
   vessel: { label: 'Buque Ro-Ro', color: 'bg-sky-50 text-[#1E5BB4] border-sky-200' },
   fiscal_yard: { label: 'Plazoleta Fiscal', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  fixed_deposit: { label: 'Abono Depósito', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  shared_expo: { label: 'Coparticipada (10%)', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  standard: { label: 'Servicios Directos', color: 'bg-slate-100 text-slate-700 border-slate-300' },
+  fixed_deposit: { label: 'Depósitos Delta Dock', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  plus_incidence: { label: 'Incidencia Plus', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  shared_expo: { label: 'Cooptacord (10%)', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  standard: { label: 'PF Terminal Zárate / Directo', color: 'bg-slate-100 text-slate-700 border-slate-300' },
 };
 
 export default function InvoicingPage() {
@@ -93,6 +96,7 @@ export default function InvoicingPage() {
 
   // Modals & Slide-overs
   const [isSlideoverOpen, setIsSlideoverOpen] = useState(false);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRemindersModalOpen, setIsRemindersModalOpen] = useState(false);
@@ -390,7 +394,16 @@ export default function InvoicingPage() {
             Motor extensible de proformas comerciales por cliente según horas registradas y tarifario comercial.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsCatalogModalOpen(true)}
+            data-testid="invoicing-btn-tipos-proforma"
+            className="bg-white hover:bg-slate-50 text-[#0F2547] border border-slate-300 font-bold text-sm px-4 py-2.5 rounded-lg shadow-xs flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            <Settings2 className="h-4 w-4 text-[#1E5BB4]" />
+            <span>Tipos de Proforma / Buques</span>
+          </button>
           <Link
             href="/invoicing/due-reminders"
             data-testid="invoicing-btn-control-vencimientos"
@@ -614,6 +627,14 @@ export default function InvoicingPage() {
         isOpen={isRemindersModalOpen}
         onClose={() => setIsRemindersModalOpen(false)}
         onSuccess={() => refetch()}
+      />
+
+      {/* Catálogo de Tipos de Proforma y Operaciones / Buques / Depósitos */}
+      <ProformaTypesAndOperationsModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        clients={clients}
+        onOperationsChanged={() => refetch()}
       />
     </div>
   );

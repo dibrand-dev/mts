@@ -2,6 +2,7 @@ import { ProformaStrategy } from './types';
 import { vesselStrategy } from './strategies/vessel.strategy';
 import { fiscalYardStrategy } from './strategies/fiscal-yard.strategy';
 import { fixedDepositStrategy } from './strategies/fixed-deposit.strategy';
+import { plusIncidenceStrategy } from './strategies/plus-incidence.strategy';
 import { sharedExpoStrategy } from './strategies/shared-expo.strategy';
 import { standardStrategy } from './strategies/standard.strategy';
 
@@ -12,10 +13,17 @@ export function registerStrategy(strategy: ProformaStrategy): void {
   strategyMap.set(strategy.type, strategy);
 }
 
-// Initial registration
+// Initial registration in the exact order requested by the client:
+// 1. BUQUE
+// 2. PLAZOLETA FISCAL
+// 3. DEPOSITOS NACIONAL Y FISCAL DELTA DOCK
+// 4. INCIDENCIA PLUS
+// 5. COOPTACORD (10%)
+// 6. TERMINAL ZARATE (SERGIO DANCHUK)
 registerStrategy(vesselStrategy);
 registerStrategy(fiscalYardStrategy);
 registerStrategy(fixedDepositStrategy);
+registerStrategy(plusIncidenceStrategy);
 registerStrategy(sharedExpoStrategy);
 registerStrategy(standardStrategy);
 
@@ -53,4 +61,3 @@ export function getDefaultStrategyForClient(clientCompanyName: string): string {
   }
   return 'vessel';
 }
-

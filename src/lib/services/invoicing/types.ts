@@ -143,6 +143,7 @@ export interface FiscalYardPayload {
   discount_percentage: number;
   consolidado: {
     plazoleta_fiscal: number;
+    inspecciones_especiales?: number;
     transporte_personal: number;
     control_expo: number;
     total_neto: number;
@@ -184,6 +185,19 @@ export interface FiscalYardPayload {
     factor_asignacion: number;
     horas_facturadas: { norm: number; ot50: number; ot100: number };
     importes: { reg: number; ot50: number; ot100: number; total: number };
+  };
+  tab_inspecciones?: {
+    horas_apuntador: { norm: number; ot50: number; ot100: number };
+    tarifas_apuntador: { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number };
+    importes: {
+      ap_reg: number;
+      ap_ot50: number;
+      ap_ot100: number;
+      neto_sin_bonif: number;
+      bonificacion: number;
+      subtotal_bonificado: number;
+    };
+    shift_rows: FiscalYardShiftRow[];
   };
   notes?: string[];
 }

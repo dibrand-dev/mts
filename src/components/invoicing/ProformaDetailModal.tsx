@@ -14,13 +14,17 @@ import {
   Link2,
   ExternalLink,
   FileSpreadsheet,
+  Table2,
+  Download,
 } from 'lucide-react';
-import { InvoicingRecord, downloadProformaCSV } from '@/lib/services/invoicing';
+import { InvoicingRecord, downloadProformaCSV, downloadProformaExcel } from '@/lib/services/invoicing';
 import { VesselViewer } from './viewers/VesselViewer';
 import { FiscalYardViewer } from './viewers/FiscalYardViewer';
 import { FixedDepositViewer } from './viewers/FixedDepositViewer';
 import { SharedExpoViewer } from './viewers/SharedExpoViewer';
 import { StandardViewer } from './viewers/StandardViewer';
+import { PlusIncidenceViewer } from './viewers/PlusIncidenceViewer';
+import { ExcelWorkbookPreviewModal } from './ExcelWorkbookPreviewModal';
 
 interface Props {
   isOpen: boolean;
@@ -38,6 +42,7 @@ export function ProformaDetailModal({
   onInvoiceClick,
 }: Props) {
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
 
   if (!isOpen || !proforma) return null;
 
@@ -62,6 +67,10 @@ export function ProformaDetailModal({
     downloadProformaCSV(proforma);
   };
 
+  const handleDownloadExcel = () => {
+    downloadProformaExcel(proforma);
+  };
+
   const proformaType = proforma.proforma_type || 'vessel';
   const invoiceNumberDisplay = proforma.invoice?.invoice_number || 'A DEFINIR';
   const invoiceDateDisplay = proforma.invoice?.invoice_date || proforma.issue_date;
@@ -70,9 +79,10 @@ export function ProformaDetailModal({
   const typeLabels: Record<string, { label: string; icon: string }> = {
     vessel: { label: 'Buque Automotores (Ro-Ro)', icon: '🚢' },
     fiscal_yard: { label: 'Plazoleta Fiscal Quincenal', icon: '🏗️' },
-    fixed_deposit: { label: 'Abono Depósitos / Almacenes', icon: '🏢' },
-    shared_expo: { label: 'Horas Coparticipadas (10%)', icon: '📊' },
-    standard: { label: 'Servicios Directos', icon: '📋' },
+    fixed_deposit: { label: 'Depósitos Nacional y Fiscal Delta Dock', icon: '🏢' },
+    plus_incidence: { label: 'Incidencia Plus (Buque / Operativa)', icon: '📈' },
+    shared_expo: { label: 'Cooptacord — Horas Coparticipadas (10%)', icon: '📊' },
+    standard: { label: 'Plazoleta Fiscal Terminal Zárate / Directos', icon: '📋' },
   };
 
   const currentTypeInfo = typeLabels[proformaType] || { label: proformaType, icon: '📄' };
@@ -165,10 +175,30 @@ export function ProformaDetailModal({
             </Link>
             <button
               type="button"
+              onClick={() => setIsExcelPreviewOpen(true)}
+              data-testid="modal-btn-open-excel-sheet"
+              className="text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg transition-colors cursor-pointer border border-emerald-300 flex items-center gap-1.5 text-xs font-bold"
+              title="Abrir previsualización de hoja Excel completa con pestañas"
+            >
+              <Table2 className="h-3.5 w-3.5 text-emerald-700" />
+              <span>Hoja Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              data-testid="modal-btn-download-xls"
+              className="text-white bg-emerald-700 hover:bg-emerald-800 px-3 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-2xs"
+              title="Descargar Libro Excel (.xls) multi-solapa idéntico al formato comercial"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Excel (.xls)</span>
+            </button>
+            <button
+              type="button"
               onClick={handleDownloadCSV}
               data-testid="modal-btn-download-csv"
               className="text-slate-700 hover:text-emerald-700 px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200 flex items-center gap-1 text-xs font-semibold"
-              title="Descargar detalle en archivo CSV (Excel)"
+              title="Descargar detalle en archivo CSV"
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
               <span>CSV</span>
@@ -272,9 +302,10 @@ export function ProformaDetailModal({
           {proformaType === 'vessel' && <VesselViewer proforma={proforma} />}
           {proformaType === 'fiscal_yard' && <FiscalYardViewer proforma={proforma} />}
           {proformaType === 'fixed_deposit' && <FixedDepositViewer proforma={proforma} />}
+          {proformaType === 'plus_incidence' && <PlusIncidenceViewer proforma={proforma} />}
           {proformaType === 'shared_expo' && <SharedExpoViewer proforma={proforma} />}
           {proformaType === 'standard' && <StandardViewer proforma={proforma} />}
-          {!['vessel', 'fiscal_yard', 'fixed_deposit', 'shared_expo', 'standard'].includes(proformaType) && (
+          {!['vessel', 'fiscal_yard', 'fixed_deposit', 'plus_incidence', 'shared_expo', 'standard'].includes(proformaType) && (
             <StandardViewer proforma={proforma} />
           )}
         </div>
@@ -314,6 +345,13 @@ export function ProformaDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Fullscreen Excel Workbook Sheet Modal */}
+      <ExcelWorkbookPreviewModal
+        isOpen={isExcelPreviewOpen}
+        onClose={() => setIsExcelPreviewOpen(false)}
+        source={proforma}
+      />
     </div>
   );
 }

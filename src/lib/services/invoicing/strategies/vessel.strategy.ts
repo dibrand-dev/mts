@@ -4,8 +4,8 @@ import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '
 
 export const vesselStrategy: ProformaStrategy = {
   type: 'vessel',
-  label: 'Operativa Buque Automotores (Ro-Ro)',
-  description: 'Liquidación marítima con desglose de vehículos (hábil/inhábil), encargado a bordo, horas compensación y plus con markup.',
+  label: 'BUQUE (Peritaje Calidad y Tally + Hs Compensación + Encargado a Bordo)',
+  description: 'Liquidación de Buque (5 pestañas Excel: Factura, Operativa Buque, Plus con Coef. 0,52, Hs Compensación y Encargado a Bordo).',
   defaultConceptType: 'general_hours',
 
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
@@ -251,6 +251,27 @@ export const vesselStrategy: ProformaStrategy = {
           total_factura_bonificada: t3_total,
         },
       },
+      tab_plus: {
+        unidades_operadas: v_total,
+        plus_base: plus_base_op,
+        incidencia_he: incid_extras_op,
+        neto_plus: Math.round((plus_base_op + incid_extras_op) * 100) / 100,
+        coeficiente: plusMarkup,
+        coeficiente_monto: Math.round((plus_base_op + incid_extras_op) * plusMarkup * 100) / 100,
+        total_facturar_plus: total_plus_op,
+      },
+      shift_rows: shifts.map((s) => ({
+        puesto: s.position_name.toUpperCase(),
+        apellido: s.employee_name,
+        fecha: s.work_date,
+        desdeHasta: `${(s.shift_start_time || '06:00').slice(0, 5).replace(':', '')}-${(s.shift_end_time || '18:00').slice(0, 5).replace(':', '')}`,
+        horas: s.total_hours,
+        normales: s.regular_hours,
+        ot50: s.overtime_50_hours,
+        ot100: s.overtime_100_hours,
+        remises: s.shuttles_count,
+        plus: s.bonus_applied_amount + s.plus_delta_amount,
+      })),
     };
 
     return {

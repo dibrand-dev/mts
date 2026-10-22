@@ -192,8 +192,8 @@ export async function getOrCreateDailyWorkLog(
 ): Promise<DailyWorkLogWithEntries> {
   const supabase = createClient() as any;
 
-  // 1. Try to find existing log for (work_date, client_id)
-  const { data: existing, error: findError } = await supabase
+  // 1. Try to find existing log for (work_date, client_id) matching vessel_name
+  const { data: existingList, error: findError } = await supabase
     .from('daily_work_logs')
     .select(`
       *,
@@ -206,13 +206,28 @@ export async function getOrCreateDailyWorkLog(
       )
     `)
     .eq('work_date', workDate)
-    .eq('client_id', clientId)
-    .maybeSingle();
+    .eq('client_id', clientId);
 
   if (findError) {
     console.error('Error searching daily work log:', findError);
     throw new Error(findError.message);
   }
+
+  const normalizedTargetVessel = (vesselName || '').trim().toUpperCase();
+  const existing = (existingList || []).find((log: any) => {
+    const logVessel = (log.vessel_name || '').trim().toUpperCase();
+    if (normalizedTargetVessel && logVessel) {
+      return logVessel === normalizedTargetVessel;
+    }
+    if (!normalizedTargetVessel && !logVessel) {
+      return true;
+    }
+    // If existing log had no vessel_name yet and has 0 entries, allow adopting vesselName
+    if (normalizedTargetVessel && !logVessel && (!log.entries || log.entries.length === 0)) {
+      return true;
+    }
+    return false;
+  });
 
   if (existing) {
     const updates: Partial<DailyWorkLogInsert> = {};
