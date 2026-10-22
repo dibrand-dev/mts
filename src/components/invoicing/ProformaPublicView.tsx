@@ -19,13 +19,16 @@ import {
   Phone,
   Mail,
   ShieldCheck,
+  Table2,
 } from 'lucide-react';
-import { InvoicingRecord, downloadProformaCSV } from '@/lib/services/invoicing';
+import { InvoicingRecord, downloadProformaCSV, downloadProformaExcel } from '@/lib/services/invoicing';
 import { VesselViewer } from './viewers/VesselViewer';
 import { FiscalYardViewer } from './viewers/FiscalYardViewer';
 import { FixedDepositViewer } from './viewers/FixedDepositViewer';
 import { SharedExpoViewer } from './viewers/SharedExpoViewer';
 import { StandardViewer } from './viewers/StandardViewer';
+import { PlusIncidenceViewer } from './viewers/PlusIncidenceViewer';
+import { ExcelWorkbookPreviewModal } from './ExcelWorkbookPreviewModal';
 
 interface Props {
   proforma: InvoicingRecord;
@@ -33,6 +36,7 @@ interface Props {
 
 export function ProformaPublicView({ proforma }: Props) {
   const [copied, setCopied] = useState(false);
+  const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
 
   const handleCopyLink = async () => {
     try {
@@ -58,6 +62,10 @@ export function ProformaPublicView({ proforma }: Props) {
     downloadProformaCSV(proforma);
   };
 
+  const handleDownloadExcel = () => {
+    downloadProformaExcel(proforma);
+  };
+
   const proformaType = proforma.proforma_type || 'vessel';
   const invoiceNumberDisplay = proforma.invoice?.invoice_number || 'Pendiente de emisión';
   const datesDisplay = proforma.operation_dates || proforma.fortnight_period;
@@ -65,9 +73,10 @@ export function ProformaPublicView({ proforma }: Props) {
   const typeLabels: Record<string, { label: string; icon: string }> = {
     vessel: { label: 'Operativa Buque Automotores (Ro-Ro)', icon: '🚢' },
     fiscal_yard: { label: 'Plazoleta Fiscal Quincenal', icon: '🏗️' },
-    fixed_deposit: { label: 'Abono Depósitos / Almacenes', icon: '🏢' },
-    shared_expo: { label: 'Horas Coparticipadas (10%)', icon: '📊' },
-    standard: { label: 'Servicios Directos y Operativos', icon: '📋' },
+    fixed_deposit: { label: 'Depósitos Nacional y Fiscal Delta Dock', icon: '🏢' },
+    plus_incidence: { label: 'Incidencia Plus (Buque / Operativa)', icon: '📈' },
+    shared_expo: { label: 'Cooptacord — Horas Coparticipadas (10%)', icon: '📊' },
+    standard: { label: 'Plazoleta Fiscal Terminal Zárate / Directos', icon: '📋' },
   };
 
   const currentTypeInfo = typeLabels[proformaType] || { label: proformaType, icon: '📄' };
@@ -122,13 +131,35 @@ export function ProformaPublicView({ proforma }: Props) {
 
             <button
               type="button"
+              onClick={() => setIsExcelPreviewOpen(true)}
+              data-testid="public-btn-open-excel-sheet"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 border border-emerald-600/60 transition-colors shadow-xs cursor-pointer"
+              title="Ver hoja Excel multi-solapa completa en pantalla"
+            >
+              <Table2 className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Ver Hoja Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              data-testid="public-btn-download-xls"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white transition-colors shadow-xs cursor-pointer"
+              title="Descargar Libro Excel (.xls) oficial con todas sus pestañas"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Descargar Excel (.xls)</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleDownloadCSV}
               data-testid="public-btn-download-csv"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors shadow-xs cursor-pointer"
-              title="Descargar detalle completo en planilla CSV (Excel)"
+              title="Descargar detalle completo en planilla CSV"
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Descargar CSV</span>
+              <span>CSV</span>
             </button>
 
             <button
@@ -285,9 +316,10 @@ export function ProformaPublicView({ proforma }: Props) {
             {proformaType === 'vessel' && <VesselViewer proforma={proforma} />}
             {proformaType === 'fiscal_yard' && <FiscalYardViewer proforma={proforma} />}
             {proformaType === 'fixed_deposit' && <FixedDepositViewer proforma={proforma} />}
+            {proformaType === 'plus_incidence' && <PlusIncidenceViewer proforma={proforma} />}
             {proformaType === 'shared_expo' && <SharedExpoViewer proforma={proforma} />}
             {proformaType === 'standard' && <StandardViewer proforma={proforma} />}
-            {!['vessel', 'fiscal_yard', 'fixed_deposit', 'shared_expo', 'standard'].includes(proformaType) && (
+            {!['vessel', 'fiscal_yard', 'fixed_deposit', 'plus_incidence', 'shared_expo', 'standard'].includes(proformaType) && (
               <StandardViewer proforma={proforma} />
             )}
           </div>
@@ -381,14 +413,28 @@ export function ProformaPublicView({ proforma }: Props) {
             </button>
             <span>•</span>
             <button
-              onClick={handleDownloadCSV}
+              onClick={handleDownloadExcel}
               className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1 cursor-pointer"
             >
-              <FileSpreadsheet className="h-3.5 w-3.5" /> Descargar CSV
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Descargar Excel (.xls)
+            </button>
+            <span>•</span>
+            <button
+              onClick={handleDownloadCSV}
+              className="text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              CSV
             </button>
           </div>
         </div>
       </main>
+
+      {/* Fullscreen Excel Workbook Sheet Modal */}
+      <ExcelWorkbookPreviewModal
+        isOpen={isExcelPreviewOpen}
+        onClose={() => setIsExcelPreviewOpen(false)}
+        source={proforma}
+      />
 
       {/* Footer */}
       <footer className="mt-12 text-center text-xs text-slate-400 no-print">
