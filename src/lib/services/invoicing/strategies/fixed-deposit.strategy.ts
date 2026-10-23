@@ -288,9 +288,26 @@ export const fixedDepositStrategy: ProformaStrategy = {
       for (const s of shifts) {
         const vName = (s.vessel_name || '').toUpperCase();
         const pName = (s.position_name || '').toUpperCase();
-        if (vName.includes('FISCAL') || pName.includes('2') || pName.includes('3') || (s.shuttles_count > 0 && s.shuttles_count < 1)) {
+        const lName = (s.location_name || '').toUpperCase();
+        const lCode = (s.location_code || '').toUpperCase();
+
+        const isFiscal =
+          lName.includes('FISCAL') ||
+          lCode === 'DEP-FISC' ||
+          vName.includes('FISCAL') ||
+          pName.includes('2') ||
+          pName.includes('3') ||
+          (s.shuttles_count > 0 && s.shuttles_count < 1);
+
+        const isNacional =
+          lName.includes('NACIONAL') ||
+          lCode === 'DEP-NAC' ||
+          vName.includes('NACIONAL') ||
+          pName.includes('1');
+
+        if (isFiscal) {
           explicitFiscal.push(s);
-        } else if (vName.includes('NACIONAL') || pName.includes('1')) {
+        } else if (isNacional) {
           explicitNacional.push(s);
         } else {
           unclassified.push(s);

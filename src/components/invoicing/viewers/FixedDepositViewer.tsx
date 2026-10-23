@@ -20,7 +20,9 @@ export function FixedDepositViewer({ proforma }: Props) {
   const horasExtras = payload?.horas_extras;
   const transporte = payload?.transporte;
   const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
-  const isQ2 = String(proforma.fortnight_period || '').toUpperCase().includes('Q2');
+  const opDates = String(proforma.operation_dates || payload?.operation_dates || '');
+  const isQ1Dates = opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera');
+  const isQ2 = !isQ1Dates && String(proforma.fortnight_period || '').toUpperCase().includes('Q2');
   const fromDate = payload?.from_date || (isQ2 ? '2026-10-16' : '2026-10-01');
   const toDate = payload?.to_date || (isQ2 ? '2026-10-31' : '2026-10-15');
 

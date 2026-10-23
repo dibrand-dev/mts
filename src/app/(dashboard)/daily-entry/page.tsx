@@ -1999,6 +1999,10 @@ export default function DailyEntryPage() {
                         type="button"
                         data-testid="daily-entry-preset-deposito-fiscal"
                         onClick={() => {
+                          const ddClient = clients.find((c) => c.company_name.toUpperCase().includes('DELTA DOCK'));
+                          if (ddClient && (!formClientId || formClientId !== ddClient.id)) {
+                            setFormClientId(ddClient.id);
+                          }
                           const apuntadorPos = positions.find((p) =>
                             p.name.toUpperCase().includes('APUNTADOR')
                           );
@@ -2031,6 +2035,10 @@ export default function DailyEntryPage() {
                         type="button"
                         data-testid="daily-entry-preset-deposito-nacional"
                         onClick={() => {
+                          const ddClient = clients.find((c) => c.company_name.toUpperCase().includes('DELTA DOCK'));
+                          if (ddClient && (!formClientId || formClientId !== ddClient.id)) {
+                            setFormClientId(ddClient.id);
+                          }
                           const apuntadorPos = positions.find((p) =>
                             p.name.toUpperCase().includes('APUNTADOR')
                           );

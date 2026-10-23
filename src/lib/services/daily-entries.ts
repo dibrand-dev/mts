@@ -313,6 +313,30 @@ export async function getOrCreateDailyWorkLog(
     .single();
 
   if (insertError) {
+    if (insertError.code === '23505' || insertError.message?.includes('duplicate key')) {
+      // Fallback: adopt the existing work log for (workDate, clientId) if table has legacy UNIQUE (work_date, client_id)
+      const { data: fallbackLog } = await supabase
+        .from('daily_work_logs')
+        .select(`
+          *,
+          client:clients(id, company_name),
+          location:locations(id, name, code),
+          entries:daily_staff_entries(
+            *,
+            employee:employees(id, full_name, national_id, file_number),
+            position:positions(id, name, requires_vehicle_bonus)
+          )
+        `)
+        .eq('work_date', workDate)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackLog) {
+        return fallbackLog as DailyWorkLogWithEntries;
+      }
+    }
     console.error('Error creating daily work log:', insertError);
     throw new Error(insertError.message);
   }
@@ -526,6 +550,9 @@ export interface ClientShiftRecordForBilling {
   work_date: string;
   client_id: string;
   client_name: string;
+  location_id?: string | null;
+  location_name?: string | null;
+  location_code?: string | null;
   vessel_name: string | null;
   employee_id: string;
   employee_name: string;
@@ -585,6 +612,7 @@ export async function getStaffEntriesForClientAndPeriod(
       total_vehicles_handled,
       is_export_day,
       client:clients(id, company_name),
+      location:locations(id, name, code),
       entries:daily_staff_entries(
         id,
         employee_id,
@@ -661,6 +689,9 @@ export async function getStaffEntriesForClientAndPeriod(
         work_date: log.work_date,
         client_id: log.client_id,
         client_name: log.client?.company_name || 'Cliente',
+        location_id: log.location?.id || null,
+        location_name: log.location?.name || null,
+        location_code: log.location?.code || null,
         vessel_name: log.vessel_name || null,
         employee_id: entry.employee_id,
         employee_name: entry.employee?.full_name || 'Personal',
