@@ -440,15 +440,17 @@ export const fixedDepositStrategy: ProformaStrategy = {
     const sumBlocks = blocks.reduce((acc, b) => acc + b.importeTotalBlock, 0);
     const sumTramosFromBlocks = Math.round(blocks.reduce((acc, b) => acc + b.totalTte, 0) * 100) / 100;
 
-    // If user explicitly entered manual shuttles or shifts had shuttles, compute tramos
+    // Tramos de transporte (Delta Dock contract: 15.0 tramos por quincena = 10 Nacional + 5 Fiscal)
     const tramos =
       shuttleTripsManual !== undefined
         ? shuttleTripsManual
-        : sumTramosFromBlocks > 0
-        ? sumTramosFromBlocks
         : sector === 'arroz'
-        ? 7.0
-        : 15.0;
+        ? (sumTramosFromBlocks > 0 ? sumTramosFromBlocks : 7.0)
+        : sector === 'nacional'
+        ? (sumTramosFromBlocks > 0 ? sumTramosFromBlocks : 10.0)
+        : sector === 'fiscal'
+        ? (sumTramosFromBlocks > 0 ? sumTramosFromBlocks : 5.0)
+        : Math.max(15.0, sumTramosFromBlocks);
 
     const imp_transporte = Math.round(tramos * rateTramoTransporte * 100) / 100;
     const total_neto = Math.round((sumBlocks + imp_transporte) * 100) / 100;

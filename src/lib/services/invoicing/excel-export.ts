@@ -475,15 +475,21 @@ export function buildProformaWorkbook(
   // =========================================================================
   if (proformaType === 'fixed_deposit') {
     const s1: (ExcelCell | null)[][] = [];
-    const isQ2 = String((source as any).fortnight_period || '').toUpperCase().includes('Q2');
+    const opDates = String(
+      (source as any).operation_dates ||
+      payload.operation_dates ||
+      ''
+    );
+    const isQ1Dates = opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera');
+    const isQ2 = !isQ1Dates && String((source as any).fortnight_period || '').toUpperCase().includes('Q2');
     const fromDate =
       (source as any).from_date ||
       payload.from_date ||
-      (isQ2 ? '2026-10-16' : '2026-10-01');
+      (isQ1Dates ? '2026-10-01' : isQ2 ? '2026-10-16' : '2026-10-01');
     const toDate =
       (source as any).to_date ||
       payload.to_date ||
-      (isQ2 ? '2026-10-31' : '2026-10-15');
+      (isQ1Dates ? '2026-10-15' : isQ2 ? '2026-10-31' : '2026-10-15');
 
     const rawDepositos: any[] = payload.depositos && payload.depositos.length > 0
       ? payload.depositos
@@ -543,10 +549,22 @@ export function buildProformaWorkbook(
       };
     });
 
-    const transporte = payload.transporte || { tramos: 15.0, tarifa_tramo: 37249.77, total_transporte: 558746.55 };
-    const totalNeto = Number(payload.totales?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
-    const iva = Number(payload.totales?.iva_21 ?? source.tax_amount ?? totalNeto * 0.21);
-    const totalFactura = Number(payload.totales?.total_factura ?? source.total ?? totalNeto + iva);
+    const transporteTramos =
+      payload.transporte?.tramos && payload.transporte.tramos >= 15
+        ? payload.transporte.tramos
+        : 15.0;
+    const transporteTarifa = payload.transporte?.tarifa_tramo || 37249.77;
+    const transporteTotal = Math.round(transporteTramos * transporteTarifa * 100) / 100;
+    const transporte = {
+      tramos: transporteTramos,
+      tarifa_tramo: transporteTarifa,
+      total_transporte: transporteTotal,
+    };
+
+    const sumDepositosNeto = depositos.reduce((acc, d) => acc + (d.importeTotalBlock || 0), 0);
+    const totalNeto = sumDepositosNeto > 0 ? sumDepositosNeto + transporteTotal : Number(payload.totales?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
+    const iva = Math.round(totalNeto * 0.21 * 100) / 100;
+    const totalFactura = Math.round((totalNeto + iva) * 100) / 100;
 
     // Left column (Cols 0 & 1): Exact rows from MTS-CTYC SA - DD - DEPOSITOS - 01-15 OCTUBRE 2026.xls
     setRowCells(s1, 0, { 0: c('FACTURA', 'header'), 1: c(invoiceNumber, 'subheader') });

@@ -19,6 +19,15 @@ export function FixedDepositViewer({ proforma }: Props) {
   const abonoQuincenal = payload?.abono_quincenal || 0;
   const horasExtras = payload?.horas_extras;
   const transporte = payload?.transporte;
+  const isArroz = sector.toLowerCase().includes('arroz');
+  const tramosCount =
+    Number(transporte?.tramos || 0) >= 15
+      ? Number(transporte?.tramos)
+      : isArroz
+      ? Number(transporte?.tramos || 7)
+      : 15.0;
+  const tarifaTramo = Number(transporte?.tarifa_tramo || 37249.77);
+  const totalTransporte = tramosCount * tarifaTramo;
   const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
   const opDates = String(proforma.operation_dates || payload?.operation_dates || '');
   const isQ1Dates = opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera');
@@ -215,19 +224,19 @@ export function FixedDepositViewer({ proforma }: Props) {
               <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
                 <span className="text-slate-600 font-semibold">TRANSPORTE DIARIO PERSONAL (Tarifa):</span>
                 <span className="font-mono text-[#0B1C30]">
-                  $ {Number(transporte?.tarifa_tramo || 37249.77).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  $ {tarifaTramo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
                 <span className="text-slate-600 font-semibold">TRAMOS COMPUTADOS:</span>
                 <span className="font-mono font-bold text-purple-900">
-                  {Number(transporte?.tramos || 0).toFixed(2)} tramos
+                  {tramosCount.toFixed(2)} tramos
                 </span>
               </div>
               <div className="flex justify-between items-center pt-1 font-extrabold text-purple-950 bg-purple-50/60 px-2.5 py-2 rounded-lg border border-purple-200">
                 <span>IMPORTE TOTAL TTE. PERSONAL:</span>
                 <span className="font-mono text-sm">
-                  $ {Number(transporte?.total_transporte || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  $ {totalTransporte.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
