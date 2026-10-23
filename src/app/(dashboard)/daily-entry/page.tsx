@@ -1671,10 +1671,12 @@ export default function DailyEntryPage() {
                       const locText = `${locObj?.name || ''} ${locObj?.code || ''}`.toUpperCase();
                       if (locText.includes('DEPOSITO FISCAL') || locText.includes('DEPÓSITO FISCAL') || locObj?.code === 'DEP-FISC') {
                         setShuttlesCount('0,50');
-                        if (!formVesselName) setFormVesselName('DEPÓSITO FISCAL');
+                        setFormVesselName('DEPÓSITO FISCAL');
                       } else if (locText.includes('DEPOSITO NACIONAL') || locText.includes('DEPÓSITO NACIONAL') || locObj?.code === 'DEP-NAC') {
                         setShuttlesCount('1,00');
-                        if (!formVesselName) setFormVesselName('DEPÓSITO NACIONAL');
+                        setFormVesselName('DEPÓSITO NACIONAL');
+                      } else if (formVesselName === 'DEPÓSITO FISCAL' || formVesselName === 'DEPÓSITO NACIONAL') {
+                        setFormVesselName('');
                       }
                     }}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] font-medium focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs"

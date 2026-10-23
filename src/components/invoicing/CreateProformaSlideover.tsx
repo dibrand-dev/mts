@@ -55,7 +55,7 @@ export function CreateProformaSlideover({
   const [fortnightPeriod, setFortnightPeriod] = useState('');
   const [vesselNameInput, setVesselNameInput] = useState('');
   const [isCustomVessel, setIsCustomVessel] = useState(false);
-  const [discountPercentageInput, setDiscountPercentageInput] = useState('3.0');
+  const [discountPercentageInput, setDiscountPercentageInput] = useState('0');
   const [depositSector, setDepositSector] = useState<'both' | 'nacional' | 'fiscal' | 'arroz'>('both');
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
   const [conceptType, setConceptType] = useState<'general_hours' | 'shuttles' | 'export_tallymen'>('general_hours');
@@ -121,6 +121,13 @@ export function CreateProformaSlideover({
       }
       const suggestedType = getDefaultStrategyForClient(client.company_name);
       setSelectedType(suggestedType);
+
+      const isDelta = client.company_name.toUpperCase().includes('DELTA');
+      if (isDelta || suggestedType === 'fixed_deposit') {
+        setDiscountPercentageInput('0');
+      } else {
+        setDiscountPercentageInput('3.0');
+      }
 
       const strat = strategies.find((s) => s.type === suggestedType);
       if (strat) {
@@ -331,6 +338,9 @@ export function CreateProformaSlideover({
                   onChange={(e) => {
                     const newType = e.target.value;
                     setSelectedType(newType);
+                    if (newType === 'fixed_deposit') {
+                      setDiscountPercentageInput('0');
+                    }
                     const strat = strategies.find((s) => s.type === newType);
                     if (strat) setConceptType(strat.defaultConceptType);
                   }}
@@ -449,29 +459,78 @@ export function CreateProformaSlideover({
                 </div>
               )}
 
-              {/* Rango de Fechas */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Desde *</label>
-                  <input
-                    type="date"
-                    data-testid="invoicing-input-from-date"
-                    value={calcFromDate}
-                    onChange={(e) => setCalcFromDate(e.target.value)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-                    required
-                  />
+              {/* Rango de Fechas con Accesos Rápidos de Quincena */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-white">Rango de Liquidación *</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const year = calcFromDate ? calcFromDate.split('-')[0] : now.getFullYear().toString();
+                        const month = calcFromDate ? calcFromDate.split('-')[1] : String(now.getMonth() + 1).padStart(2, '0');
+                        setCalcFromDate(`${year}-${month}-01`);
+                        setCalcToDate(`${year}-${month}-15`);
+                        setFortnightPeriod(`${year}-${month}-Q1`);
+                      }}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-900/60 text-blue-200 border border-blue-400/30 hover:bg-blue-800 hover:text-white transition-colors cursor-pointer"
+                    >
+                      1° Q (01-15)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const year = calcFromDate ? calcFromDate.split('-')[0] : now.getFullYear().toString();
+                        const month = calcFromDate ? calcFromDate.split('-')[1] : String(now.getMonth() + 1).padStart(2, '0');
+                        const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+                        setCalcFromDate(`${year}-${month}-16`);
+                        setCalcToDate(`${year}-${month}-${lastDay}`);
+                        setFortnightPeriod(`${year}-${month}-Q2`);
+                      }}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-900/60 text-blue-200 border border-blue-400/30 hover:bg-blue-800 hover:text-white transition-colors cursor-pointer"
+                    >
+                      2° Q (16-Fin)
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Hasta *</label>
-                  <input
-                    type="date"
-                    data-testid="invoicing-input-to-date"
-                    value={calcToDate}
-                    onChange={(e) => setCalcToDate(e.target.value)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-                    required
-                  />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] text-slate-300">Fecha Desde</label>
+                    <input
+                      type="date"
+                      data-testid="invoicing-input-from-date"
+                      value={calcFromDate}
+                      onChange={(e) => {
+                        const newFrom = e.target.value;
+                        setCalcFromDate(newFrom);
+                        if (newFrom) {
+                          const parts = newFrom.split('-');
+                          if (parts.length === 3) {
+                            const yyyy = parts[0];
+                            const mm = parts[1];
+                            const dd = parseInt(parts[2], 10);
+                            setFortnightPeriod(`${yyyy}-${mm}-${dd <= 15 ? 'Q1' : 'Q2'}`);
+                          }
+                        }
+                      }}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                      required
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] text-slate-300">Fecha Hasta</label>
+                    <input
+                      type="date"
+                      data-testid="invoicing-input-to-date"
+                      value={calcToDate}
+                      onChange={(e) => setCalcToDate(e.target.value)}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -491,16 +550,23 @@ export function CreateProformaSlideover({
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold uppercase tracking-wider text-white">Bonificación Comercial (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    data-testid="invoicing-input-discount"
-                    value={discountPercentageInput}
-                    onChange={(e) => setDiscountPercentageInput(e.target.value)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:border-[#1E5BB4]"
-                  />
+                  {selectedType === 'fixed_deposit' ||
+                  clients.find((c) => c.id === selectedClientId)?.company_name.toUpperCase().includes('DELTA') ? (
+                    <div className="w-full p-2.5 bg-slate-800/80 border border-slate-600 rounded-lg text-xs text-slate-300 italic flex items-center h-[42px]">
+                      <span>0% (Sin bonificación para Delta)</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      data-testid="invoicing-input-discount"
+                      value={discountPercentageInput}
+                      onChange={(e) => setDiscountPercentageInput(e.target.value)}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-mono focus:outline-none focus:border-[#1E5BB4]"
+                    />
+                  )}
                 </div>
               </div>
 

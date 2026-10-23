@@ -291,19 +291,25 @@ export const fixedDepositStrategy: ProformaStrategy = {
         const lName = (s.location_name || '').toUpperCase();
         const lCode = (s.location_code || '').toUpperCase();
 
+        const isLocNacional = lName.includes('NACIONAL') || lCode === 'DEP-NAC';
+        const isLocFiscal = (lName.includes('FISCAL') && !lName.includes('NACIONAL')) || lCode === 'DEP-FISC';
+
         const isFiscal =
-          lName.includes('FISCAL') ||
-          lCode === 'DEP-FISC' ||
-          vName.includes('FISCAL') ||
-          pName.includes('2') ||
-          pName.includes('3') ||
-          (s.shuttles_count > 0 && s.shuttles_count < 1);
+          isLocFiscal ||
+          (!isLocNacional && (
+            vName.includes('FISCAL') ||
+            pName.includes('2') ||
+            pName.includes('3') ||
+            (s.shuttles_count > 0 && s.shuttles_count < 1)
+          ));
 
         const isNacional =
-          lName.includes('NACIONAL') ||
-          lCode === 'DEP-NAC' ||
-          vName.includes('NACIONAL') ||
-          pName.includes('1');
+          isLocNacional ||
+          (!isLocFiscal && (
+            vName.includes('NACIONAL') ||
+            pName.includes('1') ||
+            s.shuttles_count >= 1
+          ));
 
         if (isFiscal) {
           explicitFiscal.push(s);
