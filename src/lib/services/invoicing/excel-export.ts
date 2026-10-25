@@ -3,7 +3,7 @@ import { buildFortnightDepositDays } from './strategies/fixed-deposit.strategy';
 
 export interface ExcelCell {
   value: string | number;
-  style?: 'header' | 'subheader' | 'label' | 'currency' | 'number' | 'total_label' | 'total_currency' | 'note' | 'highlight_label' | 'highlight_currency' | 'center';
+  style?: 'header' | 'subheader' | 'label' | 'currency' | 'number' | 'total_label' | 'total_currency' | 'note' | 'highlight_label' | 'highlight_currency' | 'center' | 'date';
   colSpan?: number;
   formula?: string;
 }
@@ -98,8 +98,8 @@ export function buildProformaWorkbook(
     // Sheet 1: FACTURA BUQUE
     const s1: (ExcelCell | null)[][] = [];
     setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(issueDate, 'center') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(dueDate, 'center') });
+    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
     setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
     setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(subOp, 'currency') });
@@ -312,9 +312,12 @@ export function buildProformaWorkbook(
     // Sheet 1: FACTURA PF (Carátula vinculada con fórmulas a las otras hojas)
     // -----------------------------------------------------------------------
     const s1: (ExcelCell | null)[][] = [];
+    const formattedIssueDate = formatDateExcel(issueDate);
+    const formattedDueDate = formatDateExcel(dueDate) || (issueDate ? formatDateExcel(issueDate) : '');
+
     setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(issueDate, 'center') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(dueDate, 'center', '=+R2C2+30') });
+    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formattedIssueDate, 'date') });
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formattedDueDate, 'date') });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
     setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
 
@@ -845,8 +848,8 @@ export function buildProformaWorkbook(
 
     // Left column (Cols 0 & 1): Exact rows from MTS-CTYC SA - DD - DEPOSITOS - 01-15 OCTUBRE 2026.xls
     setRowCells(s1, 0, { 0: c('FACTURA', 'header'), 1: c(invoiceNumber, 'subheader') });
-    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(issueDate, 'center') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(dueDate, 'center') });
+    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
     setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(payload.lugar || 'DELTA DOCK - LIMA', 'label') });
     setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
@@ -967,8 +970,8 @@ export function buildProformaWorkbook(
     // Sheet 1: FACTURA
     const s1: (ExcelCell | null)[][] = [];
     setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(issueDate, 'center') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(dueDate, 'center') });
+    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
     setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
     setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(totalNeto, 'currency') });
@@ -1084,8 +1087,8 @@ export function buildProformaWorkbook(
   const totalFactura = Number(source.total ?? totalNeto + iva);
 
   setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-  setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(issueDate, 'center') });
-  setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(dueDate, 'center') });
+  setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+  setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
   setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
   setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(proformaType === 'shared_expo' ? 'DELTA DOCK - LIMA' : 'TERMINAL ZARATE', 'label') });
   setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
@@ -1123,15 +1126,9 @@ function escapeXml(str: string): string {
 }
 
 /**
- * Generates a real multi-worksheet Excel 2003 XML (.xls) file and triggers download.
- * Opens directly in Microsoft Excel, LibreOffice Calc, and Google Sheets with all tabs, borders, colors, and number formats.
+ * Generates the full Excel 2003 XML string from an ExcelWorkbookData structure.
  */
-export function downloadProformaExcel(
-  source: InvoicingRecord | ProformaCalculationResult,
-  meta?: { issueDate?: string; dueDate?: string; invoiceNumber?: string }
-): void {
-  const wb = buildProformaWorkbook(source, meta);
-
+export function generateProformaExcelXml(wb: ExcelWorkbookData): string {
   const worksheetsXml = wb.sheets
     .map((sheet) => {
       const safeSheetName = escapeXml(sheet.name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31));
@@ -1161,7 +1158,7 @@ export function downloadProformaExcel(
     })
     .join('\n');
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1213,6 +1210,17 @@ export function downloadProformaExcel(
     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
    </Borders>
    <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#1E293B"/>
+  </Style>
+  <Style ss:ID="date">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0B1C30"/>
+   <NumberFormat ss:Format="dd/mm/yyyy"/>
   </Style>
   <Style ss:ID="number">
    <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
@@ -1285,6 +1293,18 @@ export function downloadProformaExcel(
  </Styles>
  ${worksheetsXml}
 </Workbook>`;
+}
+
+/**
+ * Generates a real multi-worksheet Excel 2003 XML (.xls) file and triggers download.
+ * Opens directly in Microsoft Excel, LibreOffice Calc, and Google Sheets with all tabs, borders, colors, and number formats.
+ */
+export function downloadProformaExcel(
+  source: InvoicingRecord | ProformaCalculationResult,
+  meta?: { issueDate?: string; dueDate?: string; invoiceNumber?: string }
+): void {
+  const wb = buildProformaWorkbook(source, meta);
+  const xml = generateProformaExcelXml(wb);
 
   const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
