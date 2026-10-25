@@ -114,7 +114,14 @@ assertTest(
 
 assertTest(
   'SCALE-10',
-  '3500 unidades (tramo 3000+) -> $155.000,00',
+  '3120 unidades (buque Goodwood, tramo 3000 - 3499) -> $143.503,04',
+  calculateBonusForVehicles(3120, DEFAULT_UNION_SCALES, '2026-10-02'),
+  143503.04
+);
+
+assertTest(
+  'SCALE-11',
+  '3500 unidades (tramo 3500+) -> $155.000,00',
   calculateBonusForVehicles(3500, DEFAULT_UNION_SCALES, '2026-10-02'),
   155000.00
 );

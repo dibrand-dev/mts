@@ -226,7 +226,8 @@ BEGIN
         (1500, 1999, 102015.99, '2026-01-01'),
         (2000, 2499, 118540.55, '2026-01-01'),
         (2500, 2999, 135065.11, '2026-01-01'),
-        (3000, 99999, 155000.00, '2026-01-01');
+        (3000, 3499, 143503.04, '2026-01-01'),
+        (3500, 99999, 155000.00, '2026-01-01');
 
     -- 6e. Master Variables
     INSERT INTO public.master_variables (code, name, numeric_value, is_active)
@@ -583,7 +584,29 @@ BEGIN
               "neto_sin_bonif": 20301914.72,
               "bonificacion": 609057.44,
               "subtotal_bonificado": 19692857.28
-            }
+            },
+            "totales_grilla": {
+              "total_regular": 1144,
+              "total_ot50": 273,
+              "total_ot100": 0,
+              "total_hours": 1417
+            },
+            "slots_summary": [
+              {"slotCode": "ENCARGADO PF", "positionTitle": "Encargado Plazoleta", "assignedEmployee": "BRITES LUCAS DAVID", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 14957.99, "ot50Rate": 22436.99, "ot100Rate": 29915.98, "subtotalAmount": 1787479.91, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 01", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "BELO BRUNO JOAQUIN", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 02", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "ARENA CECILIA", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 03", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "BUET MARIA", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 04", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "SARLI ROQUE", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 05", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "LIBARONO MAXIMILIANO", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 06", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "CORNEJO NELSON", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 07", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "GUERRERO ANGEL", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 08", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "ACOSTA JOAQUIN", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 09", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "SUAREZ ROMINA", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 10", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "MORALES ROSANA", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 11", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "BRITES ENZO NICOLAS", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 12", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "MARTINOLI DIEGO", "totalRegular": 88, "totalOt50": 21, "totalOt100": 0, "totalHours": 109, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 1481435.84, "isBonificado": false},
+              {"slotCode": "APUNTADOR PF 13", "positionTitle": "Apuntador Plazoleta", "assignedEmployee": "BONIFICADO", "totalRegular": 0, "totalOt50": 0, "totalOt100": 0, "totalHours": 0, "regularRate": 12396.95, "ot50Rate": 18595.44, "ot100Rate": 24793.92, "subtotalAmount": 0, "isBonificado": true}
+            ]
           },
           "tab_inspecciones": {
             "activa": true,
@@ -605,7 +628,20 @@ BEGIN
           "tab_transporte": {
             "viajes": 22,
             "tarifa_por_viaje": 35594.34,
-            "total_transporte": 783075.48
+            "total_transporte": 783075.48,
+            "viajes_rows": [
+              {"workDate": "2026-10-01", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-02", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-03", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-05", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-06", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-07", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-08", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-09", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-12", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-13", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""},
+              {"workDate": "2026-10-14", "timeRange": "0700-1700", "viajes": 2, "staffCount": 13, "notaMark": ""}
+            ]
           },
           "tab_expo": {
             "factor_asignacion": 0.90,
@@ -616,7 +652,20 @@ BEGIN
               "ot50": 351453.82,
               "ot100": 0,
               "total": 1783248.03
-            }
+            },
+            "shift_rows": [
+              {"workDate": "2026-10-01", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-02", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-03", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 1, "overtime100Hours": 0, "totalHours": 9},
+              {"workDate": "2026-10-05", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-06", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-07", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-08", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-09", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-12", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-13", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10},
+              {"workDate": "2026-10-14", "slotPosition": "CONTROL EXPO", "employeeName": "BRITES LUCAS DAVID", "timeRange": "0700-1700", "regularHours": 8, "overtime50Hours": 2, "overtime100Hours": 0, "totalHours": 10}
+            ]
           }
         }'::jsonb,
         ARRAY['PROFORMA PLAZOLETA FISCAL + INSPECCIONES ESPECIALES — Bonificación 3% aplicada.']

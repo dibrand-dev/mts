@@ -25,6 +25,16 @@ Almacena la tabla paramétrica de escalas salariales por volumen de vehículos o
 | `effective_from` | `DATE` | Sí | Fecha desde la cual rige la escala salarial. |
 | `created_at` | `TIMESTAMPTZ` | Sí | Timestamp de auditoría. |
 
+## Escala Salarial CCT Vigente
+| Rango de Vehículos | Monto Bonificación ($) |
+|---|---|
+| 0 a 1.499 | $ 88.200,48 |
+| 1.500 a 1.999 | $ 102.015,99 |
+| 2.000 a 2.499 | $ 118.540,55 |
+| 2.500 a 2.999 | $ 135.065,11 |
+| 3.000 a 3.499 | $ 143.503,04 |
+| 3.500 en adelante | $ 155.000,00 |
+
 ## Consultas Típicas
 Para determinar el bono de un turno donde se manipularon `N` vehículos:
 ```sql

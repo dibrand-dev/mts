@@ -10,7 +10,8 @@ export const DEFAULT_UNION_SCALES = [
   { min_vehicles: 1500, max_vehicles: 1999, bonus_amount: 102015.99, effective_from: '2026-01-01' },
   { min_vehicles: 2000, max_vehicles: 2499, bonus_amount: 118540.55, effective_from: '2026-01-01' },
   { min_vehicles: 2500, max_vehicles: 2999, bonus_amount: 135065.11, effective_from: '2026-01-01' },
-  { min_vehicles: 3000, max_vehicles: 99999, bonus_amount: 155000.00, effective_from: '2026-01-01' },
+  { min_vehicles: 3000, max_vehicles: 3499, bonus_amount: 143503.04, effective_from: '2026-01-01' },
+  { min_vehicles: 3500, max_vehicles: 99999, bonus_amount: 155000.00, effective_from: '2026-01-01' },
 ];
 
 /**
