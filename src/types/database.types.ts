@@ -196,6 +196,9 @@ export interface Database {
           hourly_rate_overtime_50: number
           hourly_rate_overtime_100: number
           salary_effective_from: string
+          hire_date: string | null
+          employment_type: string
+          base_gross_salary: number | null
           created_at: string
         }
         Insert: {
@@ -211,6 +214,9 @@ export interface Database {
           hourly_rate_overtime_50?: number
           hourly_rate_overtime_100?: number
           salary_effective_from?: string
+          hire_date?: string | null
+          employment_type?: string
+          base_gross_salary?: number | null
           created_at?: string
         }
         Update: {
@@ -226,6 +232,9 @@ export interface Database {
           hourly_rate_overtime_50?: number
           hourly_rate_overtime_100?: number
           salary_effective_from?: string
+          hire_date?: string | null
+          employment_type?: string
+          base_gross_salary?: number | null
           created_at?: string
         }
       }

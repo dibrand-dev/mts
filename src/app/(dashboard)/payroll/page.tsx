@@ -32,8 +32,9 @@ import { queryKeys } from '@/lib/queries/queryKeys';
 import { DataTablePagination } from '@/components/ui/DataTablePagination';
 import {
   getPayrollData,
-  exportPayrollToCSV,
-  exportLiquidationFlatCSV,
+  exportPayrollToExcel,
+  exportLiquidationToExcel,
+  exportFullSalaryEstimationExcel,
   PayrollRecord,
   LiquidationFlatRecord,
 } from '@/lib/services/payroll';
@@ -366,19 +367,28 @@ export default function PayrollPage() {
 
   const handleExport = () => {
     if (filteredData.length === 0) return;
-    exportPayrollToCSV(filteredData, startDate, endDate);
+    exportPayrollToExcel(filteredData, startDate, endDate);
   };
 
   const handleExportLiquidationFlat = () => {
     if (filteredData.length === 0) return;
     const flatRecords: LiquidationFlatRecord[] = filteredData.map((r) => ({
+      fileNumber: r.fileNumber,
       employeeName: r.fullName,
+      position: r.position,
       regularHours: r.regularHours,
       overtime50Hours: r.overtime50Hours,
       overtime100Hours: r.overtime100Hours,
       vehicleBonus: r.bonusAmount,
+      grossAmount: r.grossAmount,
+      netAmount: r.netAmount,
     }));
-    exportLiquidationFlatCSV(flatRecords, `${startDate}_al_${endDate}`);
+    exportLiquidationToExcel(flatRecords, `${startDate}_al_${endDate}`);
+  };
+
+  const handleExportFullEstimation = () => {
+    if (filteredData.length === 0) return;
+    exportFullSalaryEstimationExcel(filteredData, `${startDate}_al_${endDate}`);
   };
 
   const handleApprovePeriod = () => {
@@ -408,10 +418,22 @@ export default function PayrollPage() {
           </Link>
           <button
             type="button"
+            data-testid="payroll-btn-export-full-estimation"
+            onClick={handleExportFullEstimation}
+            disabled={loading || filteredData.length === 0}
+            className="flex-1 sm:flex-none px-4 py-2 border border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exportar planilla de 24 columnas con Antigüedad, Presentismo y fórmulas de cálculo (idéntica a CALCULO DE SUELDOS.xls)"
+          >
+            <Download className="h-4 w-4 text-emerald-600" />
+            <span>Exportar Estimación Completa</span>
+          </button>
+          <button
+            type="button"
             data-testid="payroll-btn-export-liquidacion"
             onClick={handleExportLiquidationFlat}
             disabled={loading || filteredData.length === 0}
             className="flex-1 sm:flex-none px-4 py-2 border-2 border-[#1E5BB4] text-[#1E5BB4] hover:bg-blue-50 font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exportar reporte de liquidación en formato Excel con celdas numéricas y sumables"
           >
             <Download className="h-4 w-4" />
             <span>Exportar Liquidación</span>
@@ -422,6 +444,7 @@ export default function PayrollPage() {
             onClick={handleExport}
             disabled={loading || filteredData.length === 0}
             className="flex-1 sm:flex-none px-4 py-2 border border-slate-400 text-[#0B1C30] hover:bg-slate-100 font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exportar pre-liquidación en formato Excel con celdas de moneda sumables"
           >
             <Download className="h-4 w-4" />
             <span>Exportar Pre-liquidación</span>
@@ -752,6 +775,33 @@ export default function PayrollPage() {
                   <span className="text-xs font-bold text-slate-500 uppercase">Régimen</span>
                   <span className="text-sm font-semibold">{selectedRecord.contractType}</span>
                 </div>
+                {selectedRecord.baseGrossSalary > 0 && (
+                  <>
+                    <div className="flex justify-between border-b border-slate-200 pb-2 bg-blue-50/50 p-2 rounded">
+                      <span className="text-xs font-bold text-slate-600 uppercase">Básico Bruto</span>
+                      <span className="text-sm font-semibold font-mono text-[#0B1C30]">{formatCurrency(selectedRecord.baseGrossSalary)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200 pb-2">
+                      <span className="text-xs font-bold text-slate-500 uppercase">
+                        Antigüedad ({selectedRecord.seniorityPercentage}% · {selectedRecord.seniorityYears} {selectedRecord.seniorityYears === 1 ? 'año' : 'años'})
+                      </span>
+                      <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.seniorityAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200 pb-2">
+                      <span className="text-xs font-bold text-slate-500 uppercase">Presentismo (3%)</span>
+                      <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.presenteeismAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200 pb-2 bg-slate-100 p-2 rounded font-medium">
+                      <span className="text-xs font-bold text-slate-700 uppercase">Total Básico</span>
+                      <span className="text-sm font-bold font-mono text-[#0B1C30]">{formatCurrency(selectedRecord.totalBaseSalary)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200 pb-2 text-xs text-slate-500">
+                      <span>Valor Hora Normal: <b className="font-mono text-slate-800">{formatCurrency(selectedRecord.regularHourlyRate)}</b></span>
+                      <span>50%: <b className="font-mono text-slate-800">{formatCurrency(selectedRecord.overtime50HourlyRate)}</b></span>
+                      <span>100%: <b className="font-mono text-slate-800">{formatCurrency(selectedRecord.overtime100HourlyRate)}</b></span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Turnos Computados</span>
                   <span className="text-sm font-semibold">{selectedRecord.shiftsCount} turnos</span>

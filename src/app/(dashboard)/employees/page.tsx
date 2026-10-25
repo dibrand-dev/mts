@@ -44,7 +44,7 @@ import {
   EmployeeHoursSummary,
 } from '@/lib/services/employees';
 import {
-  exportLiquidationFlatCSV,
+  exportLiquidationToExcel,
   LiquidationFlatRecord,
 } from '@/lib/services/payroll';
 
@@ -285,7 +285,9 @@ export default function EmployeesPage() {
         };
 
         return {
+          fileNumber: emp.file_number || '-',
           employeeName: emp.full_name,
+          position: emp.default_position?.name || 'Operario',
           regularHours: empSummary.regular_hours,
           overtime50Hours: empSummary.ot50_hours,
           overtime100Hours: empSummary.ot100_hours,
@@ -293,7 +295,7 @@ export default function EmployeesPage() {
         };
       });
 
-      exportLiquidationFlatCSV(flatRecords, `${activeFrom}_al_${activeTo}`);
+      exportLiquidationToExcel(flatRecords, `${activeFrom}_al_${activeTo}`);
     } catch (err: any) {
       console.error('Error al exportar liquidación:', err);
       alert(`Error al exportar liquidación: ${err.message}`);

@@ -159,6 +159,15 @@ supabase/
 ---
 
 ## 📌 Historial de Cambios Recientes
+- **2026-10-25:** Implementación del **Motor de Estimación de Sueldos y Exportación Nativa a Excel (Alineado con CALCULO DE SUELDOS.xls)**:
+  1. **Exportación Nativa a Excel 2003 XML (.xls) con Celdas Sumables:** Se reemplazó la descarga de archivos `.csv` planos por el generador nativo XML Spreadsheet 2003 en `src/lib/services/payroll.ts`. Ahora tanto **Exportar Pre-Liquidación** como **Exportar Liquidación** (que antes se abría como texto plano/txt) generan planillas `.xls` reales con formato contable de moneda (`$ #,##0.00`), valores numéricos reales (`ss:Type="Number"`) y fórmulas de totalización `=SUM(...)` que permiten autosuma instantánea en Microsoft Excel y LibreOffice Calc.
+  2. **Estructura Salarial con Antigüedad y Presentismo:** Migración `20261025100000_add_hire_date_and_salary_structure_to_employees.sql` incorporando columnas `hire_date`, `employment_type` y `base_gross_salary` en `public.employees`.
+  3. **Lógica de Estimación Idéntica a CALCULO DE SUELDOS.xls:**
+     - Cómputo de antigüedad al 1% anual desde la fecha de ingreso.
+     - Cómputo de presentismo al 3% sobre el básico bruto.
+     - Divisor de jornada: 192 horas mensuales estándar para personal mensualizado vs 8 horas para personal jornalizado.
+     - Deducción legal del 21% para el neto oficial: `Neto = Bruto * 0.79 - Anticipos`.
+  4. **Nueva Exportación Completa:** Se incorporó el botón **Exportar Estimación Completa** que reproduce fielmente las 24 columnas originales de `CALCULO DE SUELDOS.xls` con sus fórmulas internas de celda y totales generales.
 - **2026-10-07:** Implementación de **Sueldos Desacoplados del Tarifario Comercial y Alineación de Documentación (OKF)**:
   1. **Valores Hora de Bolsillo para Liquidación de Personal:** Migraciones `20261007200000_add_salary_rates_to_positions.sql` y `20261007210000_add_salary_rates_to_employees.sql` incorporando columnas de sueldo (`hourly_rate_regular`, `hourly_rate_overtime_50`, `hourly_rate_overtime_100`, `salary_effective_from`) pre-sembradas con los salarios oficiales de Excel (Encargados: $10.777,06 / $16.165,60 / $21.554,13; Apuntadores: $8.983,68 / $13.475,53 / $17.967,37). Desacopla el costo salarial interno del tarifario comercial facturado a clientes (`client_position_rates`).
   2. **Especialización y Alineación Documental (Opción 1):** Establecimiento formal de [`knowledge/`](file:///home/carluis/Work/dibrand/mts/knowledge) como fuente única de verdad funcional (Open Knowledge Format) y `CONTEXT.md` como bitácora técnica de arquitectura y changelog. Normalización de identificadores de recordatorios Brevo a `upcoming_3_days`, documentación del dataset `projected_obligations` y adición del seguimiento de francos compensatorios (`day_off_count`).
