@@ -136,11 +136,10 @@ export async function getPayrollData(
     const isEncargado = posName.toLowerCase().includes('encargado');
 
     // Contract type: Mensualizado vs Jornalizado vs Temporario
+    // Solo es Mensualizado si está explícitamente configurado como tal en la base de datos
     let contractType: 'Jornalizado' | 'Mensualizado' | 'Temporario' = 'Jornalizado';
     if (emp.employment_type) {
       contractType = emp.employment_type;
-    } else if (isEncargado || posName.toLowerCase().includes('jefe') || posName.toLowerCase().includes('admin')) {
-      contractType = 'Mensualizado';
     }
 
     // Base Gross Salary:
