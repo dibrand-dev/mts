@@ -819,6 +819,14 @@ export default function PayrollPage() {
                   <span className="text-sm font-mono text-purple-700 font-semibold">{selectedRecord.overtime100Hours} horas</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Plus Cat (CCT / Buque)</span>
+                  <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.plusCatAmount)}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Plus DD (Delta / Día Descanso)</span>
+                  <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.plusDDAmount)}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Total Pluses / Adicionales</span>
                   <span className="text-sm font-mono text-emerald-700 font-semibold">+{formatCurrency(selectedRecord.bonusAmount)}</span>
                 </div>
@@ -867,9 +875,14 @@ export default function PayrollPage() {
                           <div>
                             <span className="text-slate-400">Extras:</span> {s.overtime50Hours + s.overtime100Hours}h
                           </div>
-                          {s.plusDeltaAmount + s.bonusAppliedAmount > 0 && (
+                          {s.bonusAppliedAmount > 0 && (
                             <div className="text-emerald-700 font-medium">
-                              <span className="text-slate-400">Plus:</span> +{formatCurrency(s.plusDeltaAmount + s.bonusAppliedAmount)}
+                              <span className="text-slate-400">Plus Cat:</span> +{formatCurrency(s.bonusAppliedAmount)}
+                            </div>
+                          )}
+                          {s.plusDeltaAmount > 0 && (
+                            <div className="text-purple-700 font-medium">
+                              <span className="text-slate-400">Plus DD:</span> +{formatCurrency(s.plusDeltaAmount)}
                             </div>
                           )}
                           {s.advanceAmount > 0 && (

@@ -109,6 +109,7 @@ export interface EmployeeShiftAuditItem {
   overtime_100_hours: number;
   total_hours: number;
   plus_delta_amount: number;
+  plus_cat_amount: number;
 }
 
 export interface EmployeeHoursSummary {
@@ -119,6 +120,8 @@ export interface EmployeeHoursSummary {
   overtime_100_hours: number;
   total_hours: number;
   plus_amount: number;
+  plus_cat_amount: number;
+  plus_delta_amount: number;
   shifts: EmployeeShiftAuditItem[];
 }
 
@@ -169,17 +172,23 @@ export async function getEmployeeAuditShifts(
   let overtime_50_hours = 0;
   let overtime_100_hours = 0;
   let plus_amount = 0;
+  let plus_cat_amount = 0;
+  let plus_delta_amount = 0;
 
   const shifts: EmployeeShiftAuditItem[] = filtered.map((row: any) => {
     const reg = Number(row.regular_hours || 0);
     const ot50 = Number(row.overtime_50_hours || 0);
     const ot100 = Number(row.overtime_100_hours || 0);
-    const plus = Number(row.plus_delta_amount || 0) + Number(row.bonus_applied_amount || 0);
+    const plusDelta = Number(row.plus_delta_amount || 0);
+    const plusCat = Number(row.bonus_applied_amount || 0);
+    const plus = plusDelta + plusCat;
 
     regular_hours += reg;
     overtime_50_hours += ot50;
     overtime_100_hours += ot100;
     plus_amount += plus;
+    plus_cat_amount += plusCat;
+    plus_delta_amount += plusDelta;
 
     return {
       id: row.id,
@@ -196,7 +205,8 @@ export async function getEmployeeAuditShifts(
       overtime_50_hours: ot50,
       overtime_100_hours: ot100,
       total_hours: reg + ot50 + ot100,
-      plus_delta_amount: plus,
+      plus_delta_amount: plusDelta,
+      plus_cat_amount: plusCat,
     };
   });
 
@@ -208,6 +218,8 @@ export async function getEmployeeAuditShifts(
     overtime_100_hours: Math.round(overtime_100_hours * 100) / 100,
     total_hours: Math.round((regular_hours + overtime_50_hours + overtime_100_hours) * 100) / 100,
     plus_amount: Math.round(plus_amount * 100) / 100,
+    plus_cat_amount: Math.round(plus_cat_amount * 100) / 100,
+    plus_delta_amount: Math.round(plus_delta_amount * 100) / 100,
     shifts,
   };
 }
@@ -218,6 +230,8 @@ export interface EmployeePeriodHoursSummary {
   ot50_hours: number;
   ot100_hours: number;
   plus_amount: number;
+  plus_cat_amount: number;
+  plus_delta_amount: number;
   shifts_count: number;
 }
 
@@ -260,6 +274,8 @@ export async function getAllEmployeesHoursSummary(
         ot50_hours: 0,
         ot100_hours: 0,
         plus_amount: 0,
+        plus_cat_amount: 0,
+        plus_delta_amount: 0,
         shifts_count: 0,
       };
     }
@@ -267,11 +283,15 @@ export async function getAllEmployeesHoursSummary(
     const reg = Number(row.regular_hours || 0);
     const ot50 = Number(row.overtime_50_hours || 0);
     const ot100 = Number(row.overtime_100_hours || 0);
-    const plus = Number(row.plus_delta_amount || 0) + Number(row.bonus_applied_amount || 0);
+    const plusDelta = Number(row.plus_delta_amount || 0);
+    const plusCat = Number(row.bonus_applied_amount || 0);
+    const plus = plusDelta + plusCat;
 
     map[empId].regular_hours += reg;
     map[empId].ot50_hours += ot50;
     map[empId].ot100_hours += ot100;
+    map[empId].plus_delta_amount += plusDelta;
+    map[empId].plus_cat_amount += plusCat;
     map[empId].plus_amount += plus;
     map[empId].total_hours += (reg + ot50 + ot100);
     map[empId].shifts_count += 1;
@@ -282,6 +302,8 @@ export async function getAllEmployeesHoursSummary(
     map[empId].regular_hours = Math.round(map[empId].regular_hours * 100) / 100;
     map[empId].ot50_hours = Math.round(map[empId].ot50_hours * 100) / 100;
     map[empId].ot100_hours = Math.round(map[empId].ot100_hours * 100) / 100;
+    map[empId].plus_delta_amount = Math.round(map[empId].plus_delta_amount * 100) / 100;
+    map[empId].plus_cat_amount = Math.round(map[empId].plus_cat_amount * 100) / 100;
     map[empId].plus_amount = Math.round(map[empId].plus_amount * 100) / 100;
     map[empId].total_hours = Math.round(map[empId].total_hours * 100) / 100;
   }

@@ -1150,11 +1150,14 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                       <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl text-center">
-                        <div className="text-purple-700 text-xs font-bold uppercase">Plus</div>
-                        <div className="text-xl font-bold font-mono text-purple-900 mt-1">
+                        <div className="text-purple-700 text-xs font-bold uppercase">Plus Cat / DD</div>
+                        <div className="text-lg font-bold font-mono text-purple-900 mt-1">
                           {auditSummary.plus_amount > 0
                             ? `$ ${auditSummary.plus_amount.toLocaleString('es-AR')}`
                             : '$ 0'}
+                        </div>
+                        <div className="text-[10px] text-purple-700 mt-0.5">
+                          Cat: ${auditSummary.plus_cat_amount?.toLocaleString('es-AR') || 0} · DD: ${auditSummary.plus_delta_amount?.toLocaleString('es-AR') || 0}
                         </div>
                       </div>
                     </div>
@@ -1187,7 +1190,8 @@ export default function EmployeesPage() {
                               <th className="py-2.5 px-2 text-center font-mono text-sky-700">50%</th>
                               <th className="py-2.5 px-2 text-center font-mono text-amber-700">100%</th>
                               <th className="py-2.5 px-2 text-center font-mono font-bold text-[#0B1C30]">Total</th>
-                              <th className="py-2.5 px-3 pr-3 text-right font-mono text-purple-700">Plus ($)</th>
+                              <th className="py-2.5 px-2 text-right font-mono text-emerald-700">Plus Cat</th>
+                              <th className="py-2.5 px-2 pr-3 text-right font-mono text-purple-700">Plus DD</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -1215,7 +1219,10 @@ export default function EmployeesPage() {
                                 <td className="py-2.5 px-2 text-center font-mono font-bold text-[#0B1C30] bg-yellow-50/50">
                                   {s.total_hours}h
                                 </td>
-                                <td className="py-2.5 px-3 pr-3 text-right font-mono text-purple-700 whitespace-nowrap">
+                                <td className="py-2.5 px-2 text-right font-mono font-semibold text-emerald-700 whitespace-nowrap">
+                                  {s.plus_cat_amount > 0 ? `$ ${s.plus_cat_amount.toLocaleString('es-AR')}` : '-'}
+                                </td>
+                                <td className="py-2.5 px-2 pr-3 text-right font-mono text-purple-700 whitespace-nowrap">
                                   {s.plus_delta_amount > 0 ? `$ ${s.plus_delta_amount.toLocaleString('es-AR')}` : '-'}
                                 </td>
                               </tr>
@@ -1238,9 +1245,14 @@ export default function EmployeesPage() {
                               <td className="py-2.5 px-2 text-center font-mono bg-yellow-100 text-[#0B1C30]">
                                 {auditSummary.total_hours}h
                               </td>
-                              <td className="py-2.5 px-3 pr-3 text-right font-mono text-purple-900 whitespace-nowrap">
-                                {auditSummary.plus_amount > 0
-                                  ? `$ ${auditSummary.plus_amount.toLocaleString('es-AR')}`
+                              <td className="py-2.5 px-2 text-right font-mono text-emerald-900 whitespace-nowrap">
+                                {auditSummary.plus_cat_amount > 0
+                                  ? `$ ${auditSummary.plus_cat_amount.toLocaleString('es-AR')}`
+                                  : '$ 0'}
+                              </td>
+                              <td className="py-2.5 px-2 pr-3 text-right font-mono text-purple-900 whitespace-nowrap">
+                                {auditSummary.plus_delta_amount > 0
+                                  ? `$ ${auditSummary.plus_delta_amount.toLocaleString('es-AR')}`
                                   : '$ 0'}
                               </td>
                             </tr>

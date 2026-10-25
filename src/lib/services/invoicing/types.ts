@@ -179,12 +179,19 @@ export interface FiscalYardPayload {
     viajes: number;
     tarifa_por_viaje: number;
     total_transporte: number;
+    viajes_rows?: {
+      workDate: string;
+      timeRange: string;
+      viajes: number;
+      notaMark?: string;
+    }[];
   };
   tab_expo: {
     horas_base: { norm: number; ot50: number; ot100: number };
     factor_asignacion: number;
     horas_facturadas: { norm: number; ot50: number; ot100: number };
     importes: { reg: number; ot50: number; ot100: number; total: number };
+    shift_rows?: FiscalYardShiftRow[];
   };
   tab_inspecciones?: {
     horas_apuntador: { norm: number; ot50: number; ot100: number };

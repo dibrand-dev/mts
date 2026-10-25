@@ -1,5 +1,11 @@
 import { createClient } from '../supabase/client';
 import { Database } from '../../types/database.types';
+import {
+  generateExcelWorkbookXml,
+  triggerDownload,
+  ExcelExportCell,
+  ExcelExportSheet,
+} from './payroll';
 
 export type DailyWorkLogRow = Database['public']['Tables']['daily_work_logs']['Row'];
 export type DailyWorkLogInsert = Database['public']['Tables']['daily_work_logs']['Insert'];
@@ -730,4 +736,173 @@ export async function getStaffEntriesForClientAndPeriod(
     totalVehiclesHandled: totalVehiclesHandled || (totalVehiclesDischarged + totalVehiclesLoaded + totalVehiclesShifted),
     totalShuttles,
   };
+}
+
+export interface DailyWorkPlanillaExportRecord {
+  work_date: string;
+  client_name: string;
+  location_name?: string | null;
+  vessel_name?: string | null;
+  is_export_day?: boolean;
+  employee_name: string;
+  employee_file_number?: string | null;
+  position_name: string;
+  shift_time: string;
+  regular_hours: number;
+  overtime_50_hours: number;
+  overtime_100_hours: number;
+  total_hours: number;
+  shuttles_count: number;
+  meal_allowance_count: number;
+  day_off_count: number;
+  advance_payment_amount: number;
+  plus_cat_amount: number;
+  plus_delta_amount: number;
+  is_approved: boolean;
+}
+
+/**
+ * Exporta la Planilla de Novedades de Horas visible en formato Excel nativo (.xls),
+ * incluyendo las columnas de Plus Cat, Plus DD, anticipos, horas y fórmulas sumables.
+ */
+export function exportDailyWorkPlanillaToExcel(
+  records: DailyWorkPlanillaExportRecord[],
+  periodLabel?: string
+) {
+  const rows: (ExcelExportCell | null)[][] = [];
+
+  // Fila 0: Título principal
+  rows.push([
+    {
+      value: `MTS MARITIME & TERMINAL SERVICES - PLANILLA DE NOVEDADES DE HORAS`,
+      style: 'subheader',
+      colSpan: 19,
+    },
+  ]);
+
+  // Fila 1: Subtítulo
+  rows.push([
+    {
+      value: `Filtro / Período: ${periodLabel || 'Consolidado'} | Total Registros: ${records.length}`,
+      style: 'label',
+      colSpan: 19,
+    },
+  ]);
+
+  // Fila 2: Separador
+  rows.push([]);
+
+  // Fila 3: Encabezados de columnas
+  const headers = [
+    'Fecha',
+    'Cliente',
+    'Lugar / Muelle',
+    'Buque / Operación',
+    'Legajo',
+    'Operario',
+    'Puesto',
+    'Horario',
+    'Hs Normales',
+    'Hs 50%',
+    'Hs 100%',
+    'Total Hs',
+    'Remises',
+    'Viandas',
+    'Francos',
+    'Anticipo',
+    'PLUS CAT',
+    'PLUS DD',
+    'Total Pluses',
+    'Estado',
+  ];
+
+  rows.push(headers.map((h) => ({ value: h, style: 'header' })));
+
+  const startDataRow = 5;
+
+  records.forEach((r) => {
+    const vesselDisplay = r.vessel_name
+      ? r.is_export_day
+        ? `${r.vessel_name} (EXPO)`
+        : r.vessel_name
+      : r.is_export_day
+      ? 'EXPO'
+      : '-';
+
+    rows.push([
+      { value: r.work_date, style: 'center' },
+      { value: r.client_name, style: 'label' },
+      { value: r.location_name || '-', style: 'label' },
+      { value: vesselDisplay, style: 'label' },
+      { value: r.employee_file_number || '-', style: 'center' },
+      { value: r.employee_name, style: 'label' },
+      { value: r.position_name, style: 'label' },
+      { value: r.shift_time, style: 'center' },
+      { value: r.regular_hours, type: 'Number', style: 'number' },
+      { value: r.overtime_50_hours, type: 'Number', style: 'number' },
+      { value: r.overtime_100_hours, type: 'Number', style: 'number' },
+      {
+        value: r.total_hours,
+        type: 'Number',
+        style: 'number',
+        formula: `=+RC[-3]+RC[-2]+RC[-1]`,
+      },
+      { value: r.shuttles_count, type: 'Number', style: 'number' },
+      { value: r.meal_allowance_count, type: 'Number', style: 'integer' },
+      { value: r.day_off_count, type: 'Number', style: 'integer' },
+      { value: r.advance_payment_amount, type: 'Number', style: 'currency' },
+      { value: r.plus_cat_amount, type: 'Number', style: 'currency' },
+      { value: r.plus_delta_amount, type: 'Number', style: 'currency' },
+      {
+        value: r.plus_cat_amount + r.plus_delta_amount,
+        type: 'Number',
+        style: 'currency',
+        formula: `=+RC[-2]+RC[-1]`,
+      },
+      { value: r.is_approved ? 'Aprobado' : 'Pendiente', style: 'center' },
+    ]);
+  });
+
+  const endDataRow = startDataRow + records.length - 1;
+
+  if (records.length > 0) {
+    const totReg = records.reduce((acc, r) => acc + r.regular_hours, 0);
+    const totOt50 = records.reduce((acc, r) => acc + r.overtime_50_hours, 0);
+    const totOt100 = records.reduce((acc, r) => acc + r.overtime_100_hours, 0);
+    const totHs = records.reduce((acc, r) => acc + r.total_hours, 0);
+    const totRem = records.reduce((acc, r) => acc + r.shuttles_count, 0);
+    const totVia = records.reduce((acc, r) => acc + r.meal_allowance_count, 0);
+    const totFra = records.reduce((acc, r) => acc + r.day_off_count, 0);
+    const totAdv = records.reduce((acc, r) => acc + r.advance_payment_amount, 0);
+    const totCat = records.reduce((acc, r) => acc + r.plus_cat_amount, 0);
+    const totDD = records.reduce((acc, r) => acc + r.plus_delta_amount, 0);
+    const totPluses = totCat + totDD;
+
+    rows.push([
+      { value: 'TOTALES', style: 'total_label', colSpan: 8 },
+      ...Array(7).fill(null),
+      { value: Math.round(totReg * 100) / 100, type: 'Number', style: 'total_number', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totOt50 * 100) / 100, type: 'Number', style: 'total_number', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totOt100 * 100) / 100, type: 'Number', style: 'total_number', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totHs * 100) / 100, type: 'Number', style: 'total_number', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totRem * 100) / 100, type: 'Number', style: 'total_number', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: totVia, type: 'Number', style: 'total_integer', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: totFra, type: 'Number', style: 'total_integer', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totAdv * 100) / 100, type: 'Number', style: 'total_currency', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totCat * 100) / 100, type: 'Number', style: 'total_currency', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totDD * 100) / 100, type: 'Number', style: 'total_currency', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: Math.round(totPluses * 100) / 100, type: 'Number', style: 'total_currency', formula: `=SUM(R${startDataRow}C:R${endDataRow}C)` },
+      { value: '', style: 'center' },
+    ]);
+  }
+
+  const sheet: ExcelExportSheet = {
+    name: 'Novedades de Horas',
+    colWidths: [75, 140, 120, 130, 75, 180, 110, 85, 80, 80, 80, 80, 70, 65, 65, 85, 95, 95, 105, 80],
+    rows,
+  };
+
+  const xml = generateExcelWorkbookXml([sheet]);
+  const filename = periodLabel ? `Novedades_Horas_${periodLabel}.xls` : 'Novedades_Horas.xls';
+  triggerDownload(xml, filename);
 }

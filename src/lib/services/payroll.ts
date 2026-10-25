@@ -610,7 +610,7 @@ export function generateExcelWorkbookXml(sheets: ExcelExportSheet[]): string {
 </Workbook>`;
 }
 
-function triggerDownload(xmlContent: string, filename: string) {
+export function triggerDownload(xmlContent: string, filename: string) {
   const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

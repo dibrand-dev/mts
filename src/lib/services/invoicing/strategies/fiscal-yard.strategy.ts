@@ -179,14 +179,19 @@ export const fiscalYardStrategy: ProformaStrategy = {
       isBonificado: false,
     };
 
+    const formatRange = (start?: string | null, end?: string | null) => {
+      if (!start || !end) return '0700-1700';
+      const cleanStart = start.replace(':', '').slice(0, 4);
+      const cleanEnd = end.replace(':', '').slice(0, 4);
+      return `${cleanStart.padStart(4, '0')}-${cleanEnd.padStart(4, '0')}`;
+    };
+
     // 5. Construcción de Filas de Turnos Diarios (Panel Derecho del Excel)
     const shift_rows: FiscalYardShiftRow[] = yardShifts.map((s: ClientShiftRecordForBilling) => {
       const isEnc = s.position_name.toLowerCase().includes('encargad');
       const empKey = s.employee_id || s.employee_name;
-      const slotPos = isEnc ? 'ENCARGADO PF' : (employeeToSlotMap.get(empKey) || 'APUNTADOR PF');
-      const timeRange = s.shift_start_time && s.shift_end_time
-        ? `${s.shift_start_time.slice(0, 5)}-${s.shift_end_time.slice(0, 5)}`
-        : '07:00-17:00';
+      const slotPos = isEnc ? 'ENCARGADO   PF' : (employeeToSlotMap.get(empKey) || 'APUNTADOR      PF');
+      const timeRange = formatRange(s.shift_start_time, s.shift_end_time);
       const tot = Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100;
 
       return {
@@ -198,7 +203,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
         regularHours: s.regular_hours,
         overtime50Hours: s.overtime_50_hours,
         overtime100Hours: s.overtime_100_hours,
-        isBonificado: slotPos === 'APUNTADOR PF 13',
+        isBonificado: slotPos.includes('PF 13'),
       };
     });
 
@@ -213,6 +218,41 @@ export const fiscalYardStrategy: ProformaStrategy = {
       ? shuttleTripsManual 
       : (billingShifts.totalShuttles || 0);
     const subtotal_transporte = Math.round(total_viajes_tte * shuttleRate * 100) / 100;
+
+    // Construir desglose diario de transporte (TTE)
+    const dayTransportMap = new Map<string, { workDate: string; timeRange: string; staffCount: number; shuttles: number }>();
+    for (const s of shifts) {
+      const date = s.work_date;
+      const tr = formatRange(s.shift_start_time, s.shift_end_time);
+      const key = `${date}_${tr}`;
+      if (!dayTransportMap.has(key)) {
+        dayTransportMap.set(key, { workDate: date, timeRange: tr, staffCount: 0, shuttles: 0 });
+      }
+      const item = dayTransportMap.get(key)!;
+      item.staffCount++;
+      item.shuttles += Number(s.shuttles_count || 0);
+    }
+
+    const sortedDayTransport = Array.from(dayTransportMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
+    const sumLoggedShuttles = sortedDayTransport.reduce((acc, d) => acc + d.shuttles, 0);
+    const viajes_rows = sortedDayTransport.map((d) => {
+      let vCount = d.shuttles;
+      if (sumLoggedShuttles === 0 && total_viajes_tte > 0 && sortedDayTransport.length > 0) {
+        vCount = d.staffCount >= 13 ? 8 : d.staffCount > 8 ? 6 : 4;
+      }
+      const notaMark = d.staffCount >= 13 ? '(**)' : d.staffCount > 8 ? '(*)' : '';
+      return {
+        workDate: d.workDate,
+        timeRange: d.timeRange,
+        viajes: vCount,
+        notaMark,
+      };
+    });
+
+    const sumViajes = viajes_rows.reduce((acc, r) => acc + r.viajes, 0);
+    if (sumViajes > 0 && total_viajes_tte > 0 && sumViajes !== total_viajes_tte && viajes_rows.length > 0) {
+      viajes_rows[0].viajes += (total_viajes_tte - sumViajes);
+    }
 
     // 7. Control EXPO (Factor 0.90 de coparticipación / asignación CAT)
     let expo_reg = 0;
@@ -237,6 +277,26 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const imp_expo_ot50 = Math.round(expo_fact_ot50 * apuntadorRates.OVERTIME_50 * 100) / 100;
     const imp_expo_ot100 = Math.round(expo_fact_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
     const subtotal_expo = Math.round((imp_expo_reg + imp_expo_ot50 + imp_expo_ot100) * 100) / 100;
+
+    const expo_shift_rows: FiscalYardShiftRow[] = expoShifts.map((s, idx) => {
+      const tr = formatRange(s.shift_start_time, s.shift_end_time);
+      const slotPos = `APUNTADOR      PF ${String((idx % 2) + 1).padStart(2, '0')}`;
+      const tot = Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100;
+      return {
+        slotPosition: slotPos,
+        employeeName: s.employee_name,
+        workDate: s.work_date,
+        timeRange: tr,
+        totalHours: tot,
+        regularHours: s.regular_hours,
+        overtime50Hours: s.overtime_50_hours,
+        overtime100Hours: s.overtime_100_hours,
+      };
+    });
+    expo_shift_rows.sort((a, b) => {
+      if (a.workDate !== b.workDate) return a.workDate.localeCompare(b.workDate);
+      return a.slotPosition.localeCompare(b.slotPosition);
+    });
 
     // 7b. Inspecciones Especiales (Hoja 3 en el Excel de Octubre)
     let inspec_reg = 0;
@@ -377,12 +437,14 @@ export const fiscalYardStrategy: ProformaStrategy = {
         viajes: total_viajes_tte,
         tarifa_por_viaje: shuttleRate,
         total_transporte: subtotal_transporte,
+        viajes_rows,
       },
       tab_expo: {
         horas_base: { norm: expo_base_reg, ot50: expo_base_ot50, ot100: expo_base_ot100 },
         factor_asignacion: expo_factor,
         horas_facturadas: { norm: expo_fact_reg, ot50: expo_fact_ot50, ot100: expo_fact_ot100 },
         importes: { reg: imp_expo_reg, ot50: imp_expo_ot50, ot100: imp_expo_ot100, total: subtotal_expo },
+        shift_rows: expo_shift_rows,
       },
       tab_inspecciones: {
         horas_apuntador: { norm: inspec_reg, ot50: inspec_ot50, ot100: inspec_ot100 },

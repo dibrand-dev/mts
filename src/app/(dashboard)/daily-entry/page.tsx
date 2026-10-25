@@ -26,6 +26,7 @@ import {
   XCircle,
   Ship,
   PackageCheck,
+  Download,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -55,6 +56,7 @@ import {
   calculateShiftHours,
   toggleStaffEntryApproval,
   bulkApproveStaffEntries,
+  exportDailyWorkPlanillaToExcel,
 } from '@/lib/services/daily-entries';
 import {
   getUnionBonusScales,
@@ -231,6 +233,7 @@ export default function DailyEntryPage() {
   const [dayOffCount, setDayOffCount] = useState<string>('0');
   const [advancePaymentAmount, setAdvancePaymentAmount] = useState<string>('0');
   const [plusDeltaAmount, setPlusDeltaAmount] = useState<string>('0');
+  const [plusCatAmount, setPlusCatAmount] = useState<string>('0');
 
   // Close typeahead dropdown on click outside
   useEffect(() => {
@@ -435,7 +438,9 @@ export default function DailyEntryPage() {
           remisesAmount: acc.remisesAmount + remisCost,
           viandas: acc.viandas + curr.meal_allowance_count,
           anticipos: acc.anticipos + curr.advance_payment_amount,
-          pluses: acc.pluses + curr.plus_delta_amount,
+          plusCat: acc.plusCat + curr.bonus_applied_amount,
+          plusDelta: acc.plusDelta + curr.plus_delta_amount,
+          pluses: acc.pluses + curr.plus_delta_amount + curr.bonus_applied_amount,
           francosGenerados: acc.francosGenerados + (curr.day_off_count > 0 ? curr.day_off_count : 0),
           francosTomados: acc.francosTomados + (curr.day_off_count < 0 ? Math.abs(curr.day_off_count) : 0),
           approvedCount: acc.approvedCount + (curr.is_approved ? 1 : 0),
@@ -452,6 +457,8 @@ export default function DailyEntryPage() {
         remisesAmount: 0,
         viandas: 0,
         anticipos: 0,
+        plusCat: 0,
+        plusDelta: 0,
         pluses: 0,
         francosGenerados: 0,
         francosTomados: 0,
@@ -519,6 +526,7 @@ export default function DailyEntryPage() {
       setSelectedPositionId(positions[0].id);
     }
     setPlusDeltaAmount('0');
+    setPlusCatAmount('0');
     setShuttlesCount('0');
     setMealAllowanceCount('0');
     setIsDayOff(false);
@@ -561,6 +569,7 @@ export default function DailyEntryPage() {
     setOt50Hours('0');
     setOt100Hours('0');
     setPlusDeltaAmount('0');
+    setPlusCatAmount('0');
     setShuttlesCount('0');
     setMealAllowanceCount('0');
     setIsDayOff(false);
@@ -647,6 +656,7 @@ export default function DailyEntryPage() {
     setOt100Hours(String(entry.overtime_100_hours || 0));
     setIsManualHoursMode(true);
     setPlusDeltaAmount(String(entry.plus_delta_amount || 0));
+    setPlusCatAmount(String(entry.bonus_applied_amount || 0));
     const sc = Number(entry.shuttles_count || 0);
     setShuttlesCount(sc % 1 !== 0 ? sc.toFixed(2).replace('.', ',') : String(sc));
     setMealAllowanceCount(String(entry.meal_allowance_count || 0));
@@ -687,6 +697,10 @@ export default function DailyEntryPage() {
       const autoBonus = isBonusEligible
         ? calculateBonusForVehicles(vehiclesHandled, unionScales, formWorkDate)
         : 0;
+      const parsedPlusCat = parseFloat(plusCatAmount);
+      const finalPlusCat = !isNaN(parsedPlusCat) && (parsedPlusCat > 0 || (editingEntryId && parsedPlusCat === 0))
+        ? parsedPlusCat
+        : autoBonus;
 
       // Get or create daily work log for (formWorkDate, formClientId, formLocationId, formVesselName, vehiclesHandled, formIsExportDay)
       const workLog = await getOrCreateDailyWorkLog(
@@ -723,7 +737,7 @@ export default function DailyEntryPage() {
         advance_payment_amount: advance,
         is_day_off: francoCount !== 0,
         day_off_count: francoCount,
-        bonus_applied_amount: autoBonus,
+        bonus_applied_amount: finalPlusCat,
         is_approved: formIsApproved,
       };
 
@@ -739,6 +753,7 @@ export default function DailyEntryPage() {
         setEmployeeSearchTerm('');
         setIsEmployeeDropdownOpen(false);
         setPlusDeltaAmount('0');
+        setPlusCatAmount('0');
         setShuttlesCount('0');
         setMealAllowanceCount('0');
         setIsDayOff(false);
@@ -749,8 +764,8 @@ export default function DailyEntryPage() {
         await addStaffEntryToWorkLog(workLog.id, payload);
         const empObj = employees.find((e) => e.id === selectedEmployeeId);
         const empName = empObj ? empObj.full_name : 'Personal';
-        const bonusMsg = autoBonus > 0
-          ? ` (Plus CCT: $ ${autoBonus.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`
+        const bonusMsg = finalPlusCat > 0
+          ? ` (Plus Cat: $ ${finalPlusCat.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`
           : '';
         setNotification({
           type: 'success',
@@ -1040,24 +1055,32 @@ export default function DailyEntryPage() {
         },
       },
       {
-        accessorKey: 'plus_delta_amount',
-        header: () => <span className="block text-right">Plus Delta</span>,
+        accessorKey: 'bonus_applied_amount',
+        header: () => (
+          <span className="block text-right text-emerald-800 font-bold" title="Plus por Categoría / CCT Buque (Vehículos)">
+            Plus Cat
+          </span>
+        ),
         cell: ({ getValue }) => {
           const val = Number(getValue());
           return (
-            <div className="text-right font-mono text-xs text-slate-700">
+            <div className="text-right font-mono text-xs font-bold text-emerald-700">
               {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
             </div>
           );
         },
       },
       {
-        accessorKey: 'bonus_applied_amount',
-        header: () => <span className="block text-right">Plus CCT</span>,
+        accessorKey: 'plus_delta_amount',
+        header: () => (
+          <span className="block text-right text-slate-700 font-bold" title="Plus Delta Operativo / Día de Descanso (DD)">
+            Plus DD
+          </span>
+        ),
         cell: ({ getValue }) => {
           const val = Number(getValue());
           return (
-            <div className="text-right font-mono text-xs font-semibold text-emerald-700">
+            <div className="text-right font-mono text-xs text-slate-700">
               {val > 0 ? `$ ${val.toLocaleString('es-AR')}` : '-'}
             </div>
           );
@@ -1152,6 +1175,42 @@ export default function DailyEntryPage() {
         (e.national_id && e.national_id.includes(term))
     );
   }, [employees, employeeSearchTerm]);
+
+  const handleExportPlanillaExcel = () => {
+    const exportRecords = filteredTableEntries.map((e) => {
+      const shiftTime = `${e.shift_start_time ? e.shift_start_time.slice(0, 5) : '-'} a ${e.shift_end_time ? e.shift_end_time.slice(0, 5) : '-'}`;
+      return {
+        work_date: e.work_date,
+        client_name: e.client_name,
+        location_name: e.location_name,
+        vessel_name: e.vessel_name,
+        is_export_day: e.is_export_day,
+        employee_name: e.employee_name,
+        employee_file_number: e.employee_file_number,
+        position_name: e.position_name,
+        shift_time: shiftTime,
+        regular_hours: e.regular_hours,
+        overtime_50_hours: e.overtime_50_hours,
+        overtime_100_hours: e.overtime_100_hours,
+        total_hours: e.regular_hours + e.overtime_50_hours + e.overtime_100_hours,
+        shuttles_count: e.shuttles_count,
+        meal_allowance_count: e.meal_allowance_count,
+        day_off_count: e.day_off_count,
+        advance_payment_amount: e.advance_payment_amount,
+        plus_cat_amount: e.bonus_applied_amount,
+        plus_delta_amount: e.plus_delta_amount,
+        is_approved: e.is_approved,
+      };
+    });
+
+    const periodLabel = filterDate
+      ? filterDate
+      : filterClientId
+      ? `${clients.find((c) => c.id === filterClientId)?.company_name || 'Cliente'}`
+      : 'Historial';
+
+    exportDailyWorkPlanillaToExcel(exportRecords, periodLabel);
+  };
 
   const hasActiveFilters = Boolean(filterDate || filterClientId || filterLocationId || tableSearch);
 
@@ -1356,9 +1415,25 @@ export default function DailyEntryPage() {
               Anticipos: $ {totals.anticipos.toLocaleString('es-AR')}
             </span>
           )}
-          {totals.pluses > 0 && (
-            <span className="bg-blue-50 text-blue-900 px-2.5 py-1 rounded-md font-bold font-mono">
-              Pluses: $ {totals.pluses.toLocaleString('es-AR')}
+          {totals.plusCat > 0 && (
+            <span
+              className="bg-emerald-50 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded-md font-bold font-mono"
+              title="Total acumulado de Plus por Categoría / CCT Buque (Vehículos)"
+            >
+              Plus Cat: $ {totals.plusCat.toLocaleString('es-AR')}
+            </span>
+          )}
+          {totals.plusDelta > 0 && (
+            <span
+              className="bg-blue-50 text-blue-900 border border-blue-200 px-2.5 py-1 rounded-md font-bold font-mono"
+              title="Total acumulado de Plus DD (Delta / Día Descanso)"
+            >
+              Plus DD: $ {totals.plusDelta.toLocaleString('es-AR')}
+            </span>
+          )}
+          {totals.pluses > 0 && (totals.plusCat > 0 && totals.plusDelta > 0) && (
+            <span className="bg-purple-50 text-purple-900 border border-purple-200 px-2.5 py-1 rounded-md font-bold font-mono">
+              Total Pluses: $ {totals.pluses.toLocaleString('es-AR')}
             </span>
           )}
         </div>
@@ -1378,7 +1453,18 @@ export default function DailyEntryPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              type="button"
+              data-testid="daily-entry-btn-export-excel"
+              onClick={handleExportPlanillaExcel}
+              disabled={filteredTableEntries.length === 0}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-[#0F2547] border border-slate-300 font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              title="Exportar planilla de novedades a Excel (.xls) con columnas sumables de horas, Plus Cat y Plus DD"
+            >
+              <Download className="h-3.5 w-3.5 text-[#1E5BB4]" />
+              <span>Exportar Planilla</span>
+            </button>
             {formClientId && (
               <button
                 type="button"
@@ -1549,8 +1635,11 @@ export default function DailyEntryPage() {
                   <td className="p-3.5 text-right font-mono text-sm text-slate-900">
                     $ {totals.anticipos.toLocaleString('es-AR')}
                   </td>
+                  <td className="p-3.5 text-right font-mono text-sm font-bold text-emerald-800 bg-emerald-50/50">
+                    $ {totals.plusCat.toLocaleString('es-AR')}
+                  </td>
                   <td className="p-3.5 text-right font-mono text-sm text-slate-900">
-                    $ {totals.pluses.toLocaleString('es-AR')}
+                    $ {totals.plusDelta.toLocaleString('es-AR')}
                   </td>
                   <td className="p-3.5 text-center text-xs font-bold text-emerald-700">
                     {totals.approvedCount}/{totals.count} ok
@@ -2297,7 +2386,7 @@ export default function DailyEntryPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 block">Anticipo ($)</label>
                     <input
@@ -2312,7 +2401,32 @@ export default function DailyEntryPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 block">Plus Delta ($)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-emerald-800 block">Plus Cat ($)</label>
+                      {isBonusEligible && calculatedBonus > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPlusCatAmount(String(calculatedBonus))}
+                          className="text-[10px] text-emerald-700 font-bold hover:underline cursor-pointer"
+                          title="Asignar escala CCT sugerida según vehículos del buque"
+                        >
+                          CCT: ${calculatedBonus.toLocaleString('es-AR')}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      data-testid="daily-entry-input-plus-cat"
+                      value={plusCatAmount}
+                      onChange={(e) => setPlusCatAmount(e.target.value)}
+                      className="w-full p-2 bg-white border border-emerald-300 rounded-lg text-sm text-emerald-800 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Plus DD / Delta ($)</label>
                     <input
                       type="number"
                       step="0.01"
