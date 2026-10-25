@@ -117,6 +117,9 @@ export default function EmployeesPage() {
     default_position_id: '',
     phone_number: '',
     status: 'active' as 'active' | 'inactive' | 'on_leave',
+    employment_type: 'Jornalizado' as 'Jornalizado' | 'Mensualizado' | 'Temporario',
+    hire_date: '',
+    base_gross_salary: '',
     hourly_rate_regular: '',
     hourly_rate_overtime_50: '',
     hourly_rate_overtime_100: '',
@@ -319,6 +322,9 @@ export default function EmployeesPage() {
       default_position_id: firstPos?.id || '',
       phone_number: '',
       status: 'active',
+      employment_type: isEnc ? 'Mensualizado' : 'Jornalizado',
+      hire_date: new Date().toISOString().split('T')[0],
+      base_gross_salary: isEnc ? '2069196.18' : '79047.21',
       hourly_rate_regular: firstPos?.hourly_rate_regular ? String(firstPos.hourly_rate_regular) : defaultReg,
       hourly_rate_overtime_50: firstPos?.hourly_rate_overtime_50 ? String(firstPos.hourly_rate_overtime_50) : defaultOt50,
       hourly_rate_overtime_100: firstPos?.hourly_rate_overtime_100 ? String(firstPos.hourly_rate_overtime_100) : defaultOt100,
@@ -344,6 +350,9 @@ export default function EmployeesPage() {
       default_position_id: emp.default_position_id || '',
       phone_number: emp.phone_number || '',
       status: emp.status || 'active',
+      employment_type: (emp.employment_type as any) || (isEnc ? 'Mensualizado' : 'Jornalizado'),
+      hire_date: emp.hire_date || '',
+      base_gross_salary: emp.base_gross_salary ? String(emp.base_gross_salary) : (isEnc ? '2069196.18' : '79047.21'),
       hourly_rate_regular: emp.hourly_rate_regular ? String(emp.hourly_rate_regular) : defaultReg,
       hourly_rate_overtime_50: emp.hourly_rate_overtime_50 ? String(emp.hourly_rate_overtime_50) : defaultOt50,
       hourly_rate_overtime_100: emp.hourly_rate_overtime_100 ? String(emp.hourly_rate_overtime_100) : defaultOt100,
@@ -470,6 +479,9 @@ export default function EmployeesPage() {
       default_position_id: formData.default_position_id || null,
       phone_number: formData.phone_number.trim() || null,
       status: formData.status,
+      employment_type: formData.employment_type,
+      hire_date: formData.hire_date || null,
+      base_gross_salary: formData.base_gross_salary ? parseFloat(formData.base_gross_salary) : null,
       hourly_rate_regular: reg,
       hourly_rate_overtime_50: ot50,
       hourly_rate_overtime_100: ot100,
@@ -563,17 +575,30 @@ export default function EmployeesPage() {
       },
       {
         id: 'position',
-        header: 'Puesto Habitual',
+        header: 'Puesto / Régimen',
         cell: ({ row }) => {
-          const pos = row.original.default_position;
-          if (!pos?.name) {
-            return <span className="text-xs text-slate-400 italic">Sin puesto asignado</span>;
-          }
+          const emp = row.original;
+          const pos = emp.default_position;
+          const isMensual = emp.employment_type === 'Mensualizado';
           return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#004392] border border-blue-200 w-fit">
-              <Briefcase className="h-3 w-3 text-[#1E5BB4]" />
-              {pos.name}
-            </span>
+            <div className="flex flex-col gap-1 items-start">
+              {pos?.name ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#004392] border border-blue-200 w-fit">
+                  <Briefcase className="h-3 w-3 text-[#1E5BB4]" />
+                  {pos.name}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400 italic">Sin puesto asignado</span>
+              )}
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                isMensual
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
+                {emp.employment_type || 'Jornalizado'}
+                {emp.hire_date && ` · Ingreso: ${emp.hire_date.split('-').reverse().join('/')}`}
+              </span>
+            </div>
           );
         },
       },
@@ -1336,6 +1361,72 @@ export default function EmployeesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Régimen Laboral y Fecha de Ingreso (Antigüedad) */}
+              <div className="p-3.5 bg-blue-950/40 border border-blue-400/30 rounded-xl space-y-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-sky-200 flex items-center gap-1.5">
+                  <Briefcase className="h-4 w-4 text-sky-400" />
+                  <span>Régimen Laboral y Antigüedad</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-white block mb-1">Régimen *</label>
+                    <select
+                      value={formData.employment_type}
+                      onChange={(e) => {
+                        const newType = e.target.value as 'Jornalizado' | 'Mensualizado' | 'Temporario';
+                        const isEnc = positions.find((p) => p.id === formData.default_position_id)?.name?.toLowerCase().includes('encargado');
+                        let suggestedBasic = formData.base_gross_salary;
+                        if (newType === 'Mensualizado' && (!suggestedBasic || Number(suggestedBasic) < 500000)) {
+                          suggestedBasic = isEnc ? '2069196.18' : '1897133.14';
+                        } else if (newType === 'Jornalizado' && (!suggestedBasic || Number(suggestedBasic) > 500000)) {
+                          suggestedBasic = '79047.21';
+                        }
+                        setFormData((prev) => ({
+                          ...prev,
+                          employment_type: newType,
+                          base_gross_salary: suggestedBasic,
+                        }));
+                      }}
+                      className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                    >
+                      <option value="Jornalizado">Jornalizado (Base 8 hs/día)</option>
+                      <option value="Mensualizado">Mensualizado (192 hs fijas/mes)</option>
+                      <option value="Temporario">Temporario</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-white block mb-1">Fecha de Ingreso *</label>
+                    <input
+                      type="date"
+                      value={formData.hire_date}
+                      onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
+                      className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-white block mb-1">
+                    {formData.employment_type === 'Mensualizado'
+                      ? 'Sueldo Básico Bruto Mensual ($) [Cubre 192 hs]'
+                      : 'Jornal Básico Bruto de Convenio ($)'}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.base_gross_salary}
+                    onChange={(e) => setFormData({ ...formData, base_gross_salary: e.target.value })}
+                    placeholder={formData.employment_type === 'Mensualizado' ? 'Ej: 2069196.18' : 'Ej: 79047.21'}
+                    className="w-full p-2 bg-white rounded-lg text-xs font-bold text-[#0B1C30] focus:outline-none"
+                  />
+                  <p className="text-[10px] text-sky-200 mt-1">
+                    {formData.employment_type === 'Mensualizado'
+                      ? 'ℹ️ A los mensualizados se les liquidan siempre 192 horas normales fijas.'
+                      : 'ℹ️ A los jornalizados se les liquidan las horas normales efectivamente trabajadas en los turnos.'}
+                  </p>
+                </div>
               </div>
 
               {/* Valores de Sueldo Asignados al Trabajador */}

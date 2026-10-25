@@ -338,10 +338,16 @@ export async function getPayrollData(
       advancesAmount += s.advanceAmount;
     }
 
+    // Regla de Negocio Oficial para Mensualizados (MTS Logística / Jorge Caetano):
+    // A los empleados mensualizados se les fija siempre una base de 192 horas normales mensuales,
+    // liquidándose esas horas completas independientemente de las registradas en el período.
+    const isMensual = empSal.contractType === 'Mensualizado';
+    const finalRegularHours = isMensual ? 192 : Math.round(regularHours * 100) / 100;
+
     // Gross Amount according to formula:
     // (regularHours * regularHourlyRate) + (ot50Hours * overtime50HourlyRate) + (ot100Hours * overtime100HourlyRate) + PLUSES
     const hoursGross =
-      regularHours * empSal.regularHourlyRate +
+      finalRegularHours * empSal.regularHourlyRate +
       overtime50Hours * empSal.overtime50HourlyRate +
       overtime100Hours * empSal.overtime100HourlyRate;
 
@@ -370,7 +376,7 @@ export async function getPayrollData(
       regularHourlyRate: empSal.regularHourlyRate,
       overtime50HourlyRate: empSal.overtime50HourlyRate,
       overtime100HourlyRate: empSal.overtime100HourlyRate,
-      regularHours: Math.round(regularHours * 100) / 100,
+      regularHours: finalRegularHours,
       overtime50Hours: Math.round(overtime50Hours * 100) / 100,
       overtime100Hours: Math.round(overtime100Hours * 100) / 100,
       plusCatAmount: Math.round(plusCatAmount * 100) / 100,
