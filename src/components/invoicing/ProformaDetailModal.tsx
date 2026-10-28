@@ -77,12 +77,12 @@ export function ProformaDetailModal({
   const datesDisplay = proforma.operation_dates || proforma.fortnight_period;
 
   const typeLabels: Record<string, { label: string; icon: string }> = {
-    vessel: { label: 'Buque Automotores (Ro-Ro)', icon: '🚢' },
-    fiscal_yard: { label: 'Plazoleta Fiscal Quincenal', icon: '🏗️' },
-    fixed_deposit: { label: 'Depósitos Nacional y Fiscal Delta Dock', icon: '🏢' },
-    plus_incidence: { label: 'Incidencia Plus (Buque / Operativa)', icon: '📈' },
-    shared_expo: { label: 'Cooptacord — Horas Coparticipadas (10%)', icon: '📊' },
-    standard: { label: 'Plazoleta Fiscal Terminal Zárate / Directos', icon: '📋' },
+    vessel: { label: 'Buque Ro-Ro', icon: '🚢' },
+    fiscal_yard: { label: 'Plazoleta Fiscal', icon: '🏗️' },
+    fixed_deposit: { label: 'Depósitos Delta Dock', icon: '🏢' },
+    plus_incidence: { label: 'Incidencia Plus / Barcaza', icon: '📈' },
+    shared_expo: { label: 'Cooptacord (10%)', icon: '📊' },
+    standard: { label: 'PF Terminal Zárate', icon: '📋' },
   };
 
   const currentTypeInfo = typeLabels[proformaType] || { label: proformaType, icon: '📄' };
@@ -91,38 +91,38 @@ export function ProformaDetailModal({
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-6xl w-full p-5 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto border border-slate-200">
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200">
-          <div>
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-4 border-b border-slate-200">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xs uppercase font-extrabold tracking-widest text-white bg-[#1E5BB4] px-2.5 py-1 rounded-md flex items-center gap-1.5">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-white bg-[#1E5BB4] px-3 py-1 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-2xs">
                 <span>{currentTypeInfo.icon}</span>
                 <span>{currentTypeInfo.label}</span>
               </span>
-              <span className="text-lg font-bold font-mono text-[#0B1C30]">
+              <span className="text-xl font-bold font-mono text-[#0B1C30] whitespace-nowrap">
                 {proforma.proforma_number}
               </span>
               {proforma.status === 'approved' && (
-                <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 whitespace-nowrap">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Aprobada
                 </span>
               )}
               {proforma.status === 'invoiced' && (
-                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-300 flex items-center gap-1">
+                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-300 flex items-center gap-1 whitespace-nowrap">
                   <FileText className="h-3.5 w-3.5" /> Facturada
                 </span>
               )}
               {proforma.status === 'draft' && (
-                <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1 whitespace-nowrap">
                   <Clock className="h-3.5 w-3.5" /> Borrador
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1.5">
               Liquidación comercial generada exclusivamente a partir de horarios previamente aprobados en Carga Diaria.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end shrink-0 w-full lg:w-auto">
             {proforma.status !== 'approved' && proforma.status !== 'invoiced' && proforma.status !== 'paid' && (
               <button
                 type="button"
