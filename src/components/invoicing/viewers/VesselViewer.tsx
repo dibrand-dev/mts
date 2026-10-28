@@ -24,48 +24,57 @@ export function VesselViewer({ proforma }: Props) {
   const tab3 = payload?.tab3_hs_compensacion;
   const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
   const vesselDisplay = proforma.vessel_name || payload?.vessel_name || 'A DEFINIR';
+  const isBarge = Boolean(
+    payload?.is_barge ||
+    (Number(proforma.subtotal_compensacion || 0) === 0 &&
+      Number(proforma.subtotal_encargado || 0) === 0 &&
+      !vesselDisplay.toUpperCase().includes('GOODWOOD') &&
+      !vesselDisplay.toUpperCase().includes('BRASILIA'))
+  );
 
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
-        <button
-          type="button"
-          onClick={() => setActiveTab('resumen')}
-          className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-            activeTab === 'resumen'
-              ? 'bg-[#0B1C30] text-white shadow-sm'
-              : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
-          }`}
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          <span>Resumen General</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('encargado')}
-          className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-            activeTab === 'encargado'
-              ? 'bg-[#0B1C30] text-white shadow-sm'
-              : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          <span>ENCARGADO A BORDO</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('compensacion')}
-          className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-            activeTab === 'compensacion'
-              ? 'bg-[#0B1C30] text-white shadow-sm'
-              : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
-          }`}
-        >
-          <Clock className="h-4 w-4" />
-          <span>HS COMPENSACIÓN</span>
-        </button>
-      </div>
+      {!isBarge && (
+        <div className="flex border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveTab('resumen')}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'resumen'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>Resumen General</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('encargado')}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'encargado'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            <span>ENCARGADO A BORDO</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('compensacion')}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'compensacion'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <Clock className="h-4 w-4" />
+            <span>HS COMPENSACIÓN</span>
+          </button>
+        </div>
+      )}
 
       {/* TAB 1: RESUMEN GENERAL */}
       {activeTab === 'resumen' && (

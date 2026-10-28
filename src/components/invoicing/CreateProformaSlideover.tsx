@@ -60,6 +60,7 @@ export function CreateProformaSlideover({
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
   const [conceptType, setConceptType] = useState<'general_hours' | 'shuttles' | 'export_tallymen'>('general_hours');
   const [dueDays, setDueDays] = useState('15');
+  const [customIssueDate, setCustomIssueDate] = useState('');
 
   // Full-Screen Excel Modal & Catalog Modal
   const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
@@ -116,9 +117,9 @@ export function CreateProformaSlideover({
     setVesselNameInput('');
     const client = clients.find((c) => c.id === newClientId);
     if (client) {
-      if (client.payment_due_days) {
-        setDueDays(client.payment_due_days.toString());
-      }
+      const cName = client.company_name.toUpperCase();
+      const defaultDue = cName.includes('CAT') ? '30' : cName.includes('COOPTACORD') ? '7' : '15';
+      setDueDays(client.payment_due_days ? client.payment_due_days.toString() : defaultDue);
       const suggestedType = getDefaultStrategyForClient(client.company_name);
       setSelectedType(suggestedType);
 
@@ -202,9 +203,10 @@ export function CreateProformaSlideover({
     setIsSubmitting(true);
     try {
       const proformaNumber = `PF-${Date.now().toString().slice(-6)}`;
-      const issueDate = new Date();
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + parseInt(dueDays || '15'));
+      const issueDateStr = customIssueDate || calcToDate || new Date().toISOString().split('T')[0];
+      const issueDateObj = new Date(issueDateStr + 'T12:00:00');
+      const dueDateObj = new Date(issueDateObj.getTime() + parseInt(dueDays || '15') * 24 * 60 * 60 * 1000);
+      const dueDateStr = dueDateObj.toISOString().split('T')[0];
 
       const detailsToInsert = calculationResult.items.map((item) => ({
         description: item.description,
@@ -222,8 +224,8 @@ export function CreateProformaSlideover({
           status: 'draft',
           subtotal: calculationResult.subtotal,
           total: calculationResult.total,
-          issue_date: issueDate.toISOString().split('T')[0],
-          due_date: dueDate.toISOString().split('T')[0],
+          issue_date: issueDateStr,
+          due_date: dueDateStr,
           vessel_name: vesselNameInput.trim() || calculationResult.vessel_name || null,
           operation_dates: calculationResult.operation_dates || null,
           discount_percentage: calculationResult.discount_percentage,
@@ -570,16 +572,27 @@ export function CreateProformaSlideover({
                 </div>
               </div>
 
-              {/* Días de Vencimiento */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-white">Días para Vencimiento</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={dueDays}
-                  onChange={(e) => setDueDays(e.target.value)}
-                  className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-                />
+              {/* Fechas de Emisión y Vencimiento */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Factura</label>
+                  <input
+                    type="date"
+                    value={customIssueDate || calcToDate}
+                    onChange={(e) => setCustomIssueDate(e.target.value)}
+                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-white">Días Vto. ({dueDays}d)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={dueDays}
+                    onChange={(e) => setDueDays(e.target.value)}
+                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
               </div>
             </div>
 
