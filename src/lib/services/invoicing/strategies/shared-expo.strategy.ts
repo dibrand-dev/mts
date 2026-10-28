@@ -145,6 +145,7 @@ export const sharedExpoStrategy: ProformaStrategy = {
         iva_21: total_iva,
         total_factura,
       },
+      shift_breakdown,
     };
 
     return {

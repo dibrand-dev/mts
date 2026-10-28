@@ -1086,33 +1086,202 @@ export function buildProformaWorkbook(
   const iva = Number(source.tax_amount ?? totalNeto * 0.21);
   const totalFactura = Number(source.total ?? totalNeto + iva);
 
-  setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-  setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
-  setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
-  setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
-  setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(proformaType === 'shared_expo' ? 'DELTA DOCK - LIMA' : 'TERMINAL ZARATE', 'label') });
-  setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
-  setRowCells(s1, 6, { 0: c('SERVICIO', 'label'), 1: c(proformaType === 'shared_expo' ? 'APUNTADORES PLAZ. FISCAL (10%)' : 'PLAZOLETA FISCAL - CONTROL DAÑOS', 'header') });
+  const shiftsList: any[] = (source as any).shift_breakdown || payload.shift_breakdown || payload.turnos || [];
 
-  const itemsList = (isRecord ? source.details : source.items) || [];
-  let rIdx = 8;
-  for (const item of itemsList) {
-    setRowCells(s1, rIdx++, { 0: c(item.description, 'label'), 1: c(Number(item.subtotal ?? (item.quantity * item.unit_price)), 'currency') });
+  if (proformaType === 'shared_expo') {
+    // -----------------------------------------------------------------------
+    // MODELO 5: COOPTACORD (IDÉNTICO A LA PLANTILLA HISTÓRICA)
+    // -----------------------------------------------------------------------
+    const horasBase = payload.horas_totales_base || {};
+    const horasImp = payload.horas_imputadas || {};
+    const tarifas = payload.tarifas || {};
+    const importes = payload.importes || {};
+    const factor = Number(payload.factor_coparticipacion ?? 0.10);
+
+    // Totales base en fila 0
+    setRowCells(s1, 0, {
+      0: c('FACTURA ELECTRONICA', 'header'),
+      1: c(invoiceNumber, 'subheader'),
+      7: c(Number(horasBase.reg ?? 140), 'number'),
+      8: c(Number(horasBase.ot50 ?? 32), 'number'),
+      9: c(Number(horasBase.ot100 ?? 8), 'number'),
+    });
+
+    setRowCells(s1, 1, {
+      0: c('FECHA FACTURA', 'label'),
+      1: c(formatDateExcel(issueDate), 'date'),
+      3: c('PUESTO', 'header'),
+      4: c('FECHA', 'header'),
+      5: c('DESDE-HASTA', 'header'),
+      6: c('HORAS', 'header'),
+      7: c('Normales', 'header'),
+      8: c('0.5', 'header'),
+      9: c('1.0', 'header'),
+    });
+
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
+    setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName || 'COOPTACORD SA', 'subheader') });
+    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
+    setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
+    setRowCells(s1, 6, { 0: c('SERVICIO', 'label') });
+    setRowCells(s1, 7, { 1: c('APUNTADORES  PLAZ. FISCAL', 'header') });
+    setRowCells(s1, 8, { 1: c(factor, 'number') });
+
+    setRowCells(s1, 9, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(horasImp.reg ?? 14.0), 'number') });
+    setRowCells(s1, 10, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(Number(tarifas.reg ?? 31602.72), 'currency') });
+    setRowCells(s1, 11, { 0: c('IMPORTE HORAS NORMALES', 'highlight_label'), 1: c(Number(importes.reg ?? 442438.09), 'highlight_currency') });
+    setRowCells(s1, 12, { 0: c('HORAS 50%', 'label'), 1: c(Number(horasImp.ot50 ?? 3.2), 'number') });
+    setRowCells(s1, 13, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(Number(tarifas.ot50 ?? 47404.08), 'currency') });
+    setRowCells(s1, 14, { 0: c('IMPORTE HORAS 50%', 'highlight_label'), 1: c(Number(importes.ot50 ?? 151693.06), 'highlight_currency') });
+    setRowCells(s1, 15, { 0: c('HORAS 100%', 'label'), 1: c(Number(horasImp.ot100 ?? 0.8), 'number') });
+    setRowCells(s1, 16, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(Number(tarifas.ot100 ?? 63205.44), 'currency') });
+    setRowCells(s1, 17, { 0: c('IMPORTE HORAS 100%', 'highlight_label'), 1: c(Number(importes.ot100 ?? 50564.35), 'highlight_currency') });
+    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(Number(payload.viandas_count ?? 0), 'number') });
+    setRowCells(s1, 19, { 0: c('IMPORTE POR VIANDA', 'label'), 1: c(Number(payload.rate_vianda ?? 0), 'currency') });
+    setRowCells(s1, 20, { 0: c('IMPORTE VIANDAS', 'label'), 1: c(Number(importes.viandas ?? 0), 'currency') });
+    setRowCells(s1, 21, { 0: c('TRANSPORTE - VIAJES', 'label'), 1: c(Number(payload.shuttles_count ?? 0), 'number') });
+    setRowCells(s1, 22, { 0: c('IMPORTE POR VIAJE', 'label'), 1: c(Number(payload.rate_shuttle ?? 35594.34), 'currency') });
+    setRowCells(s1, 23, { 0: c('TOTAL VIAJES', 'label'), 1: c(Number(importes.shuttles ?? 0), 'currency') });
+    setRowCells(s1, 24, { 0: c('IMPORTE TOTAL', 'total_label'), 1: c(totalNeto, 'total_currency') });
+    setRowCells(s1, 25, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency') });
+    setRowCells(s1, 26, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency') });
+
+    // Turnos de Cooptacord en panel derecho (filas 2..)
+    shiftsList.forEach((s, idx) => {
+      const timeRange = s.shift_start_time && s.shift_end_time
+        ? `${s.shift_start_time.replace(':', '').slice(0, 4)}-${s.shift_end_time.replace(':', '').slice(0, 4)}`
+        : '0700-1700';
+      const rawDate = s.work_date || s.shift_start_date;
+      const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+        ? rawDate.split('-').reverse().join('/')
+        : rawDate;
+      const totalHs = Number(s.regular_hours || 0) + Number(s.overtime_50_hours || 0) + Number(s.overtime_100_hours || 0);
+
+      setRowCells(s1, 2 + idx, {
+        3: c(s.position_name || `APUNTADOR      PF ${String((idx % 2) + 1).padStart(2, '0')}`, 'label'),
+        4: c(formattedDate, 'center'),
+        5: c(timeRange, 'center'),
+        6: c(totalHs > 0 ? totalHs : '', 'number'),
+        7: c(Number(s.regular_hours || 0) > 0 ? Number(s.regular_hours) : '', 'number'),
+        8: c(Number(s.overtime_50_hours || 0) > 0 ? Number(s.overtime_50_hours) : '', 'number'),
+        9: c(Number(s.overtime_100_hours || 0) > 0 ? Number(s.overtime_100_hours) : '', 'number'),
+      });
+    });
+
+  } else {
+    // -----------------------------------------------------------------------
+    // MODELO 6: SERGIO DANCHUK (IDÉNTICO A LA PLANTILLA HISTÓRICA)
+    // -----------------------------------------------------------------------
+    const horas = payload.horas || {};
+    const tarifas = payload.tarifas || {};
+    const viandas = payload.viandas || {};
+    const transporte = payload.transporte || {};
+
+    // Totales en fila 0
+    setRowCells(s1, 0, {
+      0: c('FACTURA ELECTRONICA', 'header'),
+      1: c(invoiceNumber, 'subheader'),
+      8: c(Number(horas.reg ?? 28.0), 'number'),
+      9: c(Number(horas.ot50 ?? 0.0), 'number'),
+      10: c(Number(horas.ot100 ?? 0.0), 'number'),
+      11: c(0.0, 'number'),
+    });
+
+    setRowCells(s1, 1, {
+      0: c('FECHA FACTURA', 'label'),
+      1: c(formatDateExcel(issueDate), 'date'),
+      3: c('PUESTO', 'header'),
+      4: c('APELLIDO', 'header'),
+      5: c('FECHA', 'header'),
+      6: c('DESDE-HASTA', 'header'),
+      7: c('HORAS', 'header'),
+      8: c('Normales', 'header'),
+      9: c('0.5', 'header'),
+      10: c('1.0', 'header'),
+      11: c('PLUS P.', 'header'),
+      12: c('VIAJES CMP-TZ', 'header'),
+      13: c('VIAJES ZTE-TZ', 'header'),
+      14: c('VIANDAS', 'header'),
+    });
+
+    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
+    setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName || 'SERGIO DANCHUK', 'subheader') });
+    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('TERMINAL ZARATE', 'label') });
+    setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
+    setRowCells(s1, 6, { 0: c('SERVICIO', 'label'), 1: c('PLAZOLETA FISCAL', 'header') });
+    setRowCells(s1, 7, { 1: c('CONTROL DAÑOS', 'subheader') });
+
+    setRowCells(s1, 9, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(horas.reg ?? 28.0), 'number') });
+    setRowCells(s1, 10, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(Number(tarifas.reg ?? 31602.72), 'currency') });
+    setRowCells(s1, 11, { 0: c('IMPORTE HORAS NORMALES', 'highlight_label'), 1: c(Number(horas.reg ? horas.reg * tarifas.reg : 884876.18), 'highlight_currency') });
+    setRowCells(s1, 12, { 0: c('HORAS 50%', 'label'), 1: c(Number(horas.ot50 ?? 0.0), 'number') });
+    setRowCells(s1, 13, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(Number(tarifas.ot50 ?? 47404.08), 'currency') });
+    setRowCells(s1, 14, { 0: c('IMPORTE HORAS 50%', 'highlight_label'), 1: c(Number(horas.ot50 ? horas.ot50 * tarifas.ot50 : 0.0), 'highlight_currency') });
+    setRowCells(s1, 15, { 0: c('HORAS 100%', 'label'), 1: c(Number(horas.ot100 ?? 0.0), 'number') });
+    setRowCells(s1, 16, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(Number(tarifas.ot100 ?? 63205.44), 'currency') });
+    setRowCells(s1, 17, { 0: c('IMPORTE HORAS 100%', 'highlight_label'), 1: c(Number(horas.ot100 ? horas.ot100 * tarifas.ot100 : 0.0), 'highlight_currency') });
+    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(Number(viandas.count ?? 0), 'number') });
+    setRowCells(s1, 19, { 0: c('IMPORTE POR VIANDA', 'label'), 1: c(Number(viandas.rate ?? 6545.18), 'currency') });
+    setRowCells(s1, 20, { 0: c('IMPORTE VIANDAS', 'label'), 1: c(Number(viandas.total ?? 0), 'currency') });
+    setRowCells(s1, 21, { 0: c('TRANSPORTE - VIAJES ZARATE-TZ', 'label') });
+    setRowCells(s1, 22, { 0: c('IMPORTE POR VIAJE ZARATE-TZ', 'label'), 1: c(0.0, 'currency') });
+    setRowCells(s1, 23, { 0: c('TOTAL VIAJES DELTA DOCK', 'label'), 1: c(0.0, 'currency') });
+    setRowCells(s1, 24, { 0: c('TRANSPORTE - VIAJES CMP-TZ', 'label'), 1: c(Number(transporte.trips ?? 4), 'number') });
+    setRowCells(s1, 25, { 0: c('IMPORTE POR VIAJE CMP', 'label'), 1: c(Number(transporte.rate ?? 37685.28), 'currency') });
+    setRowCells(s1, 26, { 0: c('TOTAL VIAJES TZ', 'label'), 1: c(Number(transporte.total ?? 150741.12), 'currency') });
+    setRowCells(s1, 27, { 0: c('BONO PRODUCTIVIDAD', 'label'), 1: c(0.0, 'currency') });
+    setRowCells(s1, 28, { 0: c('IMPORTE TOTAL', 'total_label'), 1: c(totalNeto, 'total_currency') });
+    setRowCells(s1, 29, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency') });
+    setRowCells(s1, 30, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency') });
+
+    // Turnos de Sergio Danchuk en panel derecho (filas 2..)
+    shiftsList.forEach((s, idx) => {
+      const timeRange = s.shift_start_time && s.shift_end_time
+        ? `${s.shift_start_time.replace(':', '').slice(0, 4)}-${s.shift_end_time.replace(':', '').slice(0, 4)}`
+        : '1330-1800';
+      const rawDate = s.work_date || s.shift_start_date;
+      const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+        ? rawDate.split('-').reverse().join('/')
+        : rawDate;
+      const totalHs = Number(s.regular_hours || 0) + Number(s.overtime_50_hours || 0) + Number(s.overtime_100_hours || 0);
+
+      setRowCells(s1, 2 + idx, {
+        3: c('TZ APUNTADOR', 'label'),
+        4: c(s.employee_name || 'ACOSTA JOAQUIN', 'label'),
+        5: c(formattedDate, 'center'),
+        6: c(timeRange, 'center'),
+        7: c(totalHs > 0 ? totalHs : '', 'number'),
+        8: c(Number(s.regular_hours || 0) > 0 ? Number(s.regular_hours) : '', 'number'),
+        9: c(Number(s.overtime_50_hours || 0) > 0 ? Number(s.overtime_50_hours) : '', 'number'),
+        10: c(Number(s.overtime_100_hours || 0) > 0 ? Number(s.overtime_100_hours) : '', 'number'),
+        11: c('', 'center'),
+        12: c(Number(s.shuttles_count || 0) > 0 ? Number(s.shuttles_count) : '', 'number'),
+        14: c(Number(s.meal_allowance_count || 0) > 0 ? Number(s.meal_allowance_count) : '', 'number'),
+      });
+    });
   }
-  setRowCells(s1, rIdx + 1, { 0: c('IMPORTE TOTAL NETO', 'total_label'), 1: c(totalNeto, 'total_currency') });
-  setRowCells(s1, rIdx + 2, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency') });
-  setRowCells(s1, rIdx + 3, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency') });
 
   notes.forEach((n, idx) => {
-    setRowCells(s1, rIdx + 5 + idx, { 0: c(n, 'note') });
+    setRowCells(s1, 32 + idx, { 0: c(n, 'note') });
   });
 
   const safeDatesStd = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
+  let filename = `MTS-CTYC SA - ${clientName} - ${safeDatesStd}.xls`;
+  if (proformaType === 'shared_expo') {
+    filename = `MTS-CTYC SA - COOPTACORD - DELTA DOCK - Proforma Factura - ${safeDatesStd}.xls`;
+  } else if (clientName.toUpperCase().includes('DANCHUK') || proformaType === 'standard') {
+    filename = `MTS-CTYC SA - SERGIO DANCHUK - Proforma Factura Plazoleta Fiscal Terminal Zarate - ${safeDatesStd}.xls`;
+  }
+
   return {
-    filename: `MTS-CTYC SA - ${clientName} - ${safeDatesStd}.xls`,
+    filename,
     title: `Proforma ${clientName} (${operationDates})`,
     proformaType,
-    sheets: [{ name: 'Hoja1', colWidths: [340, 160], rows: s1 }],
+    sheets: [{
+      name: 'Hoja1',
+      colWidths: [320, 160, 25, 170, 170, 100, 100, 70, 70, 70, 80, 100, 100, 70],
+      rows: s1
+    }],
   };
 }
 
