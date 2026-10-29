@@ -37,7 +37,7 @@ export function ProformaTypesAndOperationsModal({
   const [operations, setOperations] = useState<ClientOperationRow[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [newOpName, setNewOpName] = useState('');
-  const [newOpType, setNewOpType] = useState<'vessel' | 'yard' | 'deposit' | 'general'>('vessel');
+  const [newOpType, setNewOpType] = useState<'vessel' | 'barge' | 'yard' | 'deposit' | 'general'>('vessel');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -96,6 +96,7 @@ export function ProformaTypesAndOperationsModal({
 
   const opTypeBadges: Record<string, { label: string; color: string }> = {
     vessel: { label: 'BUQUE', color: 'bg-sky-100 text-[#1E5BB4] border-sky-300' },
+    barge: { label: 'BARCAZA', color: 'bg-cyan-100 text-cyan-800 border-cyan-300' },
     yard: { label: 'PLAZOLETA FISCAL', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
     deposit: { label: 'DEPÓSITO DELTA DOCK', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
     general: { label: 'INCIDENCIA PLUS / GENERAL', color: 'bg-amber-100 text-amber-900 border-amber-300' },
@@ -183,6 +184,7 @@ export function ProformaTypesAndOperationsModal({
                   className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-xs text-[#0B1C30] font-bold"
                 >
                   <option value="vessel">BUQUE</option>
+                  <option value="barge">BARCAZA</option>
                   <option value="yard">PLAZOLETA FISCAL</option>
                   <option value="deposit">DEPÓSITO (NACIONAL / FISCAL / ARROZ)</option>
                   <option value="general">INCIDENCIA PLUS / OTRO</option>

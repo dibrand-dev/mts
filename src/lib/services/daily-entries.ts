@@ -152,6 +152,27 @@ export interface DailyWorkLogWithEntries extends DailyWorkLogRow {
   })[];
 }
 
+function isLogFiscalYardOrDeposit(log: any): boolean {
+  const vesselUpper = String(log?.vessel_name || '').trim().toUpperCase();
+  const locNameUpper = String(log?.location?.name || '').trim().toUpperCase();
+  const locCodeUpper = String(log?.location?.code || '').trim().toUpperCase();
+
+  const isFiscalYard =
+    vesselUpper.includes('PLAZOLETA') ||
+    locNameUpper.includes('PLAZOLETA') ||
+    locCodeUpper.includes('PLAZOLETA') ||
+    locCodeUpper === 'PF';
+
+  const isDeposit =
+    vesselUpper.includes('DEPOSITO') ||
+    vesselUpper.includes('DEPÓSITO') ||
+    locNameUpper.includes('DEPOSITO') ||
+    locNameUpper.includes('DEPÓSITO') ||
+    locCodeUpper.includes('DEPOSITO');
+
+  return isFiscalYard || isDeposit;
+}
+
 export async function getDailyWorkLogs(filters?: {
   date?: string;
   clientId?: string;
@@ -185,7 +206,7 @@ export async function getDailyWorkLogs(filters?: {
     throw new Error(error.message);
   }
 
-  let localMetaMap: Record<string, { operational_role?: string; is_compensation_shift?: boolean }> = {};
+  let localMetaMap: Record<string, { operational_role?: string | null; is_compensation_shift?: boolean; shift_number?: number }> = {};
   if (typeof window !== 'undefined') {
     try {
       const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
@@ -195,20 +216,31 @@ export async function getDailyWorkLogs(filters?: {
     }
   }
 
-  const hydrated = (data || []).map((log: any) => ({
-    ...log,
-    entries: (log.entries || []).map((e: any) => {
-      const meta = localMetaMap[e.id] || {};
-      return {
-        ...e,
-        operational_role: e.operational_role || meta.operational_role || null,
-        is_compensation_shift:
-          typeof e.is_compensation_shift === 'boolean'
-            ? e.is_compensation_shift
-            : Boolean(meta.is_compensation_shift),
-      };
-    }),
-  }));
+  const hydrated = (data || []).map((log: any) => {
+    const noPostRequired = isLogFiscalYardOrDeposit(log);
+    return {
+      ...log,
+      entries: (log.entries || []).map((e: any) => {
+        const meta = localMetaMap[e.id] || {};
+        const resolvedRole = noPostRequired
+          ? null
+          : 'operational_role' in meta
+          ? (meta.operational_role ?? e.operational_role ?? null)
+          : (e.operational_role || null);
+        return {
+          ...e,
+          position_id: e.position_id || null,
+          operational_role: resolvedRole,
+          shift_number: Number(e.shift_number || meta.shift_number || e.shift_turn || 1),
+          shift_turn: Number(e.shift_turn || e.shift_number || meta.shift_number || 1),
+          is_compensation_shift:
+            typeof e.is_compensation_shift === 'boolean'
+              ? e.is_compensation_shift
+              : Boolean(meta.is_compensation_shift),
+        };
+      }),
+    };
+  });
 
   return hydrated as DailyWorkLogWithEntries[];
 }
@@ -428,9 +460,9 @@ export async function addStaffEntryToWorkLog(
     `)
     .single();
 
-  // Fallback if remote schema does not yet have operational_role or is_compensation_shift
-  if (error && (error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
-    const { operational_role, is_compensation_shift, ...safePayload } = payloadToInsert;
+  // Fallback if remote schema does not yet have shift_number, shift_turn, operational_role or is_compensation_shift
+  if (error && (error.message?.includes('shift_number') || error.message?.includes('shift_turn') || error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
+    const { shift_number, shift_turn, operational_role, is_compensation_shift, ...safePayload } = payloadToInsert;
     const retry = await supabase
       .from('daily_staff_entries')
       .insert(safePayload)
@@ -440,7 +472,7 @@ export async function addStaffEntryToWorkLog(
         position:positions(id, name)
       `)
       .single();
-    data = retry.data ? { ...retry.data, operational_role, is_compensation_shift } : null;
+    data = retry.data ? { ...retry.data, shift_number, shift_turn, operational_role, is_compensation_shift } : null;
     error = retry.error;
   }
 
@@ -456,6 +488,24 @@ export async function addStaffEntryToWorkLog(
       map[data.id] = {
         operational_role: entry.operational_role || data.operational_role || null,
         is_compensation_shift: Boolean(entry.is_compensation_shift ?? data.is_compensation_shift),
+        shift_number: Number(entry.shift_number ?? data.shift_number ?? entry.shift_turn ?? 1),
+      };
+      window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
+    } catch {
+      // ignore
+    }
+  }
+
+  if (typeof window !== 'undefined' && data?.id) {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      const map = raw ? JSON.parse(raw) : {};
+      map[data.id] = {
+        ...map[data.id],
+        shift_number: Number(data.shift_number ?? data.shift_turn ?? map[data.id]?.shift_number ?? 1),
+        shift_turn: data.shift_turn ?? map[data.id]?.shift_turn ?? null,
+        operational_role: data.operational_role ?? map[data.id]?.operational_role ?? null,
+        is_compensation_shift: Boolean(data.is_compensation_shift ?? map[data.id]?.is_compensation_shift),
       };
       window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
     } catch {
@@ -495,8 +545,9 @@ export async function updateStaffEntry(
     `)
     .single();
 
-  if (error && (error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
-    const { operational_role, is_compensation_shift, ...safeEntry } = entry as Record<string, any>;
+  // Fallback if remote schema does not yet have shift_number, shift_turn, operational_role or is_compensation_shift
+  if (error && (error.message?.includes('shift_number') || error.message?.includes('shift_turn') || error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
+    const { shift_number, shift_turn, operational_role, is_compensation_shift, ...safeEntry } = entry as Record<string, any>;
     const retry = await supabase
       .from('daily_staff_entries')
       .update(safeEntry)
@@ -507,7 +558,7 @@ export async function updateStaffEntry(
         position:positions(id, name)
       `)
       .single();
-    data = retry.data ? { ...retry.data, operational_role, is_compensation_shift } : null;
+    data = retry.data ? { ...retry.data, shift_number, shift_turn, operational_role, is_compensation_shift } : null;
     error = retry.error;
   }
 
@@ -520,8 +571,14 @@ export async function updateStaffEntry(
     try {
       const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
       const map = raw ? JSON.parse(raw) : {};
+      const nextRole =
+        'operational_role' in entry
+          ? (entry.operational_role ?? null)
+          : (data.operational_role ?? map[data.id]?.operational_role ?? null);
       map[data.id] = {
-        operational_role: entry.operational_role ?? data.operational_role ?? map[data.id]?.operational_role ?? null,
+        shift_number: Number(entry.shift_number ?? data.shift_number ?? map[data.id]?.shift_number ?? entry.shift_turn ?? 1),
+        shift_turn: entry.shift_turn ?? data.shift_turn ?? map[data.id]?.shift_turn ?? null,
+        operational_role: nextRole,
         is_compensation_shift: Boolean(entry.is_compensation_shift ?? data.is_compensation_shift ?? map[data.id]?.is_compensation_shift),
       };
       window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
@@ -610,6 +667,23 @@ export async function toggleStaffEntryApproval(
     throw new Error(error.message);
   }
 
+  if (typeof window !== 'undefined' && data?.id) {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      const map = raw ? JSON.parse(raw) : {};
+      map[data.id] = {
+        ...map[data.id],
+        shift_number: Number(data.shift_number ?? data.shift_turn ?? map[data.id]?.shift_number ?? 1),
+        shift_turn: data.shift_turn ?? map[data.id]?.shift_turn ?? null,
+        operational_role: data.operational_role ?? map[data.id]?.operational_role ?? null,
+        is_compensation_shift: Boolean(data.is_compensation_shift ?? map[data.id]?.is_compensation_shift),
+      };
+      window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
+    } catch {
+      // ignore
+    }
+  }
+
   return data as DailyStaffEntryRow;
 }
 
@@ -650,8 +724,10 @@ export interface ClientShiftRecordForBilling {
   employee_id: string;
   employee_name: string;
   file_number: string | null;
-  position_id: string;
+  position_id: string | null;
   position_name: string;
+  shift_number?: number | null;
+  shift_turn?: number | null;
   operational_role?: string | null;
   is_compensation_shift?: boolean;
   shift_start_date: string;
@@ -724,7 +800,7 @@ export async function getStaffEntriesForClientAndPeriod(
     throw new Error(error.message);
   }
 
-  let localMetaMap: Record<string, { operational_role?: string; is_compensation_shift?: boolean }> = {};
+  let localMetaMap: Record<string, { shift_number?: number | null; shift_turn?: number | null; operational_role?: string; is_compensation_shift?: boolean }> = {};
   if (typeof window !== 'undefined') {
     try {
       const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
@@ -772,6 +848,7 @@ export async function getStaffEntriesForClientAndPeriod(
       const ot50 = Number(entry.overtime_50_hours || 0);
       const ot100 = Number(entry.overtime_100_hours || 0);
       const localMeta = localMetaMap[entry.id] || {};
+      const noPostRequired = isLogFiscalYardOrDeposit(log);
 
       records.push({
         id: entry.id,
@@ -786,9 +863,15 @@ export async function getStaffEntriesForClientAndPeriod(
         employee_id: entry.employee_id,
         employee_name: entry.employee?.full_name || 'Personal',
         file_number: entry.employee?.file_number || null,
-        position_id: entry.position_id,
+        position_id: entry.position_id || null,
         position_name: entry.position?.name || 'Puesto',
-        operational_role: entry.operational_role || localMeta.operational_role || null,
+        shift_number: Number(entry.shift_number || localMeta.shift_number || entry.shift_turn || localMeta.shift_turn || 1),
+        shift_turn: entry.shift_turn ? Number(entry.shift_turn) : localMeta.shift_turn ? Number(localMeta.shift_turn) : null,
+        operational_role: noPostRequired
+          ? null
+          : 'operational_role' in localMeta
+          ? (localMeta.operational_role ?? entry.operational_role ?? null)
+          : (entry.operational_role || null),
         is_compensation_shift:
           typeof entry.is_compensation_shift === 'boolean'
             ? entry.is_compensation_shift

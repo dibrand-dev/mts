@@ -273,7 +273,7 @@ export function FixedDepositViewer({ proforma }: Props) {
                       <th className="p-2 text-center">Desde-Hasta</th>
                       <th className="p-2 text-center">Hs</th>
                       <th className="p-2 text-center">Norm</th>
-                      <th className="p-2 text-center">0.5</th>
+                      <th className="p-2 text-center">50%</th>
                       <th className="p-2 pr-3 text-center text-purple-800">TTE</th>
                     </tr>
                   </thead>

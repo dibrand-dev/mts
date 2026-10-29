@@ -127,8 +127,8 @@ export function PlusIncidenceViewer({ proforma }: Props) {
                     <th className="p-2 text-center">Desde-Hasta</th>
                     <th className="p-2 text-center">Horas</th>
                     <th className="p-2 text-center">Normales</th>
-                    <th className="p-2 text-center">0.5</th>
-                    <th className="p-2 text-center">1.0</th>
+                    <th className="p-2 text-center">50%</th>
+                    <th className="p-2 text-center">100%</th>
                     <th className="p-2 pr-3 text-center">Viajes</th>
                   </tr>
                 </thead>

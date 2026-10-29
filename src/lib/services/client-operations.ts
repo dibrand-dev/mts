@@ -28,7 +28,7 @@ export async function getClientOperations(clientId?: string): Promise<ClientOper
 export async function createClientOperation(payload: {
   client_id: string;
   name: string;
-  operation_type?: 'vessel' | 'yard' | 'deposit' | 'general';
+  operation_type?: 'vessel' | 'barge' | 'yard' | 'deposit' | 'general';
 }): Promise<ClientOperationRow> {
   const supabase = createClient() as any;
   const cleanName = payload.name.trim().toUpperCase();

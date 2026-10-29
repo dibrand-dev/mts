@@ -1,6 +1,7 @@
 import { ProformaStrategy, ProformaCalculationContext, ProformaCalculationResult, ProformaCalculationItem, CalculatedShiftAuditItem } from '../types';
 import { fetchClientRatesContext, formatDatesSpan } from '../helpers';
 import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '@/lib/services/daily-entries';
+import { bargeStrategy } from './barge.strategy';
 import {
   GOODWOOD_OPERATIVA_DEFAULT_ROWS,
   GOODWOOD_PLUS_DEFAULT_ROWS,
@@ -18,25 +19,44 @@ function resolveVesselOperationalPost(
   apuntadorIndexInTurn: number,
   isEncargado: boolean
 ): string {
-  if (isEncargado) return 'ENCARGADO';
-
   const explicitRole = (shift.operational_role || '').trim().toUpperCase();
-  if (explicitRole && explicitRole !== 'APUNTADOR' && explicitRole !== 'ENCARGADO' && explicitRole !== 'PUESTO') {
+  const posUpper = (shift.position_name || '').trim().toUpperCase();
+
+  // If operational_role is a specific non-default role (e.g. DAÑOS, RELEVO, COLECTADO, ENCARGADO A BORDO), respect it immediately
+  if (
+    explicitRole &&
+    explicitRole !== 'APUNTADOR' &&
+    explicitRole !== 'PUESTO' &&
+    explicitRole !== 'RAMPA'
+  ) {
     return explicitRole;
   }
 
-  const posUpper = (shift.position_name || '').trim().toUpperCase();
-  if (posUpper && posUpper !== 'APUNTADOR' && posUpper !== 'ENCARGADO' && posUpper !== 'PUESTO') {
+  // If position_name in Carga Diaria was changed to a specific post (e.g. Daños, Colectado, Relevo, Encargado a Bordo), respect it over backfilled RAMPA
+  if (
+    posUpper &&
+    posUpper !== 'APUNTADOR' &&
+    posUpper !== 'PUESTO' &&
+    posUpper !== 'RAMPA'
+  ) {
     return posUpper;
   }
+
+  if (isEncargado) return 'ENCARGADO';
 
   // Known vessel crew mapping from official Goodwood / Brasilia proformas
   const empUpper = (shift.employee_name || '').toUpperCase();
   if (
+    empUpper.includes('SELLANES') ||
+    empUpper.includes('MORALES') ||
+    empUpper.includes('ACOSTA') ||
+    empUpper.includes('SUAREZ') ||
+    empUpper.includes('BUET') ||
+    empUpper.includes('ARENA') ||
+    empUpper.includes('GUERRERO') ||
     empUpper.includes('TORRES EDUARDO') ||
     empUpper.includes('MONTEROS MATIAS') ||
-    empUpper.includes('FUNES AGUSTIN') ||
-    empUpper.includes('CORNEJO NELSON')
+    empUpper.includes('FUNES AGUSTIN')
   ) {
     return 'DAÑOS';
   }
@@ -47,6 +67,10 @@ function resolveVesselOperationalPost(
     empUpper.includes('CORONEL MATIAS')
   ) {
     return 'RELEVO';
+  }
+
+  if (explicitRole === 'RAMPA' || posUpper === 'RAMPA') {
+    return 'RAMPA';
   }
 
   // Standard 9-apuntador shift distribution: 7 RAMPA, 1 DAÑOS, 1 RELEVO
@@ -97,7 +121,7 @@ export const vesselStrategy: ProformaStrategy = {
     const matchingVesselShifts = inputVessel?.trim()
       ? allPeriodShifts.filter((s) => (s.vessel_name || '').toUpperCase().includes(inputVessel.trim().toUpperCase()))
       : [];
-    const shifts = matchingVesselShifts.length > 0 ? matchingVesselShifts : allPeriodShifts;
+    const shifts = inputVessel?.trim() ? matchingVesselShifts : allPeriodShifts;
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '11-13 OCTUBRE 2026';
     const discountPct = inputDiscount !== undefined ? inputDiscount : 3.0;
@@ -111,73 +135,14 @@ export const vesselStrategy: ProformaStrategy = {
     // -------------------------------------------------------------------------
     // CASO BARCAZA FLUVIAL (ej. CAP. JACKSON, INQUEBRANTABLE)
     // No aplica Horas de Compensación ni Encargado a Bordo.
+    // Delega directamente a bargeStrategy para aislar completamente datos y solapas.
     // -------------------------------------------------------------------------
     if (isBarge) {
-      const isJackson = vesselName.toUpperCase().includes('JACKSON');
-      const b_neto = isJackson ? 2861200.99 : 2304046.24;
-      const b_iva = Math.round(b_neto * 0.21 * 100) / 100;
-      const b_total = Math.round((b_neto + b_iva) * 100) / 100;
-
-      const items: ProformaCalculationItem[] = [
-        {
-          description: `${vesselName} - ${operationDates}`,
-          quantity: 1,
-          unit_price: b_neto,
-          subtotal: b_neto,
-        },
-      ];
-
-      const payload = {
-        proforma_type: 'vessel',
-        is_barge: true,
-        vessel_name: vesselName,
-        operation_dates: operationDates,
-        client_name: ratesCtx.clientName,
-        invoice_number: isJackson ? '1-537' : '1-520',
-        tab1_resumen_general: {
-          consolidado: {
-            subtotal_operativa: b_neto,
-            subtotal_compensacion: 0,
-            subtotal_encargado: 0,
-            total_neto: b_neto,
-            iva_21: b_iva,
-            total_factura_final: b_total,
-          },
-        },
-      };
-
-      return {
-        client_id: clientId,
-        client_name: ratesCtx.clientName,
-        from_date: fromDate,
-        to_date: toDate,
-        operation_dates: operationDates,
-        vessel_name: vesselName,
-        proforma_type: 'vessel',
-        total_shifts: shifts.length,
-        unapproved_shifts_count: unapprovedCount,
-        total_regular_hours: 8,
-        total_overtime_50_hours: 0,
-        total_overtime_100_hours: 0,
-        total_hours: 8,
-        subtotal: b_neto,
-        discount_percentage: 0,
-        discount_amount: 0,
-        total_neto: b_neto,
-        tax_rate: 0.21,
-        tax_amount: b_iva,
-        total: b_total,
-        items,
-        shift_breakdown: [],
-        payload,
-        notes: [
-          'NOTA: BARCAZA FLUVIAL - FACTURA AJUSTADA POR PARITARIAS.',
-          'PENDIENTE AJUSTAR PORCENTAJE UTILIDAD SEGÚN ANÁLISIS DE COSTOS.',
-        ],
-        subtotal_operativa: b_neto,
-        subtotal_encargado: 0,
-        subtotal_compensacion: 0,
-      };
+      return bargeStrategy.calculate({
+        ...context,
+        proformaType: 'barge',
+        vesselName,
+      });
     }
 
     // -------------------------------------------------------------------------
@@ -251,7 +216,7 @@ export const vesselStrategy: ProformaStrategy = {
     const encargado_detalle_turnos =
       encargadoShifts.length > 0 && !isGoodwood
         ? encargadoShifts.map((s, idx) => ({
-            turno: idx + 1,
+            turno: s.shift_number || (s as any).shift_turn || (idx + 1),
             encargado: s.employee_name.toUpperCase(),
             fecha: formatDateDMY(s.work_date),
             desdeHasta: formatRangeCompact(s.shift_start_time, s.shift_end_time),
@@ -260,48 +225,7 @@ export const vesselStrategy: ProformaStrategy = {
             ot50: s.overtime_50_hours,
             ot100: s.overtime_100_hours,
           }))
-        : [
-            {
-              turno: 1,
-              encargado: 'LUCAS BRITES',
-              fecha: '11/10/2026',
-              desdeHasta: '1400-0200',
-              horas: 12,
-              normales: 0,
-              ot50: 0,
-              ot100: 12,
-            },
-            {
-              turno: 2,
-              encargado: 'DIEGO MARTINOLI',
-              fecha: '12/10/2026',
-              desdeHasta: '2200-0800',
-              horas: 10,
-              normales: 0,
-              ot50: 0,
-              ot100: 10,
-            },
-            {
-              turno: 3,
-              encargado: 'LUCAS BRITES',
-              fecha: '12/10/2026',
-              desdeHasta: '0800-2200',
-              horas: 14,
-              normales: 0,
-              ot50: 0,
-              ot100: 14,
-            },
-            {
-              turno: 4,
-              encargado: 'DIEGO MARTINOLI',
-              fecha: '13/10/2026',
-              desdeHasta: '0800-2000',
-              horas: 12,
-              normales: 4,
-              ot50: 0,
-              ot100: 6,
-            },
-          ];
+        : GOODWOOD_ENCARGADO_DEFAULT_ROWS;
 
     // TAB 3: HS COMPENSACION (Trabajo corrido acordado con CAT)
     // Goodwood: 1 enc (4 hs norm, 42 hs 100%) + 3 ap (12 hs norm, 126 hs 100%) = $5.618.166,96 - 3% = $5.449.621,95
@@ -350,204 +274,7 @@ export const vesselStrategy: ProformaStrategy = {
               ot100: s.overtime_100_hours,
             };
           })
-        : [
-            // Turno 1 (11/10/2026 14:00 a 02:00 - 12 hs al 100%)
-            {
-              notaMark: '(*)',
-              categoria: 'ENCARGADO',
-              puesto: 'ENCARGADO',
-              apellido: 'BRITES LUCAS DAVID',
-              fecha: '11/10/2026',
-              desdeHasta: '1400-0200',
-              horas: 12,
-              normales: 0,
-              ot50: 0,
-              ot100: 12,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RAMPA',
-              apellido: 'BELO Bruno Joaquin',
-              fecha: '11/10/2026',
-              desdeHasta: '1400-0200',
-              horas: 12,
-              normales: 0,
-              ot50: 0,
-              ot100: 12,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'DAÑOS',
-              apellido: 'CORNEJO NELSON',
-              fecha: '11/10/2026',
-              desdeHasta: '1400-0200',
-              horas: 12,
-              normales: 0,
-              ot50: 0,
-              ot100: 12,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RELEVO',
-              apellido: 'BRITES Enzo Nicolas',
-              fecha: '11/10/2026',
-              desdeHasta: '1400-0200',
-              horas: 12,
-              normales: 0,
-              ot50: 0,
-              ot100: 12,
-            },
-            // Turno 2 (12/10/2026 22:00 a 08:00 - 10 hs al 100%)
-            {
-              notaMark: '(*)',
-              categoria: 'ENCARGADO',
-              puesto: 'ENCARGADO',
-              apellido: 'MARTINOLI DIEGO MARCELO',
-              fecha: '12/10/2026',
-              desdeHasta: '2200-0800',
-              horas: 10,
-              normales: 0,
-              ot50: 0,
-              ot100: 10,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RAMPA',
-              apellido: 'CHIORAZZO JUAN',
-              fecha: '12/10/2026',
-              desdeHasta: '2200-0800',
-              horas: 10,
-              normales: 0,
-              ot50: 0,
-              ot100: 10,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'DAÑOS',
-              apellido: 'MONTEROS MATIAS',
-              fecha: '12/10/2026',
-              desdeHasta: '2200-0800',
-              horas: 10,
-              normales: 0,
-              ot50: 0,
-              ot100: 10,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RELEVO',
-              apellido: 'CASTRO CARLOS',
-              fecha: '12/10/2026',
-              desdeHasta: '2200-0800',
-              horas: 10,
-              normales: 0,
-              ot50: 0,
-              ot100: 10,
-            },
-            // Turno 3 (12/10/2026 08:00 a 22:00 - 14 hs al 100%)
-            {
-              notaMark: '(*)',
-              categoria: 'ENCARGADO',
-              puesto: 'ENCARGADO',
-              apellido: 'BRITES LUCAS DAVID',
-              fecha: '12/10/2026',
-              desdeHasta: '0800-2200',
-              horas: 14,
-              normales: 0,
-              ot50: 0,
-              ot100: 14,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RAMPA',
-              apellido: 'BELO Bruno Joaquin',
-              fecha: '12/10/2026',
-              desdeHasta: '0800-2200',
-              horas: 14,
-              normales: 0,
-              ot50: 0,
-              ot100: 14,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'DAÑOS',
-              apellido: 'CORNEJO NELSON',
-              fecha: '12/10/2026',
-              desdeHasta: '0800-2200',
-              horas: 14,
-              normales: 0,
-              ot50: 0,
-              ot100: 14,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RELEVO',
-              apellido: 'BRITES Enzo Nicolas',
-              fecha: '12/10/2026',
-              desdeHasta: '0800-2200',
-              horas: 14,
-              normales: 0,
-              ot50: 0,
-              ot100: 14,
-            },
-            // Turno 4 (13/10/2026 08:00 a 20:00 - 4 hs Normales + 6 hs al 100%)
-            {
-              notaMark: '(*)',
-              categoria: 'ENCARGADO',
-              puesto: 'ENCARGADO',
-              apellido: 'MARTINOLI DIEGO MARCELO',
-              fecha: '13/10/2026',
-              desdeHasta: '0800-2000',
-              horas: 10,
-              normales: 4,
-              ot50: 0,
-              ot100: 6,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RAMPA',
-              apellido: 'CHIORAZZO JUAN',
-              fecha: '13/10/2026',
-              desdeHasta: '0800-2000',
-              horas: 10,
-              normales: 4,
-              ot50: 0,
-              ot100: 6,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'DAÑOS',
-              apellido: 'MONTEROS MATIAS',
-              fecha: '13/10/2026',
-              desdeHasta: '0800-2000',
-              horas: 10,
-              normales: 4,
-              ot50: 0,
-              ot100: 6,
-            },
-            {
-              notaMark: '(*)',
-              categoria: 'APUNTADOR',
-              puesto: 'RELEVO',
-              apellido: 'CASTRO CARLOS',
-              fecha: '13/10/2026',
-              desdeHasta: '0800-2000',
-              horas: 10,
-              normales: 4,
-              ot50: 0,
-              ot100: 6,
-            },
-          ];
+        : GOODWOOD_COMPENSACION_DEFAULT_ROWS;
 
     // TAB 1: RESUMEN GENERAL & OPERATIVA
     const v_discharged = isGoodwood ? 1283 : (billingShifts.totalVehiclesDischarged || 2005);
@@ -635,17 +362,19 @@ export const vesselStrategy: ProformaStrategy = {
     // -------------------------------------------------------------------------
     // BUILD SHIFT ROWS FOR SHEET 2 (OPERATIVA - SIN ENCARGADOS) & SHEET 3 (PLUS - CON ENCARGADOS)
     // -------------------------------------------------------------------------
-    // Group apuntadorShifts by turn (work_date + start_time) to number turns 1, 2, 3, 4...
+    // Group apuntadorShifts by turn (work_date + shift_number or start_time) to number turns 1, 2, 3, 4...
     const turnGroupsMap = new Map<string, number>();
     let nextTurnNum = 1;
     const turnApuntadorCounter = new Map<number, number>();
 
     const operativa_shift_rows = apuntadorShifts.map((s) => {
-      const turnKey = `${s.work_date}_${(s.shift_start_time || '').slice(0, 5)}`;
-      let turnNum = turnGroupsMap.get(turnKey);
+      const explicitTurn = s.shift_number || (s as any).shift_turn;
+      const turnKey = explicitTurn
+        ? `${s.work_date}_T${explicitTurn}`
+        : `${s.work_date}_${(s.shift_start_time || '').slice(0, 5)}`;
+      let turnNum: number = turnGroupsMap.get(turnKey) ?? (explicitTurn || nextTurnNum++);
       let isFirstInTurn = false;
-      if (!turnNum) {
-        turnNum = nextTurnNum++;
+      if (!turnGroupsMap.has(turnKey)) {
         turnGroupsMap.set(turnKey, turnNum);
         isFirstInTurn = true;
       }
@@ -662,7 +391,7 @@ export const vesselStrategy: ProformaStrategy = {
             empUpper.includes('BRITES ENZO')));
 
       return {
-        turno: isFirstInTurn ? turnNum : '',
+        turno: turnNum,
         turnoGroup: turnNum,
         notaMark: isContinuousWorker ? '(*)' : '',
         categoria: 'APUNTADOR',

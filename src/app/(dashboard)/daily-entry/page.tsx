@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import {
   Plus,
   Edit2,
@@ -27,6 +28,7 @@ import {
   Ship,
   PackageCheck,
   Download,
+  Layers,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -81,8 +83,10 @@ interface FlatDailyStaffEntry {
   employee_name: string;
   employee_file_number: string | null;
   employee_national_id: string | null;
-  position_id: string;
+  position_id: string | null;
   position_name: string;
+  shift_number?: number | null;
+  shift_turn: number | null;
   operational_role: string | null;
   is_compensation_shift: boolean;
   shift_start_date: string;
@@ -218,6 +222,7 @@ export default function DailyEntryPage() {
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const employeeSearchInputRef = useRef<HTMLInputElement>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string>('');
+  const [shiftTurn, setShiftTurn] = useState<string>('1');
   const [operationalRole, setOperationalRole] = useState<string>('RAMPA');
   const [isCompensationShift, setIsCompensationShift] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<string>('06:00');
@@ -263,11 +268,45 @@ export default function DailyEntryPage() {
     }
   }, [locations, formLocationId]);
 
+  // Helper to detect if current shift belongs to Plazoleta Fiscal or Delta Dock Deposits
+  const isFiscalYardOrDeposit = useMemo(() => {
+    const loc = locations.find((l) => l.id === formLocationId);
+    const locName = (loc?.name || '').toUpperCase();
+    const locCode = (loc?.code || '').toUpperCase();
+    const vesselUpper = (formVesselName || '').toUpperCase();
+    const client = clients.find((c) => c.id === formClientId);
+    const clientName = (client?.company_name || '').toUpperCase();
+
+    const isFiscalYard =
+      locCode === 'LOC-002' ||
+      locName.includes('PLAZOLETA') ||
+      vesselUpper.includes('PLAZOLETA') ||
+      clientName.includes('DANCHUK');
+
+    const isDeltaDeposit =
+      locCode === 'LOC-003' ||
+      locCode === 'LOC-004' ||
+      locName.includes('DEPÓSITO') ||
+      locName.includes('DEPOSITO') ||
+      vesselUpper.includes('DEPÓSITO') ||
+      vesselUpper.includes('DEPOSITO') ||
+      vesselUpper.includes('ARROZ');
+
+    return isFiscalYard || isDeltaDeposit;
+  }, [locations, formLocationId, formVesselName, clients, formClientId]);
+
+  // Clean operational role if location is switched to Plazoleta Fiscal or Depósitos
   useEffect(() => {
-    if (positions.length > 0 && !selectedPositionId) {
+    if (isFiscalYardOrDeposit && (operationalRole === 'RAMPA' || operationalRole === 'ENCARGADO')) {
+      setOperationalRole('');
+    }
+  }, [isFiscalYardOrDeposit, operationalRole]);
+
+  useEffect(() => {
+    if (!isFiscalYardOrDeposit && positions.length > 0 && !selectedPositionId && !editingEntryId) {
       setSelectedPositionId(positions[0].id);
     }
-  }, [positions, selectedPositionId]);
+  }, [positions, selectedPositionId, isFiscalYardOrDeposit, editingEntryId]);
 
   // Auto-detect overnight shift if endTime < startTime
   useEffect(() => {
@@ -378,9 +417,20 @@ export default function DailyEntryPage() {
           employee_national_id: entry.employee?.national_id || null,
           position_id: entry.position_id,
           position_name: entry.position?.name || 'Puesto',
+          shift_turn:
+            (entry as any).shift_turn || (entry as any).shift_number
+              ? Number((entry as any).shift_turn || (entry as any).shift_number)
+              : null,
           operational_role:
-            (entry as any).operational_role ||
-            (entry.position?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : null),
+            (log.vessel_name || '').toUpperCase().includes('PLAZOLETA') ||
+            (log.vessel_name || '').toUpperCase().includes('DEPOSITO') ||
+            (log.vessel_name || '').toUpperCase().includes('DEPÓSITO') ||
+            logLocationName.toUpperCase().includes('PLAZOLETA') ||
+            logLocationName.toUpperCase().includes('DEPOSITO') ||
+            logLocationName.toUpperCase().includes('DEPÓSITO')
+              ? null
+              : (entry as any).operational_role ||
+                (entry.position?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : null),
           is_compensation_shift: Boolean((entry as any).is_compensation_shift),
           shift_start_date: entry.shift_start_date || log.work_date,
           shift_start_time: entry.shift_start_time,
@@ -530,11 +580,15 @@ export default function DailyEntryPage() {
     setSelectedEmployeeId('');
     setEmployeeSearchTerm('');
     setIsEmployeeDropdownOpen(false);
-    if (positions.length > 0 && !selectedPositionId) {
+    if (isFiscalYardOrDeposit) {
+      setSelectedPositionId('');
+      setOperationalRole('');
+    } else if (positions.length > 0 && !selectedPositionId) {
       setSelectedPositionId(positions[0].id);
       const isEnc = positions[0].name.toLowerCase().includes('encargado');
       setOperationalRole(isEnc ? 'ENCARGADO' : 'RAMPA');
     }
+    setShiftTurn('1');
     setIsCompensationShift(false);
     setPlusDeltaAmount('0');
     setPlusCatAmount('0');
@@ -553,7 +607,7 @@ export default function DailyEntryPage() {
     const emp = employees.find((e) => e.id === empId);
     if (emp) {
       setEmployeeSearchTerm(`${emp.full_name}${emp.file_number ? ` (Leg. ${emp.file_number})` : ''}`);
-      if (!selectedPositionId && emp.default_position_id) {
+      if (!isFiscalYardOrDeposit && !selectedPositionId && emp.default_position_id) {
         setSelectedPositionId(emp.default_position_id);
       }
     } else {
@@ -567,7 +621,8 @@ export default function DailyEntryPage() {
     setEmployeeSearchTerm('');
     setIsEmployeeDropdownOpen(false);
     setSelectedPositionId('');
-    setOperationalRole('RAMPA');
+    setShiftTurn('1');
+    setOperationalRole('');
     setIsCompensationShift(false);
     setFormClientId('');
     setFormLocationId('');
@@ -661,9 +716,23 @@ export default function DailyEntryPage() {
       setEmployeeSearchTerm(entry.employee_name);
     }
     setIsEmployeeDropdownOpen(false);
-    setSelectedPositionId(entry.position_id);
-    const defaultRole = entry.position_name.toLowerCase().includes('encargado') ? 'ENCARGADO' : 'RAMPA';
-    setOperationalRole(entry.operational_role || defaultRole);
+    setSelectedPositionId(entry.position_id || '');
+    setShiftTurn(entry.shift_turn ? String(entry.shift_turn) : '1');
+    const entryVesselUp = (entry.vessel_name || '').toUpperCase();
+    const entryLocUp = (entry.location_name || '').toUpperCase();
+    const entryIsFiscalYardOrDeposit =
+      entryVesselUp.includes('PLAZOLETA') ||
+      entryVesselUp.includes('DEPOSITO') ||
+      entryVesselUp.includes('DEPÓSITO') ||
+      entryLocUp.includes('PLAZOLETA') ||
+      entryLocUp.includes('DEPOSITO') ||
+      entryLocUp.includes('DEPÓSITO');
+    if (entryIsFiscalYardOrDeposit) {
+      setOperationalRole('');
+    } else {
+      const defaultRole = entry.position_name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : '';
+      setOperationalRole(entry.operational_role || defaultRole);
+    }
     setIsCompensationShift(Boolean(entry.is_compensation_shift));
     setStartTime(entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '06:00');
     setEndTime(entry.shift_end_time ? entry.shift_end_time.slice(0, 5) : '14:00');
@@ -700,7 +769,7 @@ export default function DailyEntryPage() {
       setFormError('Por favor selecciona un operario.');
       return;
     }
-    if (!selectedPositionId) {
+    if (!isFiscalYardOrDeposit && !selectedPositionId && !operationalRole) {
       setFormError('Por favor selecciona una función / puesto.');
       return;
     }
@@ -737,13 +806,18 @@ export default function DailyEntryPage() {
       const advance = parseFloat(advancePaymentAmount) || 0;
       const francoCount = parseInt(dayOffCount, 10) || (isDayOff ? 1 : 0);
 
-      const cleanOpRole =
-        (operationalRole || '').trim().toUpperCase() ||
-        (selectedPositionObj?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : 'RAMPA');
+      const cleanOpRole = isFiscalYardOrDeposit
+        ? null
+        : (operationalRole || '').trim().toUpperCase() ||
+          (selectedPositionObj?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : null);
+      const parsedTurn = parseInt(shiftTurn, 10);
+      const cleanTurn = !isNaN(parsedTurn) && parsedTurn > 0 ? parsedTurn : 1;
 
       const payload = {
         employee_id: selectedEmployeeId,
-        position_id: selectedPositionId,
+        position_id: selectedPositionId || null,
+        shift_number: cleanTurn,
+        shift_turn: cleanTurn,
         operational_role: cleanOpRole,
         is_compensation_shift: isCompensationShift,
         shift_start_date: formWorkDate,
@@ -857,6 +931,24 @@ export default function DailyEntryPage() {
         ),
       },
       {
+        accessorKey: 'shift_turn',
+        header: () => <span className="block text-center">Turno</span>,
+        cell: ({ row }) => {
+          const t = row.original.shift_turn;
+          return (
+            <div className="text-center font-mono font-extrabold text-xs text-[#0F2547]">
+              {t ? (
+                <span className="bg-slate-100 text-[#0F2547] px-2 py-0.5 rounded border border-slate-300">
+                  T{t}
+                </span>
+              ) : (
+                <span className="text-slate-400">-</span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
         accessorKey: 'client_name',
         header: 'Cliente',
         cell: ({ row }) => (
@@ -924,15 +1016,22 @@ export default function DailyEntryPage() {
         header: 'Categoría / Puesto Proforma',
         cell: ({ row, getValue }) => {
           const cat = String(getValue());
+          const hasPos = Boolean(row.original.position_id && cat && cat !== 'Puesto');
           const opRole = row.original.operational_role;
           const isComp = row.original.is_compensation_shift;
           return (
             <div className="text-slate-600 text-xs font-medium flex flex-col gap-1 items-start">
               <div className="flex items-center gap-1 flex-wrap">
-                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
-                  {cat}
-                </span>
-                {opRole && opRole.toUpperCase() !== cat.toUpperCase() && (
+                {hasPos ? (
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
+                    {cat}
+                  </span>
+                ) : !opRole ? (
+                  <span className="text-slate-400 italic text-[11px] bg-slate-50 px-2 py-0.5 rounded border border-dashed border-slate-200">
+                    Sin puesto
+                  </span>
+                ) : null}
+                {opRole && (!hasPos || opRole.toUpperCase() !== cat.toUpperCase()) && (
                   <span
                     className="bg-sky-100 text-[#0F2547] px-2 py-0.5 rounded text-[10px] font-extrabold border border-sky-300 uppercase"
                     title="Puesto operativo impreso en la columna PUESTO de la Proforma (Operativa / Plus)"
@@ -2103,12 +2202,25 @@ export default function DailyEntryPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700 block">Categoría / Función *</label>
-                    {isBonusEligible && (
-                      <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
-                        Aplica escala vehicular CCT
-                      </span>
-                    )}
+                    <label className="text-xs font-bold text-slate-700 block">
+                      Categoría / Función {isFiscalYardOrDeposit ? '(Opcional)' : '*'}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href="/positions"
+                        target="_blank"
+                        className="text-[11px] font-bold text-[#1E5BB4] hover:underline flex items-center gap-1"
+                        title="Abrir Gestión de Puestos para crear nuevos puestos"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Gestionar Puestos
+                      </Link>
+                      {isBonusEligible && (
+                        <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+                          Aplica escala vehicular CCT
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <select
                     value={selectedPositionId}
@@ -2118,18 +2230,36 @@ export default function DailyEntryPage() {
                       setSelectedPositionId(nextId);
                       const posObj = positions.find((p) => p.id === nextId);
                       if (posObj) {
-                        const isEnc = posObj.name.toLowerCase().includes('encargado');
-                        if (isEnc) {
+                        const pName = posObj.name.toUpperCase();
+                        if (pName.includes('ENCARGADO A BORDO')) {
+                          setOperationalRole('ENCARGADO A BORDO');
+                        } else if (pName.includes('ENCARGADO')) {
                           setOperationalRole('ENCARGADO');
-                        } else if (operationalRole === 'ENCARGADO') {
+                        } else if (pName.includes('COLECTADO')) {
+                          setOperationalRole('COLECTADO');
+                        } else if (pName.includes('DAÑO') || pName.includes('DANO')) {
+                          setOperationalRole('DAÑOS');
+                        } else if (pName.includes('RELEVO')) {
+                          setOperationalRole('RELEVO');
+                        } else if (pName.includes('RAMPA')) {
                           setOperationalRole('RAMPA');
+                        } else if (pName !== 'APUNTADOR') {
+                          setOperationalRole(posObj.name.toUpperCase());
+                        } else if (!operationalRole || operationalRole === 'ENCARGADO' || operationalRole === 'ENCARGADO A BORDO') {
+                          setOperationalRole(isFiscalYardOrDeposit ? '' : 'RAMPA');
                         }
+                      } else {
+                        setOperationalRole('');
                       }
                     }}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
-                    required
+                    required={!isFiscalYardOrDeposit}
                   >
-                    <option value="">Seleccionar Categoría...</option>
+                    <option value="">
+                      {isFiscalYardOrDeposit
+                        ? '(Sin puesto asignado / No aplica en Plazoleta y Depósitos)'
+                        : 'Seleccionar Categoría...'}
+                    </option>
                     {positions.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -2137,57 +2267,113 @@ export default function DailyEntryPage() {
                     ))}
                   </select>
 
-                  {/* Selector de Puesto Operativo en Proforma (RAMPA, DAÑOS, RELEVO, ENCARGADO) */}
-                  <div className="pt-2.5 mt-2 border-t border-slate-100 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-[#0F2547] block">
-                        Puesto en Proforma (Columna PUESTO: Operativa / Plus)
-                      </label>
-                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        Se retiene al Guardar y Seguir
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {['RAMPA', 'DAÑOS', 'RELEVO', 'ENCARGADO'].map((rolePreset) => {
-                        const isActive = (operationalRole || '').toUpperCase() === rolePreset;
-                        return (
+                  {/* Selector de Puesto Operativo en Proforma (RAMPA, DAÑOS, RELEVO, COLECTADO, ENCARGADO A BORDO, ENCARGADO) vs Plazoleta/Depósitos */}
+                  {isFiscalYardOrDeposit ? (
+                    <div className="pt-2.5 mt-2 border-t border-slate-100 p-3 bg-amber-50/80 border border-amber-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                          📌 Plazoleta Fiscal / Depósito Delta Dock
+                        </span>
+                        {(operationalRole || selectedPositionId) && (
                           <button
-                            key={rolePreset}
                             type="button"
                             onClick={() => {
-                              setOperationalRole(rolePreset);
-                              if (rolePreset === 'ENCARGADO') {
-                                const encPos = positions.find((p) => p.name.toLowerCase().includes('encargado'));
-                                if (encPos) setSelectedPositionId(encPos.id);
-                              } else {
-                                const apPos = positions.find((p) => p.name.toLowerCase().includes('apuntador'));
-                                if (apPos && selectedPositionObj?.name.toLowerCase().includes('encargado')) {
-                                  setSelectedPositionId(apPos.id);
-                                }
-                              }
+                              setOperationalRole('');
+                              setSelectedPositionId('');
                             }}
-                            className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold border transition-all cursor-pointer ${
-                              isActive
-                                ? 'bg-[#0F2547] text-white border-[#0F2547] shadow-xs'
-                                : 'bg-slate-50 hover:bg-sky-50 text-slate-700 border-slate-200'
-                            }`}
+                            className="text-[10px] font-bold text-red-700 bg-red-100 hover:bg-red-200 px-2 py-0.5 rounded cursor-pointer border border-red-200 transition-colors"
                           >
-                            {rolePreset}
+                            Limpiar Puesto Rampa
                           </button>
-                        );
-                      })}
+                        )}
+                      </div>
+                      <p className="text-[11px] text-amber-900 leading-snug">
+                        En <strong>Plazoleta Fiscal</strong> y <strong>Depósitos de Delta Dock</strong> los operarios <strong>no llevan puesto</strong> (no llevan Rampa ni Daños). El registro se guardará sin puesto asignado.
+                      </p>
                     </div>
-                    <input
-                      type="text"
-                      value={operationalRole}
-                      onChange={(e) => setOperationalRole(e.target.value.toUpperCase())}
-                      placeholder="Ej: RAMPA, DAÑOS, RELEVO, ENCARGADO..."
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs text-[#0B1C30] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
-                    />
-                    <p className="text-[11px] text-slate-500 leading-snug">
-                      Define qué puesto figura en la columna <strong>PUESTO</strong> de las hojas <strong>OPERATIVA</strong> y <strong>PLUS</strong>. Los <em>Encargados</em> no figuran en la hoja Operativa (sólo en <em>Plus</em> y <em>Encargado a Bordo</em>).
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="pt-2.5 mt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-[#0F2547] block">
+                          Puesto en Proforma (Columna PUESTO: Buques / Barcazas)
+                        </label>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          Se retiene al Guardar y Seguir
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
+                        {['RAMPA', 'DAÑOS', 'RELEVO', 'COLECTADO', 'ENCARGADO A BORDO', 'ENCARGADO'].map((rolePreset) => {
+                          const isActive = (operationalRole || '').toUpperCase() === rolePreset;
+                          return (
+                            <button
+                              key={rolePreset}
+                              type="button"
+                              onClick={() => {
+                                setOperationalRole(rolePreset);
+                                if (rolePreset === 'ENCARGADO A BORDO') {
+                                  const encPos = positions.find((p) => p.name.toUpperCase().includes('ENCARGADO A BORDO')) ||
+                                    positions.find((p) => p.name.toUpperCase().includes('ENCARGADO'));
+                                  if (encPos) setSelectedPositionId(encPos.id);
+                                } else if (rolePreset === 'ENCARGADO') {
+                                  const encPos = positions.find((p) => p.name.toUpperCase().includes('ENCARGADO') && !p.name.toUpperCase().includes('BORDO')) ||
+                                    positions.find((p) => p.name.toUpperCase().includes('ENCARGADO'));
+                                  if (encPos) setSelectedPositionId(encPos.id);
+                                } else if (rolePreset === 'COLECTADO') {
+                                  const colPos = positions.find((p) => p.name.toUpperCase().includes('COLECTADO'));
+                                  if (colPos) setSelectedPositionId(colPos.id);
+                                } else if (rolePreset === 'DAÑOS') {
+                                  const danPos = positions.find((p) => p.name.toUpperCase().includes('DAÑO') || p.name.toUpperCase().includes('DANO'));
+                                  if (danPos) setSelectedPositionId(danPos.id);
+                                } else if (rolePreset === 'RELEVO') {
+                                  const relPos = positions.find((p) => p.name.toUpperCase().includes('RELEVO'));
+                                  if (relPos) setSelectedPositionId(relPos.id);
+                                } else {
+                                  const rampaPos = positions.find((p) => p.name.toUpperCase().includes('RAMPA'));
+                                  if (rampaPos) {
+                                    setSelectedPositionId(rampaPos.id);
+                                  } else {
+                                    const apPos = positions.find((p) => p.name.toUpperCase().includes('APUNTADOR'));
+                                    if (apPos) setSelectedPositionId(apPos.id);
+                                  }
+                                }
+                              }}
+                              className={`py-1.5 px-1 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer text-center ${
+                                isActive
+                                  ? 'bg-[#0F2547] text-white border-[#0F2547] shadow-xs'
+                                  : 'bg-slate-50 hover:bg-sky-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {rolePreset}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={operationalRole}
+                          onChange={(e) => setOperationalRole(e.target.value.toUpperCase())}
+                          placeholder="Ej: RAMPA, DAÑOS, RELEVO, COLECTADO, ENCARGADO A BORDO..."
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs text-[#0B1C30] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
+                        />
+                        {operationalRole && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOperationalRole('');
+                              setSelectedPositionId('');
+                            }}
+                            className="text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-2 rounded-lg border border-slate-300 transition-colors whitespace-nowrap cursor-pointer"
+                          >
+                            Sin Puesto
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-snug">
+                        Define el puesto en la columna <strong>PUESTO</strong> de la proforma operativa (ej: <strong>RAMPA</strong>, <strong>DAÑOS</strong>, <strong>RELEVO</strong>, <strong>COLECTADO</strong>, <strong>ENCARGADO A BORDO</strong>).
+                      </p>
+                    </div>
+                  )}
 
                   {/* Checkbox Acuerdo Horas de Compensación / Trabajo Corrido (*) */}
                   <div className="pt-1.5">
@@ -2289,18 +2475,59 @@ export default function DailyEntryPage() {
                 </div>
               </div>
 
-              {/* Group 2: Horarios del Turno */}
+              {/* Group 2: Turno Operativo y Horarios */}
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-[#1E5BB4]" />
-                    Horario Trabajado
+                    Turno y Horario Trabajado
                   </h4>
                   {isOvernight && (
                     <span className="text-[11px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                       <Moon className="h-3 w-3" /> Turno Noche (+1 día)
                     </span>
                   )}
+                </div>
+
+                {/* Asignación de Turno (1, 2, 3, 4...) */}
+                <div className="space-y-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#0F2547] flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5 text-[#1E5BB4]" />
+                      Turno Operativo (Columna TURNO en Proforma) *
+                    </label>
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Se retiene al cargar
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setShiftTurn(String(t))}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-extrabold border transition-all cursor-pointer ${
+                          shiftTurn === String(t)
+                            ? 'bg-[#0F2547] text-white border-[#0F2547] shadow-xs'
+                            : 'bg-white hover:bg-sky-50 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        Turno {t}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1 pl-1">
+                      <span className="text-[11px] font-bold text-slate-500">Otro:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={shiftTurn}
+                        onChange={(e) => setShiftTurn(e.target.value)}
+                        className="w-14 p-1.5 text-center bg-white border border-slate-300 rounded-lg text-xs font-bold text-[#0B1C30]"
+                        placeholder="#"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

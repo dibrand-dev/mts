@@ -46,6 +46,7 @@ import { ProformaTypesAndOperationsModal } from '@/components/invoicing/Proforma
 
 const PROFORMA_TYPE_BADGES: Record<string, { label: string; color: string }> = {
   vessel: { label: 'Buque Ro-Ro', color: 'bg-sky-50 text-[#1E5BB4] border-sky-200' },
+  barge: { label: 'Barcaza', color: 'bg-cyan-50 text-cyan-800 border-cyan-200' },
   fiscal_yard: { label: 'Plazoleta Fiscal', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   fixed_deposit: { label: 'Depósitos Delta Dock', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   plus_incidence: { label: 'Incidencia Plus', color: 'bg-purple-50 text-purple-700 border-purple-200' },

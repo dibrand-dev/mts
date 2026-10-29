@@ -33,7 +33,12 @@ export function VesselViewer({ proforma }: Props) {
   const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
   const vesselDisplay = proforma.vessel_name || payload?.vessel_name || 'GOODWOOD';
   const isBarge = Boolean(
+    proforma.proforma_type === 'barge' ||
     payload?.is_barge ||
+    payload?.proforma_type === 'barge' ||
+    vesselDisplay.toUpperCase().includes('JACKSON') ||
+    vesselDisplay.toUpperCase().includes('INQUEBRANTABLE') ||
+    vesselDisplay.toUpperCase().includes('BARCAZA') ||
     (Number(proforma.subtotal_compensacion || 0) === 0 &&
       Number(proforma.subtotal_encargado || 0) === 0 &&
       !vesselDisplay.toUpperCase().includes('GOODWOOD') &&
@@ -103,8 +108,35 @@ export function VesselViewer({ proforma }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Tab Navigation */}
-      {!isBarge && (
+      {/* Tab Navigation: For Barcaza (Cap Jackson), show ONLY 2 tabs (Operativa and Plus). Ultramar vessels show all 4 tabs */}
+      {isBarge ? (
+        <div className="grid grid-cols-2 border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveTab('resumen')}
+            className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'resumen'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <FileSpreadsheet className="h-4 w-4 shrink-0" />
+            <span>{vesselDisplay} OPERATIVA</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('plus')}
+            className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'plus'
+                ? 'bg-[#0B1C30] text-white shadow-sm'
+                : 'text-slate-600 hover:text-[#0B1C30] hover:bg-white/60'
+            }`}
+          >
+            <DollarSign className="h-4 w-4 shrink-0" />
+            <span>PLUS</span>
+          </button>
+        </div>
+      ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-xl gap-1.5 shadow-inner">
           <button
             type="button"
@@ -236,75 +268,84 @@ export function VesselViewer({ proforma }: Props) {
             </table>
           </div>
 
-          {/* 3 Subtotales Consolidado */}
+          {/* Subtotales Consolidado */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
               <Layers className="h-4 w-4 text-[#1E5BB4]" />
               Consolidado General de Proforma
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            <div className={`grid grid-cols-1 ${isBarge ? 'md:grid-cols-1' : 'md:grid-cols-3'} gap-3.5`}>
               <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
                 <span className="text-[11px] font-bold uppercase text-slate-500 block">Subtotal Operativa</span>
                 <span className="text-lg font-mono font-extrabold text-[#0B1C30] block">
                   $ {Number(tab1?.consolidado?.subtotal_operativa || proforma.subtotal_operativa || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </span>
-                <span className="text-[11px] text-slate-400 block">Vehículos, apuntadores y remises</span>
+                <span className="text-[11px] text-slate-400 block">
+                  {isBarge ? 'Peritaje Calidad y Tally + Plus + Transporte' : 'Vehículos, apuntadores y remises'}
+                </span>
               </div>
 
-              <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
-                <span className="text-[11px] font-bold uppercase text-slate-500 block">Subtotal Hs Compensación</span>
-                <span className="text-lg font-mono font-extrabold text-[#0B1C30] block">
-                  $ {Number(tab1?.consolidado?.subtotal_compensacion || proforma.subtotal_compensacion || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </span>
-                <span className="text-[11px] text-slate-400 block">Bonificado con {proforma.discount_percentage || 3}% comercial</span>
-              </div>
+              {!isBarge && (
+                <>
+                  <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 block">Subtotal Hs Compensación</span>
+                    <span className="text-lg font-mono font-extrabold text-[#0B1C30] block">
+                      $ {Number(tab1?.consolidado?.subtotal_compensacion || proforma.subtotal_compensacion || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block">Bonificado con {proforma.discount_percentage || 3}% comercial</span>
+                  </div>
 
-              <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
-                <span className="text-[11px] font-bold uppercase text-slate-500 block">Subtotal Encargado a Bordo</span>
-                <span className="text-lg font-mono font-extrabold text-[#0B1C30] block">
-                  $ {Number(tab1?.consolidado?.subtotal_encargado || proforma.subtotal_encargado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </span>
-                <span className="text-[11px] text-slate-400 block">Bonificado con {proforma.discount_percentage || 3}% comercial</span>
-              </div>
+                  <div className="bg-white border-2 border-slate-200 rounded-xl p-4 shadow-2xs space-y-1">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 block">Subtotal Encargado a Bordo</span>
+                    <span className="text-lg font-mono font-extrabold text-[#0B1C30] block">
+                      $ {Number(tab1?.consolidado?.subtotal_encargado || proforma.subtotal_encargado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block">Bonificado con {proforma.discount_percentage || 3}% comercial</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Planilla de Turnos Operativa (SÓLO APUNTADORES - SIN ENCARGADOS) */}
-          {!isBarge && (
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-              <div className="bg-[#0F2547] text-white px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider">
-                    Detalle de Puestos y Turnos — {vesselDisplay} OPERATIVA (Sólo Apuntadores)
-                  </h4>
-                  <p className="text-[11px] text-sky-200">
-                    Columna PUESTO indica el puesto operativo (RAMPA, DAÑOS, RELEVO). Los Encargados se excluyen de esta planilla y figuran en PLUS y ENCARGADO A BORDO.
-                  </p>
-                </div>
-                <span className="text-xs font-mono bg-white/10 px-2.5 py-1 rounded border border-white/20">
-                  {operativaRows.length} turnos apuntadores
-                </span>
+          {/* Planilla de Turnos Operativa */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="bg-[#0F2547] text-white px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h4 className="text-xs font-extrabold uppercase tracking-wider">
+                  Detalle de Puestos y Turnos — {vesselDisplay} OPERATIVA {isBarge ? '(Barcaza)' : '(Sólo Apuntadores)'}
+                </h4>
+                <p className="text-[11px] text-sky-200">
+                  {isBarge
+                    ? 'Columna PUESTO indica el puesto operativo de cada empleado (ENCARGADO A BORDO, COLECTADO, DAÑOS, RAMPA) con su turno asignado.'
+                    : 'Columna PUESTO indica el puesto operativo (RAMPA, DAÑOS, RELEVO). Los Encargados se excluyen de esta planilla y figuran en PLUS y ENCARGADO A BORDO.'}
+                </p>
               </div>
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase sticky top-0">
-                    <tr>
-                      <th className="p-2.5 text-center">Turno</th>
-                      <th className="p-2.5 text-center">(*)</th>
-                      <th className="p-2.5">Puesto</th>
-                      <th className="p-2.5">Apellido y Nombre</th>
-                      <th className="p-2.5 text-center">Fecha</th>
-                      <th className="p-2.5 text-center">Desde-Hasta</th>
-                      <th className="p-2.5 text-right">HS</th>
-                      <th className="p-2.5 text-right">Norm</th>
-                      <th className="p-2.5 text-right">0.5</th>
-                      <th className="p-2.5 text-right">1.0</th>
-                      <th className="p-2.5 text-right pr-4">Remises</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                    {operativaRows.map((r, i) => (
-                      <tr key={i} className={r.turno ? 'border-t-2 border-slate-300 bg-slate-50/50' : 'hover:bg-slate-50'}>
+              <span className="text-xs font-mono bg-white/10 px-2.5 py-1 rounded border border-white/20">
+                {operativaRows.length} turnos operativos
+              </span>
+            </div>
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase sticky top-0">
+                  <tr>
+                    <th className="p-2.5 text-center">Turno</th>
+                    <th className="p-2.5 text-center">(*)</th>
+                    <th className="p-2.5">Puesto</th>
+                    <th className="p-2.5">Apellido y Nombre</th>
+                    <th className="p-2.5 text-center">Fecha</th>
+                    <th className="p-2.5 text-center">Desde-Hasta</th>
+                    <th className="p-2.5 text-right">HS</th>
+                    <th className="p-2.5 text-right">Norm</th>
+                    <th className="p-2.5 text-right">50%</th>
+                    <th className="p-2.5 text-right">100%</th>
+                    <th className="p-2.5 text-right pr-4">Remises</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                  {operativaRows.map((r, i) => {
+                    const isFirstOfGroup = i === 0 || r.turnoGroup !== operativaRows[i - 1]?.turnoGroup;
+                    return (
+                      <tr key={i} className={isFirstOfGroup ? 'border-t-2 border-slate-300 bg-slate-50/50' : 'hover:bg-slate-50'}>
                         <td className="p-2 text-center font-mono font-extrabold text-[#0F2547]">{r.turno}</td>
                         <td className="p-2 text-center font-mono font-bold text-amber-700">{r.notaMark}</td>
                         <td className="p-2">
@@ -321,22 +362,22 @@ export function VesselViewer({ proforma }: Props) {
                         <td className="p-2 text-right font-mono text-amber-700 font-bold">{r.ot100}</td>
                         <td className="p-2 text-right font-mono pr-4">{r.remises || 0}</td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-slate-100 font-extrabold text-[#0B1C30] border-t-2 border-slate-300">
-                    <tr>
-                      <td colSpan={6} className="p-2.5 pl-4 uppercase">Totales Operativa Apuntadores</td>
-                      <td className="p-2.5 text-right font-mono">{opTotals.hs}</td>
-                      <td className="p-2.5 text-right font-mono text-emerald-800">{opTotals.norm}</td>
-                      <td className="p-2.5 text-right font-mono text-sky-800">{opTotals.ot50}</td>
-                      <td className="p-2.5 text-right font-mono text-amber-800">{opTotals.ot100}</td>
-                      <td className="p-2.5 text-right font-mono pr-4">{opTotals.remises}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-100 font-extrabold text-[#0B1C30] border-t-2 border-slate-300">
+                  <tr>
+                    <td colSpan={6} className="p-2.5 pl-4 uppercase">Totales Operativa</td>
+                    <td className="p-2.5 text-right font-mono">{opTotals.hs}</td>
+                    <td className="p-2.5 text-right font-mono text-emerald-800">{opTotals.norm}</td>
+                    <td className="p-2.5 text-right font-mono text-sky-800">{opTotals.ot50}</td>
+                    <td className="p-2.5 text-right font-mono text-amber-800">{opTotals.ot100}</td>
+                    <td className="p-2.5 text-right font-mono pr-4">{opTotals.remises}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -367,8 +408,8 @@ export function VesselViewer({ proforma }: Props) {
                     <th className="p-2.5 text-center">Desde-Hasta</th>
                     <th className="p-2.5 text-right">Total Hs</th>
                     <th className="p-2.5 text-right">Normal</th>
-                    <th className="p-2.5 text-right">0.5</th>
-                    <th className="p-2.5 text-right">1.0</th>
+                    <th className="p-2.5 text-right">50%</th>
+                    <th className="p-2.5 text-right">100%</th>
                     <th className="p-2.5 text-right">Plus ($)</th>
                     <th className="p-2.5 text-right">Hs.Norm.</th>
                     <th className="p-2.5 text-right pr-4">Incid HE ($)</th>
@@ -558,8 +599,8 @@ export function VesselViewer({ proforma }: Props) {
                       <th className="p-2.5 text-center">Desde-Hasta</th>
                       <th className="p-2.5 text-right">HS</th>
                       <th className="p-2.5 text-right">Norm</th>
-                      <th className="p-2.5 text-right">0.5</th>
-                      <th className="p-2.5 text-right pr-4">1.0</th>
+                      <th className="p-2.5 text-right">50%</th>
+                      <th className="p-2.5 text-right pr-4">100%</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
@@ -716,8 +757,8 @@ export function VesselViewer({ proforma }: Props) {
                         <th className="p-2.5 text-center">Desde-Hasta</th>
                         <th className="p-2.5 text-right">HS</th>
                         <th className="p-2.5 text-right">Norm</th>
-                        <th className="p-2.5 text-right">0.5</th>
-                        <th className="p-2.5 text-right pr-4">1.0</th>
+                        <th className="p-2.5 text-right">50%</th>
+                        <th className="p-2.5 text-right pr-4">100%</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-800">

@@ -105,9 +105,19 @@ export function buildProformaWorkbook(
   ];
 
   // =========================================================================
-  // MODELO 1: BUQUE (5 PESTAÑAS: FACTURA, BUQUE, PLUS, HS COMPENSACION, ENCARGADO A BORDO)
+  // MODELO 1: BUQUE / BARCAZA
+  // Buque: 5 pestañas (FACTURA, OPERATIVA, PLUS, HS COMPENSACION, ENCARGADO A BORDO)
+  // Barcaza: 3 pestañas (FACTURA, OPERATIVA, PLUS - sin Horas Compensación ni Encargado)
   // =========================================================================
-  if (proformaType === 'vessel') {
+  if (proformaType === 'vessel' || proformaType === 'barge') {
+    const isBargeModel =
+      proformaType === 'barge' ||
+      Boolean(payload.is_barge) ||
+      source.proforma_type === 'barge' ||
+      vesselName.toUpperCase().includes('JACKSON') ||
+      vesselName.toUpperCase().includes('INQUEBRANTABLE') ||
+      vesselName.toUpperCase().includes('BARCAZA');
+
     const tab1 = payload.tab1_resumen_general || {};
     const tab2 = payload.tab2_encargado_a_bordo || {};
     const tab3 = payload.tab3_hs_compensacion || {};
@@ -123,26 +133,32 @@ export function buildProformaWorkbook(
     const encRows = getNormalizedEncargadoRows(payload);
 
     const subOp = Number(tab1.consolidado?.subtotal_operativa ?? source.subtotal_operativa ?? 0);
-    const subComp = Number(tab1.consolidado?.subtotal_compensacion ?? source.subtotal_compensacion ?? 0);
-    const subEnc = Number(tab1.consolidado?.subtotal_encargado ?? source.subtotal_encargado ?? 0);
-    const totalNeto = Number(tab1.consolidado?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
-    const iva = Number(tab1.consolidado?.iva_21 ?? source.tax_amount ?? totalNeto * 0.21);
-    const totalFinal = Number(tab1.consolidado?.total_factura_final ?? source.total ?? totalNeto + iva);
+    const subComp = isBargeModel ? 0 : Number(tab1.consolidado?.subtotal_compensacion ?? source.subtotal_compensacion ?? 0);
+    const subEnc = isBargeModel ? 0 : Number(tab1.consolidado?.subtotal_encargado ?? source.subtotal_encargado ?? 0);
+    const totalNeto = isBargeModel
+      ? subOp || Number(tab1.consolidado?.total_neto ?? source.total_neto ?? source.subtotal ?? 0)
+      : Number(tab1.consolidado?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
+    const iva = isBargeModel
+      ? Math.round(totalNeto * 0.21 * 100) / 100
+      : Number(tab1.consolidado?.iva_21 ?? source.tax_amount ?? totalNeto * 0.21);
+    const totalFinal = isBargeModel
+      ? Math.round((totalNeto + iva) * 100) / 100
+      : Number(tab1.consolidado?.total_factura_final ?? source.total ?? totalNeto + iva);
 
-    // Sheet 1: FACTURA BUQUE
+    // Sheet 1: FACTURA BUQUE / BARCAZA
     const s1: (ExcelCell | null)[][] = [];
     setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
     setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
     setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
     setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
-    if (subComp > 0 || subEnc > 0) {
+    if (!isBargeModel && (subComp > 0 || subEnc > 0)) {
       setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(subOp, 'currency') });
       setRowCells(s1, 7, { 0: c(`HORAS COMPENSACION - ${operationDates}`, 'label'), 1: c(subComp, 'currency') });
       setRowCells(s1, 8, { 0: c(`ENCARGADO A BORDO - ${operationDates}`, 'label'), 1: c(subEnc, 'currency') });
-      setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', '=SUM(B7:B9)') });
-      setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=B11*0.21') });
-      setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=B11+B12') });
+      setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', '=+R7C2+R8C2+R9C2') });
+      setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=+R11C2*0.21') });
+      setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=+R11C2+R12C2') });
     } else {
       // Barcaza Fluvial: 1 sola línea comercial sin acuerdos de ultramar
       setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(totalNeto, 'currency') });
@@ -164,10 +180,10 @@ export function buildProformaWorkbook(
     setRowCells(s2, 0, {
       0: c('SERVICIO', 'header'),
       1: c(operationDates, 'subheader'),
-      10: c(sumNorm || 48, 'number', `=SUM(K3:K${lastOpExcelRow})`),
-      11: c(sum50 || 0, 'number', `=SUM(L3:L${lastOpExcelRow})`),
-      12: c(sum100 || 429, 'number', `=SUM(M3:M${lastOpExcelRow})`),
-      13: c(sumRem || 24, 'number', `=SUM(N3:N${lastOpExcelRow})`),
+      10: c(sumNorm, 'number', `=SUM(R3C11:R${lastOpExcelRow}C11)`),
+      11: c(sum50, 'number', `=SUM(R3C12:R${lastOpExcelRow}C12)`),
+      12: c(sum100, 'number', `=SUM(R3C13:R${lastOpExcelRow}C13)`),
+      13: c(sumRem, 'number', `=SUM(R3C14:R${lastOpExcelRow}C14)`),
     });
     setRowCells(s2, 1, {
       0: c('PERITAJE CALIDAD Y TALLY', 'header'),
@@ -180,19 +196,20 @@ export function buildProformaWorkbook(
       8: c('DESDE-HASTA', 'header'),
       9: c('HS', 'header'),
       10: c('NORM', 'header'),
-      11: c('0.5', 'header'),
-      12: c('1.0', 'header'),
+      11: c('50%', 'header'),
+      12: c('100%', 'header'),
       13: c('REMISES', 'header'),
     });
-    setRowCells(s2, 2, { 0: c('VEHICULOS DESCARGADOS', 'label'), 1: c(veh.descargados ?? 0, 'number') });
+    setRowCells(s2, 2, { 0: c('VEHICULOS DESCARGADOS', 'label'), 1: c(veh.descargados ?? (isBargeModel ? 355 : 0), 'number') });
     setRowCells(s2, 3, { 0: c('VEHICULOS CARGADOS', 'label'), 1: c(veh.cargados ?? 0, 'number') });
     setRowCells(s2, 4, { 0: c('VEHICULOS REMOVIDOS', 'label'), 1: c(veh.removidos ?? 0, 'number') });
-    setRowCells(s2, 5, { 0: c('TOTAL VEHICULOS CONTROLADOS', 'highlight_label'), 1: c(veh.total_controlados ?? 0, 'number') });
+    setRowCells(s2, 5, { 0: c('TOTAL VEHICULOS CONTROLADOS', 'highlight_label'), 1: c(veh.total_controlados ?? (isBargeModel ? 355 : 0), 'number') });
 
     let rIdx = 6;
     for (const item of desglose) {
+      const labelText = item.tarifa ? `${item.concepto} (${item.tarifa})` : String(item.concepto || '');
       setRowCells(s2, rIdx, {
-        0: c(`${item.concepto} (${item.tarifa || ''})`, item.is_total_row ? 'highlight_label' : 'label'),
+        0: c(labelText, item.is_total_row ? 'highlight_label' : 'label'),
         1: c(Number(item.importe || 0), item.is_total_row ? 'highlight_currency' : 'currency'),
       });
       rIdx++;
@@ -226,25 +243,17 @@ export function buildProformaWorkbook(
 
     // Sheet 3: PLUS (CON ENCARGADOS Y APUNTADORES)
     const s3: (ExcelCell | null)[][] = [];
-    const plusBase = Number(tabPlus.plus_base ?? 2870060.6);
-    const incidHe = Number(tabPlus.incidencia_he ?? 729473.74);
+    const plusBase = Number(tabPlus.plus_base ?? (isBargeModel ? 705603.84 : 2870060.6));
+    const incidHe = Number(tabPlus.incidencia_he ?? (isBargeModel ? 0 : 729473.74));
     const netoPlus = Number(tabPlus.neto_plus ?? plusBase + incidHe);
     const coef = Number(tabPlus.coeficiente ?? 0.52);
     const coefMonto = Number(tabPlus.coeficiente_monto ?? Math.round(netoPlus * coef * 100) / 100);
     const totalPlusFacturar = Number(tabPlus.total_facturar_plus ?? Math.round((netoPlus + coefMonto) * 100) / 100);
 
-    const sumPlusCol = plusRows.reduce((a, r) => a + Number(r.plus || 0), 0) || plusBase;
-    const sumHsNormEq = plusRows.reduce((a, r) => a + Number(r.hsNormEq || 0), 0);
-    const sumIncidCol = plusRows.reduce((a, r) => a + Number(r.incidHe || 0), 0) || incidHe;
-    const lastPlusExcelRow = 5 + plusRows.length;
-
     setRowCells(s3, 0, {
       0: c(`MTS - HORAS Y PLUS - ${vesselName} - ${operationDates}`, 'header'),
-      8: c(Math.round(sumPlusCol * 100) / 100, 'currency', `=SUM(I6:I${lastPlusExcelRow})`),
-      9: c(Math.round(sumHsNormEq * 100) / 100, 'number', `=SUM(J6:J${lastPlusExcelRow})`),
-      10: c(Math.round(sumIncidCol * 100) / 100, 'currency', `=SUM(K6:K${lastPlusExcelRow})`),
     });
-    setRowCells(s3, 2, { 0: c('Total unidades operadas:', 'highlight_label'), 1: c(veh.total_controlados ?? 3120, 'number') });
+    setRowCells(s3, 2, { 0: c('Total unidades operadas:', 'highlight_label'), 1: c(veh.total_controlados ?? (isBargeModel ? 355 : 3120), 'number') });
     setRowCells(s3, 4, {
       0: c('PUESTO', 'header'),
       1: c('APELLIDO', 'header'),
@@ -252,8 +261,8 @@ export function buildProformaWorkbook(
       3: c('Desde - Hasta', 'header'),
       4: c('Total Horas', 'header'),
       5: c('Normal', 'header'),
-      6: c('0.5', 'header'),
-      7: c('1.0', 'header'),
+      6: c('50%', 'header'),
+      7: c('100%', 'header'),
       8: c('PLUS ($)', 'header'),
       9: c('HS.NORM.', 'header'),
       10: c('INCID HE ($)', 'header'),
@@ -262,9 +271,9 @@ export function buildProformaWorkbook(
     });
     setRowCells(s3, 5, { 12: c('Plus Base Operativo', 'label'), 13: c(plusBase, 'currency') });
     setRowCells(s3, 6, { 12: c('Incidencia plus Rem en Hs. Extras', 'label'), 13: c(incidHe, 'currency') });
-    setRowCells(s3, 7, { 12: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 13: c(netoPlus, 'highlight_currency', '=N6+N7') });
-    setRowCells(s3, 8, { 12: c(`Coeficiente costos: ${coef}`, 'label'), 13: c(coefMonto, 'currency', `=N8*${coef}`) });
-    setRowCells(s3, 9, { 12: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 13: c(totalPlusFacturar, 'total_currency', '=N8+N9') });
+    setRowCells(s3, 7, { 12: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 13: c(netoPlus, 'highlight_currency', '=+R6C14+R7C14') });
+    setRowCells(s3, 8, { 12: c(`Coeficiente costos: ${coef}`, 'label'), 13: c(coefMonto, 'currency', `=+R8C14*${coef}`) });
+    setRowCells(s3, 9, { 12: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 13: c(totalPlusFacturar, 'total_currency', '=+R8C14+R9C14') });
 
     plusRows.forEach((sr, idx) => {
       const excelRowNum = 6 + idx;
@@ -282,7 +291,7 @@ export function buildProformaWorkbook(
         6: c(Number(sr.ot50 || 0), 'number'),
         7: c(Number(sr.ot100 || 0), 'number'),
         8: c(pAmt, 'currency'),
-        9: c(eqHs, 'number', `=G${excelRowNum}*1.5+H${excelRowNum}*2`),
+        9: c(eqHs, 'number', `=+R${excelRowNum}C7*1.5+R${excelRowNum}C8*2`),
         10: c(incAmt, 'currency'),
       });
     });
@@ -298,23 +307,22 @@ export function buildProformaWorkbook(
     setRowCells(s4, 0, {
       0: c('FECHAS', 'label'),
       1: c(operationDates, 'subheader'),
-      8: c(compSumHs, 'number', `=SUM(I3:I${lastCompExcelRow})`),
-      9: c(compSumNorm, 'number', `=SUM(J3:J${lastCompExcelRow})`),
-      10: c(compSum50, 'number', `=SUM(K3:K${lastCompExcelRow})`),
-      11: c(compSum100, 'number', `=SUM(L3:L${lastCompExcelRow})`),
+      6: c(compSumHs, 'number', `=SUM(R3C7:R${lastCompExcelRow}C7)`),
+      7: c(compSumNorm, 'number', `=SUM(R3C8:R${lastCompExcelRow}C8)`),
+      8: c(compSum50, 'number', `=SUM(R3C9:R${lastCompExcelRow}C9)`),
+      9: c(compSum100, 'number', `=SUM(R3C10:R${lastCompExcelRow}C10)`),
     });
     setRowCells(s4, 1, {
       0: c('SERVICIO', 'label'),
       1: c(`${vesselName} - HORAS EXTRAS COMPENSACION`, 'header'),
-      3: c('(*)', 'header'),
-      4: c('PUESTO / CATEGORÍA', 'header'),
-      5: c('APELLIDO', 'header'),
-      6: c('FECHA', 'header'),
-      7: c('DESDE-HASTA', 'header'),
-      8: c('HS', 'header'),
-      9: c('NORM', 'header'),
-      10: c('0.5', 'header'),
-      11: c('1.0', 'header'),
+      2: c('(*)', 'header'),
+      3: c('APELLIDO', 'header'),
+      4: c('FECHA', 'header'),
+      5: c('DESDE-HASTA', 'header'),
+      6: c('HS', 'header'),
+      7: c('NORM', 'header'),
+      8: c('50%', 'header'),
+      9: c('100%', 'header'),
     });
     let r4 = 3;
     for (const conc of tab3.conceptos || []) {
@@ -331,22 +339,21 @@ export function buildProformaWorkbook(
     compRows.forEach((cr, idx) => {
       const targetRow = 2 + idx;
       setRowCells(s4, targetRow, {
-        3: c(cr.notaMark || '(*)', 'center'),
-        4: c(cr.puesto || cr.categoria || 'RAMPA', cr.categoria === 'ENCARGADO' ? 'highlight_label' : 'label'),
-        5: c(cr.apellido || '', 'label'),
-        6: c(cr.fecha || '', 'center'),
-        7: c(cr.desdeHasta || '', 'center'),
-        8: c(Number(cr.horas || 0), 'number'),
-        9: c(Number(cr.normales || 0), 'number'),
-        10: c(Number(cr.ot50 || 0), 'number'),
-        11: c(Number(cr.ot100 || 0), 'number'),
+        2: c(cr.notaMark || '(*)', 'center'),
+        3: c(cr.apellido || '', cr.categoria === 'ENCARGADO' ? 'highlight_label' : 'label'),
+        4: c(cr.fecha || '', 'center'),
+        5: c(cr.desdeHasta || '', 'center'),
+        6: c(Number(cr.horas || 0), 'number'),
+        7: c(Number(cr.normales || 0), 'number'),
+        8: c(Number(cr.ot50 || 0), 'number'),
+        9: c(Number(cr.ot100 || 0), 'number'),
       });
     });
 
     const noteCompRow = Math.max(r4 + 7, 2 + compRows.length + 1);
     setRowCells(s4, noteCompRow, {
-      3: c('(*)', 'note'),
-      4: c('NOTA: ACUERDO CON CAT PARA RECONOCER HORAS DE TRABAJO CORRIDO.', 'note'),
+      2: c('(*)', 'note'),
+      3: c('NOTA: ACUERDO CON CAT PARA RECONOCER HORAS DE TRABAJO CORRIDO.', 'note'),
     });
 
     // Sheet 5: ENCARGADO A BORDO + DETALLE DE TURNOS Y CUADRO DE PLUS A LA DERECHA
@@ -360,10 +367,10 @@ export function buildProformaWorkbook(
     setRowCells(s5, 0, {
       0: c('FECHAS', 'label'),
       1: c(operationDates, 'subheader'),
-      7: c(encSumHs, 'number', `=SUM(H3:H${lastEncExcelRow})`),
-      8: c(encSumNorm, 'number', `=SUM(I3:I${lastEncExcelRow})`),
-      9: c(encSum50, 'number', `=SUM(J3:J${lastEncExcelRow})`),
-      10: c(encSum100, 'number', `=SUM(K3:K${lastEncExcelRow})`),
+      7: c(encSumHs, 'number', `=SUM(R3C8:R${lastEncExcelRow}C8)`),
+      8: c(encSumNorm, 'number', `=SUM(R3C9:R${lastEncExcelRow}C9)`),
+      9: c(encSum50, 'number', `=SUM(R3C10:R${lastEncExcelRow}C10)`),
+      10: c(encSum100, 'number', `=SUM(R3C11:R${lastEncExcelRow}C11)`),
     });
     setRowCells(s5, 1, {
       0: c('SERVICIO', 'label'),
@@ -374,8 +381,8 @@ export function buildProformaWorkbook(
       6: c('DESDE-HASTA', 'header'),
       7: c('HS', 'header'),
       8: c('NORM', 'header'),
-      9: c('0.5', 'header'),
-      10: c('1.0', 'header'),
+      9: c('50%', 'header'),
+      10: c('100%', 'header'),
     });
     let r5 = 3;
     for (const conc of tab2.conceptos || []) {
@@ -460,17 +467,29 @@ export function buildProformaWorkbook(
 
     const shortVessel = vesselName.slice(0, 14);
     const safeDates = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
+
+    const sheets: ExcelWorksheetData[] = [
+      { name: `FACTURA ${shortVessel}`, colWidths: [320, 160], rows: s1 },
+      { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 25, 55, 45, 100, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
+      { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 75, 110, 25, 260, 140], rows: s3 },
+    ];
+
+    if (!isBargeModel) {
+      sheets.push(
+        { name: 'HS COMPENSACION', colWidths: [300, 150, 45, 180, 95, 95, 55, 55, 55, 55], rows: s4 },
+        { name: 'ENCARGADO A BORDO', colWidths: [300, 150, 25, 60, 180, 110, 115, 70, 85, 60, 60], rows: s5 }
+      );
+    }
+
     return {
-      filename: `MTS-CTYC SA - Proforma Buque ${vesselName} - ${safeDates}.xls`,
-      title: `Proforma Buque ${vesselName} (${operationDates})`,
-      proformaType,
-      sheets: [
-        { name: `FACTURA ${shortVessel}`, colWidths: [320, 160], rows: s1 },
-        { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 25, 55, 45, 100, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
-        { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 75, 110, 25, 260, 140], rows: s3 },
-        { name: 'HS COMPENSACION', colWidths: [300, 150, 25, 45, 120, 180, 95, 95, 55, 55, 55, 55], rows: s4 },
-        { name: 'ENCARGADO A BORDO', colWidths: [300, 150, 25, 60, 180, 110, 115, 70, 85, 60, 60], rows: s5 },
-      ],
+      filename: isBargeModel
+        ? `MTS-CTYC SA - Proforma Barcaza ${vesselName} - ${safeDates}.xls`
+        : `MTS-CTYC SA - Proforma Buque ${vesselName} - ${safeDates}.xls`,
+      title: isBargeModel
+        ? `Proforma Barcaza ${vesselName} (${operationDates})`
+        : `Proforma Buque ${vesselName} (${operationDates})`,
+      proformaType: isBargeModel ? 'barge' : proformaType,
+      sheets,
     };
   }
 
@@ -1191,8 +1210,8 @@ export function buildProformaWorkbook(
       6: c('DESDE-HASTA', 'header'),
       7: c('HORAS', 'header'),
       8: c('Normales', 'header'),
-      9: c('0.5', 'header'),
-      10: c('1.0', 'header'),
+      9: c('50%', 'header'),
+      10: c('100%', 'header'),
       11: c('VIAJES', 'header'),
     });
     setRowCells(s2, 2, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });

@@ -84,6 +84,7 @@ export function ProformaDetailModal({
 
   const typeLabels: Record<string, { label: string; icon: string }> = {
     vessel: { label: 'Buque Ro-Ro', icon: '🚢' },
+    barge: { label: 'Barcaza (Peritaje Calidad y Tally + Plus)', icon: '⛴️' },
     fiscal_yard: { label: 'Plazoleta Fiscal', icon: '🏗️' },
     fixed_deposit: { label: 'Depósitos Delta Dock', icon: '🏢' },
     plus_incidence: { label: 'Incidencia Plus / Barcaza', icon: '📈' },
@@ -304,13 +305,13 @@ export function ProformaDetailModal({
 
         {/* Polymorphic Viewer Body */}
         <div className="min-h-[250px]">
-          {proformaType === 'vessel' && <VesselViewer proforma={proforma} />}
+          {(proformaType === 'vessel' || proformaType === 'barge') && <VesselViewer proforma={proforma} />}
           {proformaType === 'fiscal_yard' && <FiscalYardViewer proforma={proforma} />}
           {proformaType === 'fixed_deposit' && <FixedDepositViewer proforma={proforma} />}
           {proformaType === 'plus_incidence' && <PlusIncidenceViewer proforma={proforma} />}
           {proformaType === 'shared_expo' && <SharedExpoViewer proforma={proforma} />}
           {proformaType === 'standard' && <StandardViewer proforma={proforma} />}
-          {!['vessel', 'fiscal_yard', 'fixed_deposit', 'plus_incidence', 'shared_expo', 'standard'].includes(proformaType) && (
+          {!['vessel', 'barge', 'fiscal_yard', 'fixed_deposit', 'plus_incidence', 'shared_expo', 'standard'].includes(proformaType) && (
             <StandardViewer proforma={proforma} />
           )}
         </div>

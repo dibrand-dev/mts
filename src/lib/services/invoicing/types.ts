@@ -11,7 +11,7 @@ export type ProformaDetailInsert = Database['public']['Tables']['proforma_detail
 export type TaxInvoiceRow = Database['public']['Tables']['tax_invoices']['Row'];
 export type TaxInvoiceInsert = Database['public']['Tables']['tax_invoices']['Insert'];
 
-export type ProformaType = 'vessel' | 'fiscal_yard' | 'fixed_deposit' | 'shared_expo' | 'standard' | string;
+export type ProformaType = 'vessel' | 'barge' | 'fiscal_yard' | 'fixed_deposit' | 'shared_expo' | 'standard' | string;
 
 export interface InvoicingRecord {
   id: string;

@@ -1,5 +1,6 @@
 import { ProformaStrategy } from './types';
 import { vesselStrategy } from './strategies/vessel.strategy';
+import { bargeStrategy } from './strategies/barge.strategy';
 import { fiscalYardStrategy } from './strategies/fiscal-yard.strategy';
 import { fixedDepositStrategy } from './strategies/fixed-deposit.strategy';
 import { plusIncidenceStrategy } from './strategies/plus-incidence.strategy';
@@ -15,12 +16,14 @@ export function registerStrategy(strategy: ProformaStrategy): void {
 
 // Initial registration in the exact order requested by the client:
 // 1. BUQUE
-// 2. PLAZOLETA FISCAL
-// 3. DEPOSITOS NACIONAL Y FISCAL DELTA DOCK
-// 4. INCIDENCIA PLUS
-// 5. COOPTACORD (10%)
-// 6. TERMINAL ZARATE (SERGIO DANCHUK)
+// 2. BARCAZA (Peritaje Calidad y Tally + Plus)
+// 3. PLAZOLETA FISCAL
+// 4. DEPOSITOS NACIONAL Y FISCAL DELTA DOCK
+// 5. INCIDENCIA PLUS
+// 6. COOPTACORD (10%)
+// 7. TERMINAL ZARATE (SERGIO DANCHUK)
 registerStrategy(vesselStrategy);
+registerStrategy(bargeStrategy);
 registerStrategy(fiscalYardStrategy);
 registerStrategy(fixedDepositStrategy);
 registerStrategy(plusIncidenceStrategy);

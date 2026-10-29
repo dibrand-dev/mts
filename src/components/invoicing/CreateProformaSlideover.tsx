@@ -188,7 +188,7 @@ export function CreateProformaSlideover({
       });
 
       setCalculationResult(result);
-      if (result.vessel_name && !vesselNameInput && !isCustomVessel && (selectedType === 'vessel' || selectedType === 'plus_incidence')) {
+      if (result.vessel_name && !vesselNameInput && !isCustomVessel && (selectedType === 'vessel' || selectedType === 'barge' || selectedType === 'plus_incidence')) {
         setVesselNameInput(result.vessel_name);
       }
     } catch (err: any) {
@@ -286,7 +286,7 @@ export function CreateProformaSlideover({
   if (!isOpen) return null;
 
   const vesselOpsForClient = clientOperations.filter(
-    (op) => op.client_id === selectedClientId && (op.operation_type === 'vessel' || op.operation_type === 'general')
+    (op) => op.client_id === selectedClientId && (op.operation_type === 'vessel' || op.operation_type === 'barge' || op.operation_type === 'general')
   );
 
   return (
@@ -394,10 +394,10 @@ export function CreateProformaSlideover({
               </div>
 
               {/* Parámetros Específicos según el Tipo de Proforma */}
-              {(selectedType === 'vessel' || selectedType === 'plus_incidence') && (
+              {(selectedType === 'vessel' || selectedType === 'barge' || selectedType === 'plus_incidence') && (
                 <div className="flex flex-col gap-1 animate-in fade-in duration-150">
                   <label className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                    <Ship className="h-3.5 w-3.5" /> Nombre del Buque / Servicio *
+                    <Ship className="h-3.5 w-3.5" /> {selectedType === 'barge' ? 'Nombre de la Barcaza *' : 'Nombre del Buque / Servicio *'}
                   </label>
                   {vesselOpsForClient.length > 0 ? (
                     <div className="space-y-1.5">
@@ -417,15 +417,25 @@ export function CreateProformaSlideover({
                             setVesselNameInput('');
                           } else {
                             setIsCustomVessel(false);
-                            setVesselNameInput(e.target.value);
+                            const chosenName = e.target.value;
+                            setVesselNameInput(chosenName);
+                            const matchedOp = vesselOpsForClient.find((op) => op.name === chosenName);
+                            if (
+                              matchedOp?.operation_type === 'barge' ||
+                              chosenName.includes('JACKSON') ||
+                              chosenName.includes('INQUEBRANTABLE') ||
+                              chosenName.includes('BARCAZA')
+                            ) {
+                              if (selectedType === 'vessel') setSelectedType('barge');
+                            }
                           }
                         }}
                         className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-semibold focus:outline-none focus:border-[#1E5BB4]"
                       >
-                        <option value="">-- Seleccionar Buque del Cliente --</option>
+                        <option value="">-- {selectedType === 'barge' ? 'Seleccionar Barcaza' : 'Seleccionar Buque del Cliente'} --</option>
                         {vesselOpsForClient.map((v) => (
                           <option key={v.id} value={v.name}>
-                            🚢 {v.name}
+                            {v.operation_type === 'barge' ? '🚤' : '🚢'} {v.name}
                           </option>
                         ))}
                         <option value="CUSTOM">Otro / Escribir manualmente...</option>
@@ -437,7 +447,7 @@ export function CreateProformaSlideover({
                           autoFocus={isCustomVessel}
                           value={vesselNameInput}
                           onChange={(e) => setVesselNameInput(e.target.value.toUpperCase())}
-                          placeholder="Escribir nombre del buque (ej. GOODWOOD, BRASILIA HWY, INQUEBRANTABLE)..."
+                          placeholder={selectedType === 'barge' ? "Escribir nombre de la barcaza (ej. CAP JACKSON, INQUEBRANTABLE)..." : "Escribir nombre del buque (ej. GOODWOOD, BRASILIA HWY)..."}
                           className="w-full p-2 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                         />
                       )}
@@ -447,7 +457,7 @@ export function CreateProformaSlideover({
                       type="text"
                       value={vesselNameInput}
                       onChange={(e) => setVesselNameInput(e.target.value.toUpperCase())}
-                      placeholder="Ej. GOODWOOD, BRASILIA HWY, INQUEBRANTABLE..."
+                      placeholder={selectedType === 'barge' ? "Ej. CAP JACKSON, INQUEBRANTABLE..." : "Ej. GOODWOOD, BRASILIA HWY..."}
                       className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm uppercase font-semibold text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
                     />
                   )}

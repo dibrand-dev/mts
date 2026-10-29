@@ -293,7 +293,7 @@ export interface Database {
           id: string
           daily_work_log_id: string
           employee_id: string
-          position_id: string
+          position_id: string | null
           shift_start_date: string
           shift_start_time: string
           shift_end_date: string
@@ -308,6 +308,8 @@ export interface Database {
           is_day_off: boolean
           day_off_count: number
           bonus_applied_amount: number
+          shift_number?: number | null
+          shift_turn?: number | null
           operational_role?: string | null
           is_compensation_shift?: boolean
           is_approved: boolean
@@ -319,7 +321,7 @@ export interface Database {
           id?: string
           daily_work_log_id: string
           employee_id: string
-          position_id: string
+          position_id: string | null
           shift_start_date?: string
           shift_start_time: string
           shift_end_date?: string
@@ -334,6 +336,8 @@ export interface Database {
           is_day_off?: boolean
           day_off_count?: number
           bonus_applied_amount?: number
+          shift_number?: number | null
+          shift_turn?: number | null
           operational_role?: string | null
           is_compensation_shift?: boolean
           is_approved?: boolean
@@ -360,6 +364,8 @@ export interface Database {
           is_day_off?: boolean
           day_off_count?: number
           bonus_applied_amount?: number
+          shift_number?: number | null
+          shift_turn?: number | null
           operational_role?: string | null
           is_compensation_shift?: boolean
           is_approved?: boolean
@@ -584,7 +590,7 @@ export interface Database {
         Row: {
           id: string
           client_id: string
-          position_id: string
+          position_id: string | null
           hour_type_id: string
           hourly_rate: number
           effective_from: string
@@ -593,7 +599,7 @@ export interface Database {
         Insert: {
           id?: string
           client_id: string
-          position_id: string
+          position_id: string | null
           hour_type_id: string
           hourly_rate: number
           effective_from?: string
@@ -646,7 +652,7 @@ export interface Database {
           id: string
           client_id: string
           name: string
-          operation_type: 'vessel' | 'yard' | 'deposit' | 'general'
+          operation_type: 'vessel' | 'barge' | 'yard' | 'deposit' | 'general'
           is_active: boolean
           created_at: string
         }
@@ -654,7 +660,7 @@ export interface Database {
           id?: string
           client_id: string
           name: string
-          operation_type?: 'vessel' | 'yard' | 'deposit' | 'general'
+          operation_type?: 'vessel' | 'barge' | 'yard' | 'deposit' | 'general'
           is_active?: boolean
           created_at?: string
         }
@@ -662,7 +668,7 @@ export interface Database {
           id?: string
           client_id?: string
           name?: string
-          operation_type?: 'vessel' | 'yard' | 'deposit' | 'general'
+          operation_type?: 'vessel' | 'barge' | 'yard' | 'deposit' | 'general'
           is_active?: boolean
           created_at?: string
         }
