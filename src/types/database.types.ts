@@ -308,6 +308,8 @@ export interface Database {
           is_day_off: boolean
           day_off_count: number
           bonus_applied_amount: number
+          operational_role?: string | null
+          is_compensation_shift?: boolean
           is_approved: boolean
           approved_at: string | null
           approved_by: string | null
@@ -332,6 +334,8 @@ export interface Database {
           is_day_off?: boolean
           day_off_count?: number
           bonus_applied_amount?: number
+          operational_role?: string | null
+          is_compensation_shift?: boolean
           is_approved?: boolean
           approved_at?: string | null
           approved_by?: string | null
@@ -356,6 +360,8 @@ export interface Database {
           is_day_off?: boolean
           day_off_count?: number
           bonus_applied_amount?: number
+          operational_role?: string | null
+          is_compensation_shift?: boolean
           is_approved?: boolean
           approved_at?: string | null
           approved_by?: string | null

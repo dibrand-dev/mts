@@ -400,3 +400,86 @@ export async function updateTaxInvoiceStatusService(
   return data as TaxInvoiceRow;
 }
 
+/**
+ * Allows the user to manually set or update the Invoice Number (Nro. de Factura),
+ * Invoice Issue Date (Fecha de Factura), and Due Date (Fecha de Vencimiento) on a proforma.
+ */
+export async function updateProformaInvoiceAndDatesService(
+  proformaId: string,
+  params: {
+    invoiceNumber?: string;
+    issueDate: string;
+    dueDate: string;
+    markAsInvoiced?: boolean;
+  }
+): Promise<void> {
+  const supabase = createClient() as any;
+
+  // 1. Fetch existing proforma to preserve calculation_payload and total
+  const { data: existing, error: fetchErr } = await supabase
+    .from('proformas')
+    .select('id, status, total, calculation_payload, tax_invoices(*)')
+    .eq('id', proformaId)
+    .single();
+
+  if (fetchErr || !existing) {
+    throw new Error(fetchErr?.message || 'No se encontró la proforma.');
+  }
+
+  const cleanInvNum = (params.invoiceNumber || '').trim();
+  const nextPayload = {
+    ...(existing.calculation_payload || {}),
+    issue_date: params.issueDate,
+    due_date: params.dueDate,
+    ...(cleanInvNum ? { invoice_number: cleanInvNum } : {}),
+  };
+
+  const nextStatus =
+    params.markAsInvoiced && existing.status !== 'paid'
+      ? 'invoiced'
+      : existing.status;
+
+  const { error: updateErr } = await supabase
+    .from('proformas')
+    .update({
+      issue_date: params.issueDate,
+      due_date: params.dueDate,
+      status: nextStatus,
+      calculation_payload: nextPayload,
+    })
+    .eq('id', proformaId);
+
+  if (updateErr) {
+    throw new Error(updateErr.message);
+  }
+
+  // 2. If invoiceNumber is provided, upsert/update tax_invoices record
+  if (cleanInvNum) {
+    const existingInvoices = Array.isArray(existing.tax_invoices)
+      ? existing.tax_invoices
+      : existing.tax_invoices
+      ? [existing.tax_invoices]
+      : [];
+
+    if (existingInvoices.length > 0) {
+      await supabase
+        .from('tax_invoices')
+        .update({
+          invoice_number: cleanInvNum,
+          invoice_date: params.issueDate,
+        })
+        .eq('id', existingInvoices[0].id);
+    } else {
+      await supabase.from('tax_invoices').insert({
+        proforma_id: proformaId,
+        invoice_number: cleanInvNum,
+        invoice_date: params.issueDate,
+        invoiced_amount: Number(existing.total || 0),
+        status: 'issued',
+        pdf_storage_path: '',
+      });
+    }
+  }
+}
+
+

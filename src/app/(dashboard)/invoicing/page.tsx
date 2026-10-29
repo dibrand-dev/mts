@@ -33,6 +33,7 @@ import {
   getInvoicingRecords,
   createTaxInvoiceService,
   updateProformaStatusService,
+  updateProformaInvoiceAndDatesService,
   deleteProformaService,
   getProformaWithDetails,
   InvoicingRecord,
@@ -103,7 +104,25 @@ export default function InvoicingPage() {
   const [selectedProforma, setSelectedProforma] = useState<InvoicingRecord | null>(null);
   const [selectedProformaDetails, setSelectedProformaDetails] = useState<InvoicingRecord | null>(null);
   const [invoiceNumberInput, setInvoiceNumberInput] = useState('');
+  const [invoiceIssueDateInput, setInvoiceIssueDateInput] = useState('');
+  const [invoiceDueDateInput, setInvoiceDueDateInput] = useState('');
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  const openInvoiceAndDatesModal = (proforma: InvoicingRecord) => {
+    setSelectedProforma(proforma);
+    const existingInvNo =
+      proforma.invoice?.invoice_number ||
+      (proforma.calculation_payload as any)?.invoice_number ||
+      '';
+    setInvoiceNumberInput(existingInvNo);
+    setInvoiceIssueDateInput(
+      proforma.issue_date ? proforma.issue_date.slice(0, 10) : new Date().toISOString().split('T')[0]
+    );
+    setInvoiceDueDateInput(
+      proforma.due_date ? proforma.due_date.slice(0, 10) : ''
+    );
+    setIsInvoiceModalOpen(true);
+  };
 
   const handleCopyPublicLink = async (token: string) => {
     const url = typeof window !== 'undefined'
@@ -122,15 +141,39 @@ export default function InvoicingPage() {
   };
 
   const createInvoiceMutation = useMutation({
-    mutationFn: createTaxInvoiceService,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.invoicing.records });
+    mutationFn: ({
+      proformaId,
+      invoiceNumber,
+      issueDate,
+      dueDate,
+    }: {
+      proformaId: string;
+      invoiceNumber?: string;
+      issueDate: string;
+      dueDate: string;
+    }) =>
+      updateProformaInvoiceAndDatesService(proformaId, {
+        invoiceNumber,
+        issueDate,
+        dueDate,
+        markAsInvoiced: Boolean(invoiceNumber && invoiceNumber.trim()),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invoicing.records });
+      if (selectedProforma && selectedProformaDetails && selectedProformaDetails.id === selectedProforma.id) {
+        try {
+          const updated = await getProformaWithDetails(selectedProforma.id);
+          if (updated) setSelectedProformaDetails(updated);
+        } catch {
+          // ignore
+        }
+      }
       setIsInvoiceModalOpen(false);
       setSelectedProforma(null);
       setInvoiceNumberInput('');
     },
     onError: (err: any) => {
-      alert(`Error al emitir factura: ${err.message}`);
+      alert(`Error al actualizar datos de factura: ${err.message}`);
     },
   });
 
@@ -174,18 +217,22 @@ export default function InvoicingPage() {
 
   const handleGenerateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProforma || !invoiceNumberInput.trim()) {
-      alert('Por favor ingresa un número de factura válido.');
-      return;
-    }
+    if (!selectedProforma) return;
+
+    const issueDate =
+      invoiceIssueDateInput ||
+      selectedProforma.issue_date?.slice(0, 10) ||
+      new Date().toISOString().split('T')[0];
+    const dueDate =
+      invoiceDueDateInput ||
+      selectedProforma.due_date?.slice(0, 10) ||
+      issueDate;
 
     createInvoiceMutation.mutate({
-      proforma_id: selectedProforma.id,
-      invoice_number: invoiceNumberInput.trim(),
-      invoiced_amount: selectedProforma.total,
-      status: 'pending',
-      pdf_storage_path: '',
-      invoice_date: new Date().toISOString().split('T')[0],
+      proformaId: selectedProforma.id,
+      invoiceNumber: invoiceNumberInput.trim() || undefined,
+      issueDate,
+      dueDate,
     });
   };
 
@@ -264,11 +311,16 @@ export default function InvoicingPage() {
       {
         id: 'invoice_number',
         header: 'Nro. Factura',
-        cell: ({ row }) => (
-          <span className="font-mono text-xs font-semibold text-[#1E5BB4]">
-            {row.original.invoice?.invoice_number || <span className="text-slate-400 font-normal">Sin Factura</span>}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const invNum =
+            row.original.invoice?.invoice_number ||
+            (row.original.calculation_payload as any)?.invoice_number;
+          return (
+            <span className="font-mono text-xs font-semibold text-[#1E5BB4]">
+              {invNum || <span className="text-slate-400 font-normal">Sin Factura</span>}
+            </span>
+          );
+        },
       },
       {
         accessorKey: 'fortnight_period',
@@ -359,8 +411,7 @@ export default function InvoicingPage() {
                 totalRows={totalRows}
                 onOpenDetails={handleOpenDetailsModal}
                 onInvoiceClick={(proforma) => {
-                  setSelectedProforma(proforma);
-                  setIsInvoiceModalOpen(true);
+                  openInvoiceAndDatesModal(proforma);
                 }}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDeleteProforma}
@@ -544,8 +595,7 @@ export default function InvoicingPage() {
         proforma={selectedProformaDetails}
         onStatusChange={handleStatusChange}
         onInvoiceClick={(rec) => {
-          setSelectedProforma(rec);
-          setIsInvoiceModalOpen(true);
+          openInvoiceAndDatesModal(rec);
         }}
       />
 
@@ -557,14 +607,14 @@ export default function InvoicingPage() {
         onProformaCreated={loadData}
       />
 
-      {/* Modal: Emitir Factura Fiscal */}
+      {/* Modal: Emitir / Editar Factura y Fechas */}
       {isInvoiceModalOpen && selectedProforma && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4 border border-slate-200">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200">
               <h3 className="text-lg font-bold text-[#0B1C30] flex items-center gap-2">
                 <FileText className="h-5 w-5 text-[#1E5BB4]" />
-                Emitir Factura Fiscal (ARCA)
+                Factura y Fechas de Emisión / Vencimiento
               </h3>
               <button
                 onClick={() => setIsInvoiceModalOpen(false)}
@@ -587,17 +637,47 @@ export default function InvoicingPage() {
             <form onSubmit={handleGenerateInvoice} className="space-y-4 pt-2">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Número de Factura Oficial *
+                  Número de Factura Oficial
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: A-0001-00004523"
+                  placeholder="Ej: 0003-00001815"
                   data-testid="invoicing-input-factura-numero"
                   value={invoiceNumberInput}
                   onChange={(e) => setInvoiceNumberInput(e.target.value)}
                   className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4] font-mono"
-                  required
                 />
+                <span className="text-[11px] text-slate-500">
+                  Se reflejará automáticamente en la Hoja 1 (FACTURA) del Excel y PDF.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Fecha de Factura
+                  </label>
+                  <input
+                    type="date"
+                    data-testid="invoicing-input-fecha-factura"
+                    value={invoiceIssueDateInput}
+                    onChange={(e) => setInvoiceIssueDateInput(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Fecha de Vencimiento
+                  </label>
+                  <input
+                    type="date"
+                    data-testid="invoicing-input-fecha-vencimiento"
+                    value={invoiceDueDateInput}
+                    onChange={(e) => setInvoiceDueDateInput(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -611,10 +691,10 @@ export default function InvoicingPage() {
                 <button
                   type="submit"
                   data-testid="invoicing-btn-confirmar-factura"
-                  disabled={isSubmittingInvoice || !invoiceNumberInput.trim()}
+                  disabled={isSubmittingInvoice}
                   className="px-4 py-2 text-sm font-bold text-white bg-[#1E5BB4] hover:bg-[#004392] disabled:bg-slate-300 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
-                  {isSubmittingInvoice ? 'Registrando...' : 'Emitir Factura'}
+                  {isSubmittingInvoice ? 'Guardando...' : 'Guardar Factura y Fechas'}
                 </button>
               </div>
             </form>

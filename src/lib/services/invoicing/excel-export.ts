@@ -1,5 +1,11 @@
 import { InvoicingRecord, ProformaCalculationResult } from './types';
 import { buildFortnightDepositDays } from './strategies/fixed-deposit.strategy';
+import {
+  getNormalizedOperativaRows,
+  getNormalizedPlusRows,
+  getNormalizedCompensacionRows,
+  getNormalizedEncargadoRows,
+} from './vessel-roster-defaults';
 
 export interface ExcelCell {
   value: string | number;
@@ -71,10 +77,20 @@ export function buildProformaWorkbook(
   const clientName = source.client_name || payload.client_name || 'CLIENTE';
   const operationDates = source.operation_dates || payload.operation_dates || (isRecord ? source.fortnight_period : '');
   const vesselName = source.vessel_name || payload.vessel_name || 'BUQUE';
-  const issueDate = (isRecord ? source.invoice?.invoice_date || source.issue_date : meta?.issueDate) || new Date().toISOString().split('T')[0];
-  const dueDate = (isRecord ? source.due_date : meta?.dueDate) || issueDate;
+  const issueDate =
+    meta?.issueDate ||
+    (isRecord ? source.invoice?.invoice_date || source.issue_date : undefined) ||
+    payload.issue_date ||
+    new Date().toISOString().split('T')[0];
+  const dueDate =
+    meta?.dueDate ||
+    (isRecord ? source.due_date : undefined) ||
+    payload.due_date ||
+    issueDate;
   const invoiceNumber =
-    (isRecord ? source.invoice?.invoice_number : meta?.invoiceNumber) ||
+    meta?.invoiceNumber ||
+    (isRecord ? source.invoice?.invoice_number : undefined) ||
+    payload.invoice_number ||
     (vesselName.toUpperCase().includes('JACKSON')
       ? '1-537'
       : operationDates.includes('OCTUBRE') && clientName.toUpperCase().includes('DELTA')
@@ -96,7 +112,15 @@ export function buildProformaWorkbook(
     const tab2 = payload.tab2_encargado_a_bordo || {};
     const tab3 = payload.tab3_hs_compensacion || {};
     const tabPlus = payload.tab_plus || {};
-    const shiftRows: any[] = payload.shift_rows || [];
+
+    // Sheet 2 ONLY Apuntadores (NO Encargados) with operational posts (RAMPA, DAÑOS, RELEVO)
+    const operativaRows = getNormalizedOperativaRows(payload);
+    // Sheet 3 BOTH Encargados and Apuntadores with operational posts (ENCARGADO, RAMPA, DAÑOS, RELEVO)
+    const plusRows = getNormalizedPlusRows(payload);
+    // Sheet 4 detail of employees & hours in Horas de Compensación
+    const compRows = getNormalizedCompensacionRows(payload);
+    // Sheet 5 detail of Encargado shifts
+    const encRows = getNormalizedEncargadoRows(payload);
 
     const subOp = Number(tab1.consolidado?.subtotal_operativa ?? source.subtotal_operativa ?? 0);
     const subComp = Number(tab1.consolidado?.subtotal_compensacion ?? source.subtotal_compensacion ?? 0);
@@ -116,9 +140,9 @@ export function buildProformaWorkbook(
       setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(subOp, 'currency') });
       setRowCells(s1, 7, { 0: c(`HORAS COMPENSACION - ${operationDates}`, 'label'), 1: c(subComp, 'currency') });
       setRowCells(s1, 8, { 0: c(`ENCARGADO A BORDO - ${operationDates}`, 'label'), 1: c(subEnc, 'currency') });
-      setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency') });
-      setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency') });
-      setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency') });
+      setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', '=SUM(B7:B9)') });
+      setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=B11*0.21') });
+      setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=B11+B12') });
     } else {
       // Barcaza Fluvial: 1 sola línea comercial sin acuerdos de ultramar
       setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(totalNeto, 'currency') });
@@ -127,35 +151,38 @@ export function buildProformaWorkbook(
       setRowCells(s1, 10, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency') });
     }
 
-    // Sheet 2: OPERATIVA BUQUE + GRILLA DE TURNOS A LA DERECHA
+    // Sheet 2: OPERATIVA BUQUE + GRILLA DE TURNOS DE APUNTADORES A LA DERECHA (SIN ENCARGADOS)
     const s2: (ExcelCell | null)[][] = [];
     const veh = tab1.vehiculos || {};
     const desglose: any[] = tab1.desglose || [];
-    const sumNorm = shiftRows.reduce((a, r) => a + Number(r.normales || 0), 0);
-    const sum50 = shiftRows.reduce((a, r) => a + Number(r.ot50 || 0), 0);
-    const sum100 = shiftRows.reduce((a, r) => a + Number(r.ot100 || 0), 0);
-    const sumRem = shiftRows.reduce((a, r) => a + Number(r.remises || 0), 0);
+    const sumNorm = operativaRows.reduce((a, r) => a + Number(r.normales || 0), 0);
+    const sum50 = operativaRows.reduce((a, r) => a + Number(r.ot50 || 0), 0);
+    const sum100 = operativaRows.reduce((a, r) => a + Number(r.ot100 || 0), 0);
+    const sumRem = operativaRows.reduce((a, r) => a + Number(r.remises || 0), 0);
+    const lastOpExcelRow = 2 + operativaRows.length;
 
     setRowCells(s2, 0, {
       0: c('SERVICIO', 'header'),
       1: c(operationDates, 'subheader'),
-      8: c(sumNorm || 48, 'number'),
-      9: c(sum50 || 0, 'number'),
-      10: c(sum100 || 429, 'number'),
-      11: c(sumRem || 24, 'number'),
+      10: c(sumNorm || 48, 'number', `=SUM(K3:K${lastOpExcelRow})`),
+      11: c(sum50 || 0, 'number', `=SUM(L3:L${lastOpExcelRow})`),
+      12: c(sum100 || 429, 'number', `=SUM(M3:M${lastOpExcelRow})`),
+      13: c(sumRem || 24, 'number', `=SUM(N3:N${lastOpExcelRow})`),
     });
     setRowCells(s2, 1, {
       0: c('PERITAJE CALIDAD Y TALLY', 'header'),
       1: c(vesselName, 'header'),
-      3: c('PUESTO', 'header'),
-      4: c('APELLIDO', 'header'),
-      5: c('FECHA', 'header'),
-      6: c('DESDE-HASTA', 'header'),
-      7: c('HS', 'header'),
-      8: c('NORM', 'header'),
-      9: c('0.5', 'header'),
-      10: c('1.0', 'header'),
-      11: c('REMISES', 'header'),
+      3: c('TURNO', 'header'),
+      4: c('(*)', 'header'),
+      5: c('PUESTO', 'header'),
+      6: c('APELLIDO', 'header'),
+      7: c('FECHA', 'header'),
+      8: c('DESDE-HASTA', 'header'),
+      9: c('HS', 'header'),
+      10: c('NORM', 'header'),
+      11: c('0.5', 'header'),
+      12: c('1.0', 'header'),
+      13: c('REMISES', 'header'),
     });
     setRowCells(s2, 2, { 0: c('VEHICULOS DESCARGADOS', 'label'), 1: c(veh.descargados ?? 0, 'number') });
     setRowCells(s2, 3, { 0: c('VEHICULOS CARGADOS', 'label'), 1: c(veh.cargados ?? 0, 'number') });
@@ -178,24 +205,26 @@ export function buildProformaWorkbook(
       setRowCells(s2, rIdx + 5 + idx, { 0: c(n, 'note') });
     });
 
-    // Populate right-side shift rows in Sheet 2
-    shiftRows.forEach((sr, idx) => {
+    // Populate right-side Apuntador-only shift rows in Sheet 2
+    operativaRows.forEach((sr, idx) => {
       const targetRow = 2 + idx;
       setRowCells(s2, targetRow, {
         ...(s2[targetRow] ? {} : {}),
-        3: c(sr.puesto || 'RAMPA', 'label'),
-        4: c(sr.apellido || '', 'label'),
-        5: c(sr.fecha || '', 'center'),
-        6: c(sr.desdeHasta || '', 'center'),
-        7: c(Number(sr.horas || 0), 'number'),
-        8: c(Number(sr.normales || 0), 'number'),
-        9: c(Number(sr.ot50 || 0), 'number'),
-        10: c(Number(sr.ot100 || 0), 'number'),
-        11: c(Number(sr.remises || 0), 'number'),
+        3: c(sr.turno ?? '', 'center'),
+        4: c(sr.notaMark || '', 'center'),
+        5: c(sr.puesto || 'RAMPA', 'label'),
+        6: c(sr.apellido || '', 'label'),
+        7: c(sr.fecha || '', 'center'),
+        8: c(sr.desdeHasta || '', 'center'),
+        9: c(Number(sr.horas || 0), 'number'),
+        10: c(Number(sr.normales || 0), 'number'),
+        11: c(Number(sr.ot50 || 0), 'number'),
+        12: c(Number(sr.ot100 || 0), 'number'),
+        13: c(Number(sr.remises || 0), 'number'),
       });
     });
 
-    // Sheet 3: PLUS
+    // Sheet 3: PLUS (CON ENCARGADOS Y APUNTADORES)
     const s3: (ExcelCell | null)[][] = [];
     const plusBase = Number(tabPlus.plus_base ?? 2870060.6);
     const incidHe = Number(tabPlus.incidencia_he ?? 729473.74);
@@ -204,7 +233,17 @@ export function buildProformaWorkbook(
     const coefMonto = Number(tabPlus.coeficiente_monto ?? Math.round(netoPlus * coef * 100) / 100);
     const totalPlusFacturar = Number(tabPlus.total_facturar_plus ?? Math.round((netoPlus + coefMonto) * 100) / 100);
 
-    setRowCells(s3, 0, { 0: c(`MTS - HORAS Y PLUS - ${vesselName} - ${operationDates}`, 'header') });
+    const sumPlusCol = plusRows.reduce((a, r) => a + Number(r.plus || 0), 0) || plusBase;
+    const sumHsNormEq = plusRows.reduce((a, r) => a + Number(r.hsNormEq || 0), 0);
+    const sumIncidCol = plusRows.reduce((a, r) => a + Number(r.incidHe || 0), 0) || incidHe;
+    const lastPlusExcelRow = 5 + plusRows.length;
+
+    setRowCells(s3, 0, {
+      0: c(`MTS - HORAS Y PLUS - ${vesselName} - ${operationDates}`, 'header'),
+      8: c(Math.round(sumPlusCol * 100) / 100, 'currency', `=SUM(I6:I${lastPlusExcelRow})`),
+      9: c(Math.round(sumHsNormEq * 100) / 100, 'number', `=SUM(J6:J${lastPlusExcelRow})`),
+      10: c(Math.round(sumIncidCol * 100) / 100, 'currency', `=SUM(K6:K${lastPlusExcelRow})`),
+    });
     setRowCells(s3, 2, { 0: c('Total unidades operadas:', 'highlight_label'), 1: c(veh.total_controlados ?? 3120, 'number') });
     setRowCells(s3, 4, {
       0: c('PUESTO', 'header'),
@@ -216,22 +255,25 @@ export function buildProformaWorkbook(
       6: c('0.5', 'header'),
       7: c('1.0', 'header'),
       8: c('PLUS ($)', 'header'),
-      9: c('INCID HE ($)', 'header'),
-      11: c(clientName, 'header'),
-      12: c('IMPORTE ($)', 'header'),
+      9: c('HS.NORM.', 'header'),
+      10: c('INCID HE ($)', 'header'),
+      12: c(clientName, 'header'),
+      13: c('IMPORTE ($)', 'header'),
     });
-    setRowCells(s3, 5, { 11: c('Plus Base Operativo', 'label'), 12: c(plusBase, 'currency') });
-    setRowCells(s3, 6, { 11: c('Incidencia plus Rem en Hs. Extras', 'label'), 12: c(incidHe, 'currency') });
-    setRowCells(s3, 7, { 11: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 12: c(netoPlus, 'highlight_currency') });
-    setRowCells(s3, 8, { 11: c(`Coeficiente costos: ${coef}`, 'label'), 12: c(coefMonto, 'currency') });
-    setRowCells(s3, 9, { 11: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 12: c(totalPlusFacturar, 'total_currency') });
+    setRowCells(s3, 5, { 12: c('Plus Base Operativo', 'label'), 13: c(plusBase, 'currency') });
+    setRowCells(s3, 6, { 12: c('Incidencia plus Rem en Hs. Extras', 'label'), 13: c(incidHe, 'currency') });
+    setRowCells(s3, 7, { 12: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 13: c(netoPlus, 'highlight_currency', '=N6+N7') });
+    setRowCells(s3, 8, { 12: c(`Coeficiente costos: ${coef}`, 'label'), 13: c(coefMonto, 'currency', `=N8*${coef}`) });
+    setRowCells(s3, 9, { 12: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 13: c(totalPlusFacturar, 'total_currency', '=N8+N9') });
 
-    shiftRows.forEach((sr, idx) => {
-      const pAmt = Number(sr.plus || 143503.04);
-      const eqHs = Number(sr.ot50 || 0) * 1.5 + Number(sr.ot100 || 0) * 2;
-      const incAmt = Math.round((pAmt / 192) * eqHs * 100) / 100;
+    plusRows.forEach((sr, idx) => {
+      const excelRowNum = 6 + idx;
+      const pAmt = Number(sr.plus || 0);
+      const unitP = Number(sr.unitPlus || 143503.03);
+      const eqHs = Number(sr.hsNormEq ?? (Number(sr.ot50 || 0) * 1.5 + Number(sr.ot100 || 0) * 2));
+      const incAmt = Number(sr.incidHe ?? Math.round((unitP / 192) * eqHs * 100) / 100);
       setRowCells(s3, 5 + idx, {
-        0: c(sr.puesto || 'RAMPA', 'label'),
+        0: c(sr.puesto || 'RAMPA', sr.puesto === 'ENCARGADO' ? 'highlight_label' : 'label'),
         1: c(sr.apellido || '', 'label'),
         2: c(sr.fecha || '', 'center'),
         3: c(sr.desdeHasta || '', 'center'),
@@ -240,14 +282,40 @@ export function buildProformaWorkbook(
         6: c(Number(sr.ot50 || 0), 'number'),
         7: c(Number(sr.ot100 || 0), 'number'),
         8: c(pAmt, 'currency'),
-        9: c(incAmt, 'currency'),
+        9: c(eqHs, 'number', `=G${excelRowNum}*1.5+H${excelRowNum}*2`),
+        10: c(incAmt, 'currency'),
       });
     });
 
-    // Sheet 4: HS COMPENSACION
+    // Sheet 4: HS COMPENSACION + DETALLE DE PERSONAL Y HORAS A LA DERECHA
     const s4: (ExcelCell | null)[][] = [];
-    setRowCells(s4, 0, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
-    setRowCells(s4, 1, { 0: c('SERVICIO', 'label'), 1: c(`${vesselName} - HORAS EXTRAS COMPENSACION`, 'header') });
+    const compSumHs = compRows.reduce((a, r) => a + Number(r.horas || 0), 0);
+    const compSumNorm = compRows.reduce((a, r) => a + Number(r.normales || 0), 0);
+    const compSum50 = compRows.reduce((a, r) => a + Number(r.ot50 || 0), 0);
+    const compSum100 = compRows.reduce((a, r) => a + Number(r.ot100 || 0), 0);
+    const lastCompExcelRow = 2 + compRows.length;
+
+    setRowCells(s4, 0, {
+      0: c('FECHAS', 'label'),
+      1: c(operationDates, 'subheader'),
+      8: c(compSumHs, 'number', `=SUM(I3:I${lastCompExcelRow})`),
+      9: c(compSumNorm, 'number', `=SUM(J3:J${lastCompExcelRow})`),
+      10: c(compSum50, 'number', `=SUM(K3:K${lastCompExcelRow})`),
+      11: c(compSum100, 'number', `=SUM(L3:L${lastCompExcelRow})`),
+    });
+    setRowCells(s4, 1, {
+      0: c('SERVICIO', 'label'),
+      1: c(`${vesselName} - HORAS EXTRAS COMPENSACION`, 'header'),
+      3: c('(*)', 'header'),
+      4: c('PUESTO / CATEGORÍA', 'header'),
+      5: c('APELLIDO', 'header'),
+      6: c('FECHA', 'header'),
+      7: c('DESDE-HASTA', 'header'),
+      8: c('HS', 'header'),
+      9: c('NORM', 'header'),
+      10: c('0.5', 'header'),
+      11: c('1.0', 'header'),
+    });
     let r4 = 3;
     for (const conc of tab3.conceptos || []) {
       setRowCells(s4, r4, { 0: c(`${conc.concepto} (${conc.tarifa})`, 'label'), 1: c(Number(conc.importe || 0), 'currency') });
@@ -259,10 +327,56 @@ export function buildProformaWorkbook(
     setRowCells(s4, r4 + 4, { 0: c('IVA (21%)', 'label'), 1: c(Number(tab3.totales?.iva || subComp * 0.21), 'currency') });
     setRowCells(s4, r4 + 5, { 0: c('TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tab3.totales?.total_factura_bonificada || subComp * 1.21), 'total_currency') });
 
-    // Sheet 5: ENCARGADO A BORDO
+    // Populate right-side detail of who and what hours correspond in Sheet 4
+    compRows.forEach((cr, idx) => {
+      const targetRow = 2 + idx;
+      setRowCells(s4, targetRow, {
+        3: c(cr.notaMark || '(*)', 'center'),
+        4: c(cr.puesto || cr.categoria || 'RAMPA', cr.categoria === 'ENCARGADO' ? 'highlight_label' : 'label'),
+        5: c(cr.apellido || '', 'label'),
+        6: c(cr.fecha || '', 'center'),
+        7: c(cr.desdeHasta || '', 'center'),
+        8: c(Number(cr.horas || 0), 'number'),
+        9: c(Number(cr.normales || 0), 'number'),
+        10: c(Number(cr.ot50 || 0), 'number'),
+        11: c(Number(cr.ot100 || 0), 'number'),
+      });
+    });
+
+    const noteCompRow = Math.max(r4 + 7, 2 + compRows.length + 1);
+    setRowCells(s4, noteCompRow, {
+      3: c('(*)', 'note'),
+      4: c('NOTA: ACUERDO CON CAT PARA RECONOCER HORAS DE TRABAJO CORRIDO.', 'note'),
+    });
+
+    // Sheet 5: ENCARGADO A BORDO + DETALLE DE TURNOS Y CUADRO DE PLUS A LA DERECHA
     const s5: (ExcelCell | null)[][] = [];
-    setRowCells(s5, 0, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
-    setRowCells(s5, 1, { 0: c('SERVICIO', 'label'), 1: c(`${vesselName} - ENCARGADO A BORDO`, 'header') });
+    const encSumHs = encRows.reduce((a, r) => a + Number(r.horas || 0), 0);
+    const encSumNorm = encRows.reduce((a, r) => a + Number(r.normales || 0), 0);
+    const encSum50 = encRows.reduce((a, r) => a + Number(r.ot50 || 0), 0);
+    const encSum100 = encRows.reduce((a, r) => a + Number(r.ot100 || 0), 0);
+    const lastEncExcelRow = 2 + encRows.length;
+
+    setRowCells(s5, 0, {
+      0: c('FECHAS', 'label'),
+      1: c(operationDates, 'subheader'),
+      7: c(encSumHs, 'number', `=SUM(H3:H${lastEncExcelRow})`),
+      8: c(encSumNorm, 'number', `=SUM(I3:I${lastEncExcelRow})`),
+      9: c(encSum50, 'number', `=SUM(J3:J${lastEncExcelRow})`),
+      10: c(encSum100, 'number', `=SUM(K3:K${lastEncExcelRow})`),
+    });
+    setRowCells(s5, 1, {
+      0: c('SERVICIO', 'label'),
+      1: c(`${vesselName} - ENCARGADO A BORDO`, 'header'),
+      3: c('TURNO', 'header'),
+      4: c('ENCARGADO', 'header'),
+      5: c('FECHA', 'header'),
+      6: c('DESDE-HASTA', 'header'),
+      7: c('HS', 'header'),
+      8: c('NORM', 'header'),
+      9: c('0.5', 'header'),
+      10: c('1.0', 'header'),
+    });
     let r5 = 3;
     for (const conc of tab2.conceptos || []) {
       setRowCells(s5, r5, { 0: c(`${conc.concepto} (${conc.tarifa})`, 'label'), 1: c(Number(conc.importe || 0), 'currency') });
@@ -276,6 +390,74 @@ export function buildProformaWorkbook(
     setRowCells(s5, r5 + 6, { 0: c('IVA (21%)', 'label'), 1: c(Number(tab2.totales?.iva || subEnc * 0.21), 'currency') });
     setRowCells(s5, r5 + 7, { 0: c('TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tab2.totales?.total_factura_bonificada || subEnc * 1.21), 'total_currency') });
 
+    // Populate right-side top: Turnos de Encargado a Bordo
+    encRows.forEach((er, idx) => {
+      const targetRow = 2 + idx;
+      setRowCells(s5, targetRow, {
+        3: c(er.turno ?? idx + 1, 'center'),
+        4: c(er.encargado || '', 'highlight_label'),
+        5: c(er.fecha || '', 'center'),
+        6: c(er.desdeHasta || '', 'center'),
+        7: c(Number(er.horas || 0), 'number'),
+        8: c(Number(er.normales || 0), 'number'),
+        9: c(Number(er.ot50 || 0), 'number'),
+        10: c(Number(er.ot100 || 0), 'number'),
+      });
+    });
+
+    // Populate right-side bottom: Cuadro de Plus de Encargados
+    const cp = tab2.cuadro_plus || {};
+    const cantEnc = Number(cp.cantidad_encargados ?? 2);
+    const plusUnitEnc = Number(cp.plus_unitario ?? 143503.03);
+    const totalPlusBaseEnc = Number(cp.total_plus_base ?? Math.round(cantEnc * plusUnitEnc * 100) / 100);
+    const hsNormEqEnc = Number(cp.horas_norm_eq ?? (encSum50 * 1.5 + encSum100 * 2 || 84));
+    const incidHeEnc = Number(cp.incidencia_he ?? (Math.round((plusUnitEnc / 192) * hsNormEqEnc * 100) / 100 || 125565.15));
+    const netoPlusEnc = Number(cp.neto_plus ?? Math.round((totalPlusBaseEnc + incidHeEnc) * 100) / 100);
+    const coefEnc = Number(cp.coeficiente ?? 0.52);
+    const coefMontoEnc = Number(cp.coeficiente_monto ?? Math.round(netoPlusEnc * coefEnc * 100) / 100);
+    const totalPlusFactEnc = Number(cp.total_facturar_plus ?? Number(tab2.totales?.plus || Math.round((netoPlusEnc + coefMontoEnc) * 100) / 100));
+
+    const plusBoxStartRow = Math.max(8, 2 + encRows.length + 2);
+    setRowCells(s5, plusBoxStartRow, {
+      4: c('ENCARGADOS', 'header'),
+      5: c('PLUS ($)', 'header'),
+      6: c('TOTAL PLUS ($)', 'header'),
+      7: c('HORAS NORM', 'header'),
+      8: c('INCID HE ($)', 'header'),
+    });
+    setRowCells(s5, plusBoxStartRow + 1, {
+      4: c(cantEnc, 'center'),
+      5: c(plusUnitEnc, 'currency'),
+      6: c(totalPlusBaseEnc, 'currency'),
+      7: c(hsNormEqEnc, 'number'),
+      8: c(incidHeEnc, 'currency'),
+    });
+
+    setRowCells(s5, plusBoxStartRow + 3, {
+      4: c(clientName, 'header'),
+      6: c('IMPORTE ($)', 'header'),
+    });
+    setRowCells(s5, plusBoxStartRow + 4, {
+      4: c('Plus', 'label'),
+      6: c(totalPlusBaseEnc, 'currency'),
+    });
+    setRowCells(s5, plusBoxStartRow + 5, {
+      4: c('Incidencia plus Rem en Hs. Extras', 'label'),
+      6: c(incidHeEnc, 'currency'),
+    });
+    setRowCells(s5, plusBoxStartRow + 6, {
+      4: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'),
+      6: c(netoPlusEnc, 'highlight_currency'),
+    });
+    setRowCells(s5, plusBoxStartRow + 7, {
+      4: c(`Coeficiente costos: ${coefEnc}`, 'label'),
+      6: c(coefMontoEnc, 'currency'),
+    });
+    setRowCells(s5, plusBoxStartRow + 8, {
+      4: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'),
+      6: c(totalPlusFactEnc, 'total_currency'),
+    });
+
     const shortVessel = vesselName.slice(0, 14);
     const safeDates = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
     return {
@@ -284,10 +466,10 @@ export function buildProformaWorkbook(
       proformaType,
       sheets: [
         { name: `FACTURA ${shortVessel}`, colWidths: [320, 160], rows: s1 },
-        { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 30, 110, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
-        { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 110, 30, 260, 140], rows: s3 },
-        { name: 'HS COMPENSACION', colWidths: [300, 150], rows: s4 },
-        { name: 'ENCARGADO A BORDO', colWidths: [300, 150], rows: s5 },
+        { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 25, 55, 45, 100, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
+        { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 75, 110, 25, 260, 140], rows: s3 },
+        { name: 'HS COMPENSACION', colWidths: [300, 150, 25, 45, 120, 180, 95, 95, 55, 55, 55, 55], rows: s4 },
+        { name: 'ENCARGADO A BORDO', colWidths: [300, 150, 25, 60, 180, 110, 115, 70, 85, 60, 60], rows: s5 },
       ],
     };
   }

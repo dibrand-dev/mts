@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   FileSpreadsheet,
   Download,
   Layers,
+  Check,
 } from 'lucide-react';
 import {
   InvoicingRecord,
   ProformaCalculationResult,
   buildProformaWorkbook,
   downloadProformaExcel,
+  updateProformaInvoiceAndDatesService,
   ExcelCell,
 } from '@/lib/services/invoicing';
 
@@ -20,6 +22,7 @@ interface Props {
   onClose: () => void;
   source: InvoicingRecord | ProformaCalculationResult | null;
   meta?: { issueDate?: string; dueDate?: string; invoiceNumber?: string };
+  onSavedMeta?: () => void;
 }
 
 function getColumnLetter(idx: number): string {
@@ -74,12 +77,73 @@ function getCellClass(cell: ExcelCell | null): string {
   }
 }
 
-export function ExcelWorkbookPreviewModal({ isOpen, onClose, source, meta }: Props) {
+export function ExcelWorkbookPreviewModal({ isOpen, onClose, source, meta, onSavedMeta }: Props) {
   const [activeSheetIdx, setActiveSheetIdx] = useState(0);
+  const [liveInvoiceNumber, setLiveInvoiceNumber] = useState('');
+  const [liveIssueDate, setLiveIssueDate] = useState('');
+  const [liveDueDate, setLiveDueDate] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+
+  const isRecord = Boolean(source && 'proforma_number' in source);
+
+  useEffect(() => {
+    if (isOpen && source) {
+      const rec = 'proforma_number' in source ? source : null;
+      const calcSource = !rec ? (source as ProformaCalculationResult) : null;
+      const payload = (rec ? rec.calculation_payload : calcSource?.payload) || {};
+      const initInv =
+        meta?.invoiceNumber ||
+        rec?.invoice?.invoice_number ||
+        payload.invoice_number ||
+        '';
+      const initIssue =
+        meta?.issueDate ||
+        rec?.invoice?.invoice_date ||
+        rec?.issue_date ||
+        payload.issue_date ||
+        new Date().toISOString().split('T')[0];
+      const initDue =
+        meta?.dueDate ||
+        rec?.due_date ||
+        payload.due_date ||
+        initIssue;
+
+      setLiveInvoiceNumber(initInv);
+      setLiveIssueDate(initIssue);
+      setLiveDueDate(initDue);
+      setSavedNotice(false);
+    }
+  }, [isOpen, source, meta?.invoiceNumber, meta?.issueDate, meta?.dueDate]);
 
   if (!isOpen || !source) return null;
 
-  const workbook = buildProformaWorkbook(source, meta);
+  const effectiveMeta = {
+    invoiceNumber: liveInvoiceNumber.trim() || meta?.invoiceNumber,
+    issueDate: liveIssueDate || meta?.issueDate,
+    dueDate: liveDueDate || meta?.dueDate,
+  };
+
+  const handleSaveMetaToDb = async () => {
+    if (!('proforma_number' in source)) return;
+    try {
+      setSavingMeta(true);
+      await updateProformaInvoiceAndDatesService(source.id, {
+        invoiceNumber: liveInvoiceNumber.trim() || undefined,
+        issueDate: liveIssueDate,
+        dueDate: liveDueDate,
+      });
+      setSavedNotice(true);
+      onSavedMeta?.();
+      setTimeout(() => setSavedNotice(false), 3000);
+    } catch (err: any) {
+      alert(`Error al guardar factura y fechas: ${err.message}`);
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const workbook = buildProformaWorkbook(source, effectiveMeta);
   const currentSheet = workbook.sheets[activeSheetIdx] || workbook.sheets[0];
   const maxCols = Math.max(
     currentSheet.colWidths.length,
@@ -112,7 +176,7 @@ export function ExcelWorkbookPreviewModal({ isOpen, onClose, source, meta }: Pro
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => downloadProformaExcel(source, meta)}
+              onClick={() => downloadProformaExcel(source, effectiveMeta)}
               data-testid="excel-modal-btn-download"
               className="bg-white text-[#107C41] hover:bg-emerald-50 font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer"
             >
@@ -130,19 +194,60 @@ export function ExcelWorkbookPreviewModal({ isOpen, onClose, source, meta }: Pro
           </div>
         </div>
 
-        {/* Formula / Info Bar */}
-        <div className="bg-slate-100 border-b border-slate-300 px-4 py-1.5 flex items-center justify-between text-xs text-slate-600 shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="font-mono font-bold bg-white border border-slate-300 px-2 py-0.5 rounded text-slate-700">
+        {/* Formula / Info & Editable Invoice Meta Bar */}
+        <div className="bg-slate-100 border-b border-slate-300 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-700 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold bg-white border border-slate-300 px-2 py-1 rounded text-slate-800">
               Hoja {activeSheetIdx + 1} de {workbook.sheets.length}: {currentSheet.name}
             </span>
-            <span>
-              Estructura idéntica a la plantilla Excel enviada a clientes (Liquidación a la izquierda + Grilla de turnos a la derecha).
-            </span>
           </div>
-          <span className="font-semibold text-[#107C41] hidden md:inline">
-            Podés cambiar de pestaña abajo o descargar el archivo .xls completo
-          </span>
+
+          {/* Controles rápidos para Nro de Factura, Fecha de Factura y Vencimiento (Punto 1 Observaciones) */}
+          <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
+            <span className="text-[11px] font-extrabold text-[#0F2547] uppercase">
+              Datos Hoja Factura:
+            </span>
+            <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+              <span>Nro. Factura:</span>
+              <input
+                type="text"
+                placeholder="Ej: 1-538"
+                value={liveInvoiceNumber}
+                onChange={(e) => setLiveInvoiceNumber(e.target.value)}
+                className="w-28 px-2 py-1 border border-slate-300 rounded font-mono font-bold text-xs text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+              <span>Fecha Factura:</span>
+              <input
+                type="date"
+                value={liveIssueDate}
+                onChange={(e) => setLiveIssueDate(e.target.value)}
+                className="px-2 py-1 border border-slate-300 rounded font-mono font-bold text-xs text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+              <span>Vencimiento:</span>
+              <input
+                type="date"
+                value={liveDueDate}
+                onChange={(e) => setLiveDueDate(e.target.value)}
+                className="px-2 py-1 border border-slate-300 rounded font-mono font-bold text-xs text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+              />
+            </label>
+            {isRecord && (
+              <button
+                type="button"
+                disabled={savingMeta}
+                onClick={handleSaveMetaToDb}
+                className="px-2.5 py-1 bg-[#1E5BB4] hover:bg-[#004392] text-white rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                title="Guardar Nro. de Factura y Fechas en la proforma"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>{savingMeta ? 'Guardando...' : savedNotice ? '¡Guardado!' : 'Guardar en Proforma'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Main Spreadsheet Grid */}
@@ -215,7 +320,7 @@ export function ExcelWorkbookPreviewModal({ isOpen, onClose, source, meta }: Pro
 
           <button
             type="button"
-            onClick={() => downloadProformaExcel(source, meta)}
+            onClick={() => downloadProformaExcel(source, effectiveMeta)}
             className="bg-[#107C41] hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
             <Download className="h-3.5 w-3.5" />

@@ -185,7 +185,32 @@ export async function getDailyWorkLogs(filters?: {
     throw new Error(error.message);
   }
 
-  return (data || []) as DailyWorkLogWithEntries[];
+  let localMetaMap: Record<string, { operational_role?: string; is_compensation_shift?: boolean }> = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      if (raw) localMetaMap = JSON.parse(raw);
+    } catch {
+      // ignore
+    }
+  }
+
+  const hydrated = (data || []).map((log: any) => ({
+    ...log,
+    entries: (log.entries || []).map((e: any) => {
+      const meta = localMetaMap[e.id] || {};
+      return {
+        ...e,
+        operational_role: e.operational_role || meta.operational_role || null,
+        is_compensation_shift:
+          typeof e.is_compensation_shift === 'boolean'
+            ? e.is_compensation_shift
+            : Boolean(meta.is_compensation_shift),
+      };
+    }),
+  }));
+
+  return hydrated as DailyWorkLogWithEntries[];
 }
 
 export async function getOrCreateDailyWorkLog(
@@ -387,13 +412,15 @@ export async function addStaffEntryToWorkLog(
     }
   }
 
-  const { data, error } = await supabase
+  const payloadToInsert: Record<string, any> = {
+    ...entry,
+    bonus_applied_amount: bonusToApply,
+    daily_work_log_id: dailyWorkLogId,
+  };
+
+  let { data, error } = await supabase
     .from('daily_staff_entries')
-    .insert({
-      ...entry,
-      bonus_applied_amount: bonusToApply,
-      daily_work_log_id: dailyWorkLogId,
-    })
+    .insert(payloadToInsert)
     .select(`
       *,
       employee:employees(id, full_name, national_id, file_number),
@@ -401,9 +428,39 @@ export async function addStaffEntryToWorkLog(
     `)
     .single();
 
+  // Fallback if remote schema does not yet have operational_role or is_compensation_shift
+  if (error && (error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
+    const { operational_role, is_compensation_shift, ...safePayload } = payloadToInsert;
+    const retry = await supabase
+      .from('daily_staff_entries')
+      .insert(safePayload)
+      .select(`
+        *,
+        employee:employees(id, full_name, national_id, file_number),
+        position:positions(id, name)
+      `)
+      .single();
+    data = retry.data ? { ...retry.data, operational_role, is_compensation_shift } : null;
+    error = retry.error;
+  }
+
   if (error) {
     console.error('Error adding staff entry:', error);
     throw new Error(error.message);
+  }
+
+  if (typeof window !== 'undefined' && data?.id) {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      const map = raw ? JSON.parse(raw) : {};
+      map[data.id] = {
+        operational_role: entry.operational_role || data.operational_role || null,
+        is_compensation_shift: Boolean(entry.is_compensation_shift ?? data.is_compensation_shift),
+      };
+      window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
+    } catch {
+      // ignore
+    }
   }
 
   return data as DailyStaffEntryRow;
@@ -427,7 +484,7 @@ export async function updateStaffEntry(
   entry: Partial<DailyStaffEntryInsert>
 ): Promise<DailyStaffEntryRow> {
   const supabase = createClient() as any;
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('daily_staff_entries')
     .update(entry)
     .eq('id', entryId)
@@ -438,9 +495,39 @@ export async function updateStaffEntry(
     `)
     .single();
 
+  if (error && (error.message?.includes('operational_role') || error.message?.includes('is_compensation_shift') || error.code === 'PGRST204')) {
+    const { operational_role, is_compensation_shift, ...safeEntry } = entry as Record<string, any>;
+    const retry = await supabase
+      .from('daily_staff_entries')
+      .update(safeEntry)
+      .eq('id', entryId)
+      .select(`
+        *,
+        employee:employees(id, full_name, national_id, file_number),
+        position:positions(id, name)
+      `)
+      .single();
+    data = retry.data ? { ...retry.data, operational_role, is_compensation_shift } : null;
+    error = retry.error;
+  }
+
   if (error) {
     console.error('Error updating staff entry:', error);
     throw new Error(error.message);
+  }
+
+  if (typeof window !== 'undefined' && data?.id) {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      const map = raw ? JSON.parse(raw) : {};
+      map[data.id] = {
+        operational_role: entry.operational_role ?? data.operational_role ?? map[data.id]?.operational_role ?? null,
+        is_compensation_shift: Boolean(entry.is_compensation_shift ?? data.is_compensation_shift ?? map[data.id]?.is_compensation_shift),
+      };
+      window.localStorage.setItem('mts_staff_entry_operational_meta', JSON.stringify(map));
+    } catch {
+      // ignore
+    }
   }
 
   return data as DailyStaffEntryRow;
@@ -565,6 +652,8 @@ export interface ClientShiftRecordForBilling {
   file_number: string | null;
   position_id: string;
   position_name: string;
+  operational_role?: string | null;
+  is_compensation_shift?: boolean;
   shift_start_date: string;
   shift_start_time: string;
   shift_end_date: string;
@@ -620,23 +709,7 @@ export async function getStaffEntriesForClientAndPeriod(
       client:clients(id, company_name),
       location:locations(id, name, code),
       entries:daily_staff_entries(
-        id,
-        employee_id,
-        position_id,
-        shift_start_date,
-        shift_start_time,
-        shift_end_date,
-        shift_end_time,
-        regular_hours,
-        overtime_50_hours,
-        overtime_100_hours,
-        plus_delta_amount,
-        shuttles_count,
-        meal_allowance_count,
-        bonus_applied_amount,
-        is_approved,
-        approved_at,
-        approved_by,
+        *,
         employee:employees(id, full_name, national_id, file_number),
         position:positions(id, name)
       )
@@ -649,6 +722,16 @@ export async function getStaffEntriesForClientAndPeriod(
   if (error) {
     console.error('Error fetching client staff entries for billing:', error);
     throw new Error(error.message);
+  }
+
+  let localMetaMap: Record<string, { operational_role?: string; is_compensation_shift?: boolean }> = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem('mts_staff_entry_operational_meta');
+      if (raw) localMetaMap = JSON.parse(raw);
+    } catch {
+      // ignore storage errors
+    }
   }
 
   const records: ClientShiftRecordForBilling[] = [];
@@ -688,6 +771,7 @@ export async function getStaffEntriesForClientAndPeriod(
       const reg = Number(entry.regular_hours || 0);
       const ot50 = Number(entry.overtime_50_hours || 0);
       const ot100 = Number(entry.overtime_100_hours || 0);
+      const localMeta = localMetaMap[entry.id] || {};
 
       records.push({
         id: entry.id,
@@ -704,6 +788,11 @@ export async function getStaffEntriesForClientAndPeriod(
         file_number: entry.employee?.file_number || null,
         position_id: entry.position_id,
         position_name: entry.position?.name || 'Puesto',
+        operational_role: entry.operational_role || localMeta.operational_role || null,
+        is_compensation_shift:
+          typeof entry.is_compensation_shift === 'boolean'
+            ? entry.is_compensation_shift
+            : Boolean(localMeta.is_compensation_shift),
         shift_start_date: entry.shift_start_date || log.work_date,
         shift_start_time: entry.shift_start_time,
         shift_end_date: entry.shift_end_date || log.work_date,

@@ -19,6 +19,7 @@ import { ClientRow } from '@/lib/services/clients';
 import {
   calculateProforma,
   createProformaService,
+  createTaxInvoiceService,
   getAllStrategies,
   getDefaultStrategyForClient,
   ProformaCalculationResult,
@@ -59,8 +60,19 @@ export function CreateProformaSlideover({
   const [depositSector, setDepositSector] = useState<'both' | 'nacional' | 'fiscal' | 'arroz'>('both');
   const [coparticipationFactor, setCoparticipationFactor] = useState('10');
   const [conceptType, setConceptType] = useState<'general_hours' | 'shuttles' | 'export_tallymen'>('general_hours');
-  const [dueDays, setDueDays] = useState('15');
+  const [dueDays, setDueDays] = useState('30');
   const [customIssueDate, setCustomIssueDate] = useState('');
+  const [customDueDate, setCustomDueDate] = useState('');
+  const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
+
+  const effectiveIssueDate = customIssueDate || calcToDate || new Date().toISOString().split('T')[0];
+  const effectiveDueDate = (() => {
+    if (customDueDate) return customDueDate;
+    const base = new Date(`${effectiveIssueDate}T12:00:00`);
+    const days = parseInt(dueDays || '30', 10) || 0;
+    const d = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  })();
 
   // Full-Screen Excel Modal & Catalog Modal
   const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
@@ -203,10 +215,9 @@ export function CreateProformaSlideover({
     setIsSubmitting(true);
     try {
       const proformaNumber = `PF-${Date.now().toString().slice(-6)}`;
-      const issueDateStr = customIssueDate || calcToDate || new Date().toISOString().split('T')[0];
-      const issueDateObj = new Date(issueDateStr + 'T12:00:00');
-      const dueDateObj = new Date(issueDateObj.getTime() + parseInt(dueDays || '15') * 24 * 60 * 60 * 1000);
-      const dueDateStr = dueDateObj.toISOString().split('T')[0];
+      const issueDateStr = effectiveIssueDate;
+      const dueDateStr = effectiveDueDate;
+      const cleanInvNumber = customInvoiceNumber.trim();
 
       const detailsToInsert = calculationResult.items.map((item) => ({
         description: item.description,
@@ -214,14 +225,21 @@ export function CreateProformaSlideover({
         unit_price: item.unit_price,
       }));
 
-      await createProformaService(
+      const payloadWithInvoiceMeta = {
+        ...(calculationResult.payload || {}),
+        issue_date: issueDateStr,
+        due_date: dueDateStr,
+        ...(cleanInvNumber ? { invoice_number: cleanInvNumber } : {}),
+      };
+
+      const createdProforma = await createProformaService(
         {
           proforma_number: proformaNumber,
           proforma_type: selectedType,
           client_id: selectedClientId,
           fortnight_period: fortnightPeriod,
           concept_type: conceptType,
-          status: 'draft',
+          status: cleanInvNumber ? 'invoiced' : 'draft',
           subtotal: calculationResult.subtotal,
           total: calculationResult.total,
           issue_date: issueDateStr,
@@ -235,11 +253,26 @@ export function CreateProformaSlideover({
           subtotal_compensacion: calculationResult.subtotal_compensacion || 0,
           total_neto: calculationResult.total_neto,
           tax_amount: calculationResult.tax_amount,
-          calculation_payload: calculationResult.payload,
+          calculation_payload: payloadWithInvoiceMeta,
           notes: calculationResult.notes,
         },
         detailsToInsert
       );
+
+      if (cleanInvNumber && createdProforma?.id) {
+        try {
+          await createTaxInvoiceService({
+            proforma_id: createdProforma.id,
+            invoice_number: cleanInvNumber,
+            invoice_date: issueDateStr,
+            invoiced_amount: calculationResult.total,
+            status: 'pending',
+            pdf_storage_path: '',
+          });
+        } catch (invErr) {
+          console.warn('Could not auto-create tax_invoices row:', invErr);
+        }
+      }
 
       onProformaCreated();
       onClose();
@@ -572,26 +605,56 @@ export function CreateProformaSlideover({
                 </div>
               </div>
 
-              {/* Fechas de Emisión y Vencimiento */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Nro. de Factura, Fecha de Factura y Fecha de Vencimiento */}
+              <div className="space-y-3 pt-2 border-t border-white/20">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Factura</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-white">
+                    Nro. de Factura (Opcional — se imprime en Hoja 1 FACTURA)
+                  </label>
                   <input
-                    type="date"
-                    value={customIssueDate || calcToDate}
-                    onChange={(e) => setCustomIssueDate(e.target.value)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
+                    type="text"
+                    placeholder="Ej: 1-538 o 0001-00000538 (puede definirse ahora o luego)"
+                    value={customInvoiceNumber}
+                    onChange={(e) => setCustomInvoiceNumber(e.target.value)}
+                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] font-mono font-bold focus:outline-none focus:border-[#1E5BB4]"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-white">Días Vto. ({dueDays}d)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={dueDays}
-                    onChange={(e) => setDueDays(e.target.value)}
-                    className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:border-[#1E5BB4]"
-                  />
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Factura</label>
+                    <input
+                      type="date"
+                      value={effectiveIssueDate}
+                      onChange={(e) => {
+                        setCustomIssueDate(e.target.value);
+                        setCustomDueDate('');
+                      }}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-xs text-[#0B1C30] font-mono font-bold focus:outline-none focus:border-[#1E5BB4]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-white">Días Vto. ({dueDays}d)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={dueDays}
+                      onChange={(e) => {
+                        setDueDays(e.target.value);
+                        setCustomDueDate('');
+                      }}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-xs text-[#0B1C30] font-mono font-bold focus:outline-none focus:border-[#1E5BB4]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-white">Fecha Vencimiento</label>
+                    <input
+                      type="date"
+                      value={effectiveDueDate}
+                      onChange={(e) => setCustomDueDate(e.target.value)}
+                      className="w-full p-2.5 bg-white border-2 border-[#0F2547] rounded-lg text-xs text-[#0B1C30] font-mono font-bold focus:outline-none focus:border-[#1E5BB4]"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -762,7 +825,13 @@ export function CreateProformaSlideover({
                     <button
                       type="button"
                       data-testid="invoicing-btn-download-excel-preview"
-                      onClick={() => downloadProformaExcel(calculationResult)}
+                      onClick={() =>
+                        downloadProformaExcel(calculationResult, {
+                          issueDate: effectiveIssueDate,
+                          dueDate: effectiveDueDate,
+                          invoiceNumber: customInvoiceNumber.trim() || undefined,
+                        })
+                      }
                       className="w-full py-2.5 px-3 bg-[#107C41] hover:bg-emerald-800 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
                     >
                       <Download className="h-4 w-4 shrink-0" />
@@ -800,6 +869,11 @@ export function CreateProformaSlideover({
         isOpen={isExcelPreviewOpen}
         onClose={() => setIsExcelPreviewOpen(false)}
         source={calculationResult}
+        meta={{
+          issueDate: effectiveIssueDate,
+          dueDate: effectiveDueDate,
+          invoiceNumber: customInvoiceNumber.trim() || undefined,
+        }}
       />
 
       {/* Modal de Administración de Tipos de Proforma, Buques y Depósitos */}

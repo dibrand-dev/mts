@@ -83,6 +83,8 @@ interface FlatDailyStaffEntry {
   employee_national_id: string | null;
   position_id: string;
   position_name: string;
+  operational_role: string | null;
+  is_compensation_shift: boolean;
   shift_start_date: string;
   shift_start_time: string;
   shift_end_date: string;
@@ -216,6 +218,8 @@ export default function DailyEntryPage() {
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const employeeSearchInputRef = useRef<HTMLInputElement>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string>('');
+  const [operationalRole, setOperationalRole] = useState<string>('RAMPA');
+  const [isCompensationShift, setIsCompensationShift] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<string>('06:00');
   const [endTime, setEndTime] = useState<string>('14:00');
   const [isOvernight, setIsOvernight] = useState<boolean>(false);
@@ -374,6 +378,10 @@ export default function DailyEntryPage() {
           employee_national_id: entry.employee?.national_id || null,
           position_id: entry.position_id,
           position_name: entry.position?.name || 'Puesto',
+          operational_role:
+            (entry as any).operational_role ||
+            (entry.position?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : null),
+          is_compensation_shift: Boolean((entry as any).is_compensation_shift),
           shift_start_date: entry.shift_start_date || log.work_date,
           shift_start_time: entry.shift_start_time,
           shift_end_date: entry.shift_end_date || log.work_date,
@@ -524,7 +532,10 @@ export default function DailyEntryPage() {
     setIsEmployeeDropdownOpen(false);
     if (positions.length > 0 && !selectedPositionId) {
       setSelectedPositionId(positions[0].id);
+      const isEnc = positions[0].name.toLowerCase().includes('encargado');
+      setOperationalRole(isEnc ? 'ENCARGADO' : 'RAMPA');
     }
+    setIsCompensationShift(false);
     setPlusDeltaAmount('0');
     setPlusCatAmount('0');
     setShuttlesCount('0');
@@ -556,6 +567,8 @@ export default function DailyEntryPage() {
     setEmployeeSearchTerm('');
     setIsEmployeeDropdownOpen(false);
     setSelectedPositionId('');
+    setOperationalRole('RAMPA');
+    setIsCompensationShift(false);
     setFormClientId('');
     setFormLocationId('');
     setFormVesselName('');
@@ -649,6 +662,9 @@ export default function DailyEntryPage() {
     }
     setIsEmployeeDropdownOpen(false);
     setSelectedPositionId(entry.position_id);
+    const defaultRole = entry.position_name.toLowerCase().includes('encargado') ? 'ENCARGADO' : 'RAMPA';
+    setOperationalRole(entry.operational_role || defaultRole);
+    setIsCompensationShift(Boolean(entry.is_compensation_shift));
     setStartTime(entry.shift_start_time ? entry.shift_start_time.slice(0, 5) : '06:00');
     setEndTime(entry.shift_end_time ? entry.shift_end_time.slice(0, 5) : '14:00');
     setRegularHours(String(entry.regular_hours || 0));
@@ -721,9 +737,15 @@ export default function DailyEntryPage() {
       const advance = parseFloat(advancePaymentAmount) || 0;
       const francoCount = parseInt(dayOffCount, 10) || (isDayOff ? 1 : 0);
 
+      const cleanOpRole =
+        (operationalRole || '').trim().toUpperCase() ||
+        (selectedPositionObj?.name?.toLowerCase().includes('encargado') ? 'ENCARGADO' : 'RAMPA');
+
       const payload = {
         employee_id: selectedEmployeeId,
         position_id: selectedPositionId,
+        operational_role: cleanOpRole,
+        is_compensation_shift: isCompensationShift,
         shift_start_date: formWorkDate,
         shift_start_time: startTime,
         shift_end_date: formShiftEndDate,
@@ -899,14 +921,37 @@ export default function DailyEntryPage() {
       },
       {
         accessorKey: 'position_name',
-        header: 'Puesto',
-        cell: ({ getValue }) => (
-          <div className="text-slate-600 text-xs font-medium">
-            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
-              {String(getValue())}
-            </span>
-          </div>
-        ),
+        header: 'Categoría / Puesto Proforma',
+        cell: ({ row, getValue }) => {
+          const cat = String(getValue());
+          const opRole = row.original.operational_role;
+          const isComp = row.original.is_compensation_shift;
+          return (
+            <div className="text-slate-600 text-xs font-medium flex flex-col gap-1 items-start">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
+                  {cat}
+                </span>
+                {opRole && opRole.toUpperCase() !== cat.toUpperCase() && (
+                  <span
+                    className="bg-sky-100 text-[#0F2547] px-2 py-0.5 rounded text-[10px] font-extrabold border border-sky-300 uppercase"
+                    title="Puesto operativo impreso en la columna PUESTO de la Proforma (Operativa / Plus)"
+                  >
+                    {opRole}
+                  </span>
+                )}
+              </div>
+              {isComp && (
+                <span
+                  className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-300"
+                  title="Incluido en el detalle de Horas de Compensación (*)"
+                >
+                  (*) Hs. Compensación
+                </span>
+              )}
+            </div>
+          );
+        },
       },
       {
         id: 'shift_time',
@@ -2058,7 +2103,7 @@ export default function DailyEntryPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700 block">Función / Puesto *</label>
+                    <label className="text-xs font-bold text-slate-700 block">Categoría / Función *</label>
                     {isBonusEligible && (
                       <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
                         Aplica escala vehicular CCT
@@ -2068,17 +2113,101 @@ export default function DailyEntryPage() {
                   <select
                     value={selectedPositionId}
                     data-testid="daily-entry-select-position"
-                    onChange={(e) => setSelectedPositionId(e.target.value)}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setSelectedPositionId(nextId);
+                      const posObj = positions.find((p) => p.id === nextId);
+                      if (posObj) {
+                        const isEnc = posObj.name.toLowerCase().includes('encargado');
+                        if (isEnc) {
+                          setOperationalRole('ENCARGADO');
+                        } else if (operationalRole === 'ENCARGADO') {
+                          setOperationalRole('RAMPA');
+                        }
+                      }
+                    }}
                     className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm text-[#0B1C30] focus:outline-none focus:ring-2 focus:ring-[#1E5BB4] focus:border-transparent transition-all shadow-xs font-medium"
                     required
                   >
-                    <option value="">Seleccionar Función...</option>
+                    <option value="">Seleccionar Categoría...</option>
                     {positions.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
                     ))}
                   </select>
+
+                  {/* Selector de Puesto Operativo en Proforma (RAMPA, DAÑOS, RELEVO, ENCARGADO) */}
+                  <div className="pt-2.5 mt-2 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-[#0F2547] block">
+                        Puesto en Proforma (Columna PUESTO: Operativa / Plus)
+                      </label>
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Se retiene al Guardar y Seguir
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {['RAMPA', 'DAÑOS', 'RELEVO', 'ENCARGADO'].map((rolePreset) => {
+                        const isActive = (operationalRole || '').toUpperCase() === rolePreset;
+                        return (
+                          <button
+                            key={rolePreset}
+                            type="button"
+                            onClick={() => {
+                              setOperationalRole(rolePreset);
+                              if (rolePreset === 'ENCARGADO') {
+                                const encPos = positions.find((p) => p.name.toLowerCase().includes('encargado'));
+                                if (encPos) setSelectedPositionId(encPos.id);
+                              } else {
+                                const apPos = positions.find((p) => p.name.toLowerCase().includes('apuntador'));
+                                if (apPos && selectedPositionObj?.name.toLowerCase().includes('encargado')) {
+                                  setSelectedPositionId(apPos.id);
+                                }
+                              }
+                            }}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold border transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-[#0F2547] text-white border-[#0F2547] shadow-xs'
+                                : 'bg-slate-50 hover:bg-sky-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {rolePreset}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      type="text"
+                      value={operationalRole}
+                      onChange={(e) => setOperationalRole(e.target.value.toUpperCase())}
+                      placeholder="Ej: RAMPA, DAÑOS, RELEVO, ENCARGADO..."
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs text-[#0B1C30] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-[#1E5BB4]"
+                    />
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Define qué puesto figura en la columna <strong>PUESTO</strong> de las hojas <strong>OPERATIVA</strong> y <strong>PLUS</strong>. Los <em>Encargados</em> no figuran en la hoja Operativa (sólo en <em>Plus</em> y <em>Encargado a Bordo</em>).
+                    </p>
+                  </div>
+
+                  {/* Checkbox Acuerdo Horas de Compensación / Trabajo Corrido (*) */}
+                  <div className="pt-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer select-none bg-amber-50/70 hover:bg-amber-100/70 p-2.5 rounded-lg border border-amber-200 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={isCompensationShift}
+                        onChange={(e) => setIsCompensationShift(e.target.checked)}
+                        className="h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-0 cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-amber-950 block">
+                          (*) Incluir en Detalle de Horas de Compensación (Trabajo Corrido)
+                        </span>
+                        <span className="text-[11px] text-amber-800">
+                          Marca al operario con (*) y lo incluye en la planilla de detalle de <strong>HS COMPENSACION</strong> del buque.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
 
                   {/* Selector rápido de Apuntador Depósito Fiscal (0,50 remis) vs Depósito Nacional (1,00 remis) */}
                   <div className="pt-1.5 flex flex-col gap-1.5">

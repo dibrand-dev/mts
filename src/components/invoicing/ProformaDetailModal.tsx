@@ -72,8 +72,14 @@ export function ProformaDetailModal({
   };
 
   const proformaType = proforma.proforma_type || 'vessel';
-  const invoiceNumberDisplay = proforma.invoice?.invoice_number || 'A DEFINIR';
-  const invoiceDateDisplay = proforma.invoice?.invoice_date || proforma.issue_date;
+  const invoiceNumberDisplay =
+    proforma.invoice?.invoice_number ||
+    (proforma.calculation_payload as any)?.invoice_number ||
+    'A DEFINIR';
+  const invoiceDateDisplay =
+    proforma.invoice?.invoice_date ||
+    (proforma.calculation_payload as any)?.issue_date ||
+    proforma.issue_date;
   const datesDisplay = proforma.operation_dates || proforma.fortnight_period;
 
   const typeLabels: Record<string, { label: string; icon: string }> = {
@@ -134,16 +140,15 @@ export function ProformaDetailModal({
                 <span>Aprobar Proforma</span>
               </button>
             )}
-            {!proforma.invoice && (
-              <button
-                type="button"
-                onClick={() => onInvoiceClick(proforma)}
-                className="px-3.5 py-2 bg-[#1E5BB4] hover:bg-[#004392] text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                <span>Emitir Factura</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onInvoiceClick(proforma)}
+              className="px-3.5 py-2 bg-[#1E5BB4] hover:bg-[#004392] text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Definir o editar el Nro. de Factura, Fecha de Factura y Fecha de Vencimiento"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>{proforma.invoice ? 'Editar Factura y Fechas' : 'Definir Factura y Fechas'}</span>
+            </button>
             <button
               type="button"
               onClick={handleCopyLink}

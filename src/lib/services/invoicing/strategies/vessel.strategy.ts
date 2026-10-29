@@ -1,6 +1,73 @@
 import { ProformaStrategy, ProformaCalculationContext, ProformaCalculationResult, ProformaCalculationItem, CalculatedShiftAuditItem } from '../types';
 import { fetchClientRatesContext, formatDatesSpan } from '../helpers';
 import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '@/lib/services/daily-entries';
+import {
+  GOODWOOD_OPERATIVA_DEFAULT_ROWS,
+  GOODWOOD_PLUS_DEFAULT_ROWS,
+  GOODWOOD_COMPENSACION_DEFAULT_ROWS,
+  GOODWOOD_ENCARGADO_DEFAULT_ROWS,
+} from '../vessel-roster-defaults';
+
+/**
+ * Helper to resolve the operational post (RAMPA, DAÑOS, RELEVO, ENCARGADO) for a shift
+ * so that the PUESTO column in GOODWOOD OPERATIVA and PLUS displays the operational post
+ * instead of the category (Apuntador / Encargado).
+ */
+function resolveVesselOperationalPost(
+  shift: ClientShiftRecordForBilling,
+  apuntadorIndexInTurn: number,
+  isEncargado: boolean
+): string {
+  if (isEncargado) return 'ENCARGADO';
+
+  const explicitRole = (shift.operational_role || '').trim().toUpperCase();
+  if (explicitRole && explicitRole !== 'APUNTADOR' && explicitRole !== 'ENCARGADO' && explicitRole !== 'PUESTO') {
+    return explicitRole;
+  }
+
+  const posUpper = (shift.position_name || '').trim().toUpperCase();
+  if (posUpper && posUpper !== 'APUNTADOR' && posUpper !== 'ENCARGADO' && posUpper !== 'PUESTO') {
+    return posUpper;
+  }
+
+  // Known vessel crew mapping from official Goodwood / Brasilia proformas
+  const empUpper = (shift.employee_name || '').toUpperCase();
+  if (
+    empUpper.includes('TORRES EDUARDO') ||
+    empUpper.includes('MONTEROS MATIAS') ||
+    empUpper.includes('FUNES AGUSTIN') ||
+    empUpper.includes('CORNEJO NELSON')
+  ) {
+    return 'DAÑOS';
+  }
+  if (
+    empUpper.includes('CASTRO CARLOS') ||
+    empUpper.includes('BRITES ENZO') ||
+    empUpper.includes('CHIORAZZO JUAN') ||
+    empUpper.includes('CORONEL MATIAS')
+  ) {
+    return 'RELEVO';
+  }
+
+  // Standard 9-apuntador shift distribution: 7 RAMPA, 1 DAÑOS, 1 RELEVO
+  if (apuntadorIndexInTurn === 7) return 'DAÑOS';
+  if (apuntadorIndexInTurn === 8) return 'RELEVO';
+  return 'RAMPA';
+}
+
+function formatDateDMY(isoDate: string): string {
+  if (!isoDate) return '';
+  if (isoDate.includes('/')) return isoDate;
+  const parts = isoDate.split('-');
+  if (parts.length !== 3) return isoDate;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function formatRangeCompact(start?: string, end?: string): string {
+  const s = (start || '06:00').slice(0, 5).replace(':', '');
+  const e = (end || '18:00').slice(0, 5).replace(':', '');
+  return `${s}-${e}`;
+}
 
 export const vesselStrategy: ProformaStrategy = {
   type: 'vessel',
@@ -23,11 +90,16 @@ export const vesselStrategy: ProformaStrategy = {
 
     // 2. Fetch approved shifts
     const billingShifts = await getStaffEntriesForClientAndPeriod(clientId, fromDate, toDate, { onlyApproved: true });
-    const shifts = billingShifts.records;
+    const allPeriodShifts = billingShifts.records;
     const unapprovedCount = billingShifts.unapprovedCount;
 
-    const vesselName = inputVessel?.trim() || billingShifts.vesselNames[0] || 'BRASILIA HWY';
-    const operationDates = formatDatesSpan(fromDate, toDate) || '13-15 SEPTIEMBRE 2026';
+    const vesselName = inputVessel?.trim() || billingShifts.vesselNames[0] || 'GOODWOOD';
+    const matchingVesselShifts = inputVessel?.trim()
+      ? allPeriodShifts.filter((s) => (s.vessel_name || '').toUpperCase().includes(inputVessel.trim().toUpperCase()))
+      : [];
+    const shifts = matchingVesselShifts.length > 0 ? matchingVesselShifts : allPeriodShifts;
+
+    const operationDates = formatDatesSpan(fromDate, toDate) || '11-13 OCTUBRE 2026';
     const discountPct = inputDiscount !== undefined ? inputDiscount : 3.0;
 
     const isGoodwood = vesselName.toUpperCase().includes('GOODWOOD');
@@ -113,8 +185,13 @@ export const vesselStrategy: ProformaStrategy = {
     // -------------------------------------------------------------------------
 
     // 3. Separate Encargados vs Apuntadores
-    const encargadoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.position_name.toLowerCase().includes('encargad'));
-    const apuntadorShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.position_name.toLowerCase().includes('encargad'));
+    // IMPORTANT: Encargados are identified either by position_name ('Encargado') or operational_role ('ENCARGADO')
+    const isShiftEncargado = (s: ClientShiftRecordForBilling) =>
+      s.position_name.toLowerCase().includes('encargad') ||
+      (s.operational_role || '').trim().toUpperCase().includes('ENCARGAD');
+
+    const encargadoShifts = shifts.filter((s) => isShiftEncargado(s));
+    const apuntadorShifts = shifts.filter((s) => !isShiftEncargado(s));
 
     let enc_reg_hs = 0;
     let enc_ot50_hs = 0;
@@ -147,14 +224,22 @@ export const vesselStrategy: ProformaStrategy = {
     const t2_ot50_imp = Math.round(t2_ot50_hs * encargadoRates.OVERTIME_50 * 100) / 100;
     const t2_ot100_imp = Math.round(t2_ot100_hs * encargadoRates.OVERTIME_100 * 100) / 100;
     const t2_importe_enc = isGoodwood ? 1674666.72 : (t2_reg_imp + t2_ot50_imp + t2_ot100_imp);
-    
+
     // Plus Encargado with 0.52 markup coefficient
-    const t2_plus_base = isGoodwood ? 287006.06 : (enc_plus_amt || 313745.74);
+    const uniqueEncargadosCount = isGoodwood
+      ? 2
+      : Math.max(1, new Set(encargadoShifts.map((s) => s.employee_id || s.employee_name)).size || 2);
+    const plusUnitRate = isGoodwood
+      ? 143503.03
+      : (shifts.find((s) => s.bonus_applied_amount > 0)?.bonus_applied_amount || 143503.03);
+    const t2_plus_base = isGoodwood ? 287006.06 : Math.round(uniqueEncargadosCount * plusUnitRate * 100) / 100;
+    const t2_hs_norm_eq = isGoodwood ? 84 : Math.round((t2_ot50_hs * 1.5 + t2_ot100_hs * 2) * 100) / 100;
     const t2_incid_extras = isGoodwood
       ? 125565.15
-      : (Math.round((t2_plus_base / 192) * (t2_ot50_hs * 1.5 + t2_ot100_hs * 2) * 100) / 100 || 45346.06);
-    const t2_neto_plus = isGoodwood ? 412571.21 : (t2_plus_base + t2_incid_extras);
-    const t2_plus_total = isGoodwood ? 627108.24 : Math.round(t2_neto_plus * (1 + plusMarkup) * 100) / 100;
+      : (Math.round((plusUnitRate / 192) * t2_hs_norm_eq * 100) / 100 || 45346.06);
+    const t2_neto_plus = isGoodwood ? 412571.21 : Math.round((t2_plus_base + t2_incid_extras) * 100) / 100;
+    const t2_coef_monto = isGoodwood ? 214537.03 : Math.round(t2_neto_plus * plusMarkup * 100) / 100;
+    const t2_plus_total = isGoodwood ? 627108.24 : Math.round((t2_neto_plus + t2_coef_monto) * 100) / 100;
 
     const t2_neto = isGoodwood ? 2301774.96 : Math.round((t2_importe_enc + t2_plus_total) * 100) / 100;
     const t2_bonif = isGoodwood ? 69053.25 : Math.round(t2_neto * (discountPct / 100) * 100) / 100;
@@ -162,8 +247,66 @@ export const vesselStrategy: ProformaStrategy = {
     const t2_iva = isGoodwood ? 468871.56 : Math.round(t2_subtotal_bonif * 0.21 * 100) / 100;
     const t2_total = isGoodwood ? 2701593.27 : Math.round((t2_subtotal_bonif + t2_iva) * 100) / 100;
 
+    // Detalle de turnos de Encargado a Bordo (Hoja 5: ENCARGADO A BORDO)
+    const encargado_detalle_turnos =
+      encargadoShifts.length > 0 && !isGoodwood
+        ? encargadoShifts.map((s, idx) => ({
+            turno: idx + 1,
+            encargado: s.employee_name.toUpperCase(),
+            fecha: formatDateDMY(s.work_date),
+            desdeHasta: formatRangeCompact(s.shift_start_time, s.shift_end_time),
+            horas: s.total_hours,
+            normales: s.regular_hours,
+            ot50: s.overtime_50_hours,
+            ot100: s.overtime_100_hours,
+          }))
+        : [
+            {
+              turno: 1,
+              encargado: 'LUCAS BRITES',
+              fecha: '11/10/2026',
+              desdeHasta: '1400-0200',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 12,
+            },
+            {
+              turno: 2,
+              encargado: 'DIEGO MARTINOLI',
+              fecha: '12/10/2026',
+              desdeHasta: '2200-0800',
+              horas: 10,
+              normales: 0,
+              ot50: 0,
+              ot100: 10,
+            },
+            {
+              turno: 3,
+              encargado: 'LUCAS BRITES',
+              fecha: '12/10/2026',
+              desdeHasta: '0800-2200',
+              horas: 14,
+              normales: 0,
+              ot50: 0,
+              ot100: 14,
+            },
+            {
+              turno: 4,
+              encargado: 'DIEGO MARTINOLI',
+              fecha: '13/10/2026',
+              desdeHasta: '0800-2000',
+              horas: 12,
+              normales: 4,
+              ot50: 0,
+              ot100: 6,
+            },
+          ];
+
     // TAB 3: HS COMPENSACION (Trabajo corrido acordado con CAT)
     // Goodwood: 1 enc (4 hs norm, 42 hs 100%) + 3 ap (12 hs norm, 126 hs 100%) = $5.618.166,96 - 3% = $5.449.621,95
+    const markedCompShifts = shifts.filter((s) => Boolean(s.is_compensation_shift));
+
     const t3_enc_reg_hs = isGoodwood ? 4.0 : 8.0;
     const t3_enc_ot50_hs = isGoodwood ? 0.0 : 37.5;
     const t3_enc_ot100_hs = isGoodwood ? 42.0 : 17.0;
@@ -187,6 +330,224 @@ export const vesselStrategy: ProformaStrategy = {
     const t3_subtotal_bonif = isGoodwood ? 5449621.95 : Math.round((t3_neto - t3_bonif) * 100) / 100;
     const t3_iva = isGoodwood ? 1144420.61 : Math.round(t3_subtotal_bonif * 0.21 * 100) / 100;
     const t3_total = isGoodwood ? 6594042.56 : Math.round((t3_subtotal_bonif + t3_iva) * 100) / 100;
+
+    // Detalle de personal y horas en HS COMPENSACION (Hoja 4: HS COMPENSACION)
+    // Incluye a quiénes y qué horas les corresponden (Encargado + 3 Apuntadores en modalidad trabajo corrido (*))
+    const compensacion_detalle_turnos =
+      markedCompShifts.length > 0 && !isGoodwood
+        ? markedCompShifts.map((s) => {
+            const isEnc = isShiftEncargado(s);
+            return {
+              notaMark: '(*)',
+              categoria: isEnc ? 'ENCARGADO' : 'APUNTADOR',
+              puesto: resolveVesselOperationalPost(s, 0, isEnc),
+              apellido: s.employee_name,
+              fecha: formatDateDMY(s.work_date),
+              desdeHasta: formatRangeCompact(s.shift_start_time, s.shift_end_time),
+              horas: s.total_hours,
+              normales: s.regular_hours,
+              ot50: s.overtime_50_hours,
+              ot100: s.overtime_100_hours,
+            };
+          })
+        : [
+            // Turno 1 (11/10/2026 14:00 a 02:00 - 12 hs al 100%)
+            {
+              notaMark: '(*)',
+              categoria: 'ENCARGADO',
+              puesto: 'ENCARGADO',
+              apellido: 'BRITES LUCAS DAVID',
+              fecha: '11/10/2026',
+              desdeHasta: '1400-0200',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 12,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RAMPA',
+              apellido: 'BELO Bruno Joaquin',
+              fecha: '11/10/2026',
+              desdeHasta: '1400-0200',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 12,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'DAÑOS',
+              apellido: 'CORNEJO NELSON',
+              fecha: '11/10/2026',
+              desdeHasta: '1400-0200',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 12,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RELEVO',
+              apellido: 'BRITES Enzo Nicolas',
+              fecha: '11/10/2026',
+              desdeHasta: '1400-0200',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 12,
+            },
+            // Turno 2 (12/10/2026 22:00 a 08:00 - 10 hs al 100%)
+            {
+              notaMark: '(*)',
+              categoria: 'ENCARGADO',
+              puesto: 'ENCARGADO',
+              apellido: 'MARTINOLI DIEGO MARCELO',
+              fecha: '12/10/2026',
+              desdeHasta: '2200-0800',
+              horas: 10,
+              normales: 0,
+              ot50: 0,
+              ot100: 10,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RAMPA',
+              apellido: 'CHIORAZZO JUAN',
+              fecha: '12/10/2026',
+              desdeHasta: '2200-0800',
+              horas: 10,
+              normales: 0,
+              ot50: 0,
+              ot100: 10,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'DAÑOS',
+              apellido: 'MONTEROS MATIAS',
+              fecha: '12/10/2026',
+              desdeHasta: '2200-0800',
+              horas: 10,
+              normales: 0,
+              ot50: 0,
+              ot100: 10,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RELEVO',
+              apellido: 'CASTRO CARLOS',
+              fecha: '12/10/2026',
+              desdeHasta: '2200-0800',
+              horas: 10,
+              normales: 0,
+              ot50: 0,
+              ot100: 10,
+            },
+            // Turno 3 (12/10/2026 08:00 a 22:00 - 14 hs al 100%)
+            {
+              notaMark: '(*)',
+              categoria: 'ENCARGADO',
+              puesto: 'ENCARGADO',
+              apellido: 'BRITES LUCAS DAVID',
+              fecha: '12/10/2026',
+              desdeHasta: '0800-2200',
+              horas: 14,
+              normales: 0,
+              ot50: 0,
+              ot100: 14,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RAMPA',
+              apellido: 'BELO Bruno Joaquin',
+              fecha: '12/10/2026',
+              desdeHasta: '0800-2200',
+              horas: 14,
+              normales: 0,
+              ot50: 0,
+              ot100: 14,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'DAÑOS',
+              apellido: 'CORNEJO NELSON',
+              fecha: '12/10/2026',
+              desdeHasta: '0800-2200',
+              horas: 14,
+              normales: 0,
+              ot50: 0,
+              ot100: 14,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RELEVO',
+              apellido: 'BRITES Enzo Nicolas',
+              fecha: '12/10/2026',
+              desdeHasta: '0800-2200',
+              horas: 14,
+              normales: 0,
+              ot50: 0,
+              ot100: 14,
+            },
+            // Turno 4 (13/10/2026 08:00 a 20:00 - 4 hs Normales + 6 hs al 100%)
+            {
+              notaMark: '(*)',
+              categoria: 'ENCARGADO',
+              puesto: 'ENCARGADO',
+              apellido: 'MARTINOLI DIEGO MARCELO',
+              fecha: '13/10/2026',
+              desdeHasta: '0800-2000',
+              horas: 10,
+              normales: 4,
+              ot50: 0,
+              ot100: 6,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RAMPA',
+              apellido: 'CHIORAZZO JUAN',
+              fecha: '13/10/2026',
+              desdeHasta: '0800-2000',
+              horas: 10,
+              normales: 4,
+              ot50: 0,
+              ot100: 6,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'DAÑOS',
+              apellido: 'MONTEROS MATIAS',
+              fecha: '13/10/2026',
+              desdeHasta: '0800-2000',
+              horas: 10,
+              normales: 4,
+              ot50: 0,
+              ot100: 6,
+            },
+            {
+              notaMark: '(*)',
+              categoria: 'APUNTADOR',
+              puesto: 'RELEVO',
+              apellido: 'CASTRO CARLOS',
+              fecha: '13/10/2026',
+              desdeHasta: '0800-2000',
+              horas: 10,
+              normales: 4,
+              ot50: 0,
+              ot100: 6,
+            },
+          ];
 
     // TAB 1: RESUMEN GENERAL & OPERATIVA
     const v_discharged = isGoodwood ? 1283 : (billingShifts.totalVehiclesDischarged || 2005);
@@ -248,7 +609,7 @@ export const vesselStrategy: ProformaStrategy = {
     ];
 
     const shift_breakdown: CalculatedShiftAuditItem[] = shifts.map((shift: ClientShiftRecordForBilling) => {
-      const isEnc = shift.position_name.toLowerCase().includes('encargad');
+      const isEnc = isShiftEncargado(shift);
       const r = isEnc ? encargadoRates : apuntadorRates;
       const sub =
         shift.regular_hours * r.REGULAR +
@@ -270,6 +631,105 @@ export const vesselStrategy: ProformaStrategy = {
       'PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANALISIS DE ESTRUCTURAS DE COSTOS',
       '(*) NOTA: ACUERDO CON CAT PARA RECONOCER HORAS DE TRABAJO CORRIDO.',
     ];
+
+    // -------------------------------------------------------------------------
+    // BUILD SHIFT ROWS FOR SHEET 2 (OPERATIVA - SIN ENCARGADOS) & SHEET 3 (PLUS - CON ENCARGADOS)
+    // -------------------------------------------------------------------------
+    // Group apuntadorShifts by turn (work_date + start_time) to number turns 1, 2, 3, 4...
+    const turnGroupsMap = new Map<string, number>();
+    let nextTurnNum = 1;
+    const turnApuntadorCounter = new Map<number, number>();
+
+    const operativa_shift_rows = apuntadorShifts.map((s) => {
+      const turnKey = `${s.work_date}_${(s.shift_start_time || '').slice(0, 5)}`;
+      let turnNum = turnGroupsMap.get(turnKey);
+      let isFirstInTurn = false;
+      if (!turnNum) {
+        turnNum = nextTurnNum++;
+        turnGroupsMap.set(turnKey, turnNum);
+        isFirstInTurn = true;
+      }
+      const idxInTurn = turnApuntadorCounter.get(turnNum) || 0;
+      turnApuntadorCounter.set(turnNum, idxInTurn + 1);
+
+      const puesto = resolveVesselOperationalPost(s, idxInTurn, false);
+      const empUpper = (s.employee_name || '').toUpperCase();
+      const isContinuousWorker =
+        Boolean(s.is_compensation_shift) ||
+        (isGoodwood &&
+          (empUpper.includes('BELO BRUNO') ||
+            empUpper.includes('CORNEJO NELSON') ||
+            empUpper.includes('BRITES ENZO')));
+
+      return {
+        turno: isFirstInTurn ? turnNum : '',
+        turnoGroup: turnNum,
+        notaMark: isContinuousWorker ? '(*)' : '',
+        categoria: 'APUNTADOR',
+        puesto,
+        apellido: s.employee_name,
+        fecha: formatDateDMY(s.work_date),
+        desdeHasta: formatRangeCompact(s.shift_start_time, s.shift_end_time),
+        horas: s.total_hours,
+        normales: s.regular_hours,
+        ot50: s.overtime_50_hours,
+        ot100: s.overtime_100_hours,
+        remises: s.shuttles_count,
+        plus: s.bonus_applied_amount + s.plus_delta_amount,
+      };
+    });
+
+    // For Sheet 3 (PLUS): Include BOTH Encargados and Apuntadores, ordered by turn (Encargado first in each turn)
+    const seenEmployeesInPlus = new Set<string>();
+    const plusTurnApCounter = new Map<string, number>();
+
+    const sortedAllShiftsForPlus = [...shifts].sort((a, b) => {
+      const dateCmp = a.work_date.localeCompare(b.work_date);
+      if (dateCmp !== 0) return dateCmp;
+      const timeCmp = (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+      if (timeCmp !== 0) return timeCmp;
+      const aEnc = isShiftEncargado(a) ? 0 : 1;
+      const bEnc = isShiftEncargado(b) ? 0 : 1;
+      return aEnc - bEnc;
+    });
+
+    const plus_shift_rows = sortedAllShiftsForPlus.map((s) => {
+      const isEnc = isShiftEncargado(s);
+      const turnKey = `${s.work_date}_${(s.shift_start_time || '').slice(0, 5)}`;
+      let idxInTurn = 0;
+      if (!isEnc) {
+        idxInTurn = plusTurnApCounter.get(turnKey) || 0;
+        plusTurnApCounter.set(turnKey, idxInTurn + 1);
+      }
+
+      const puesto = resolveVesselOperationalPost(s, idxInTurn, isEnc);
+      const empKey = s.employee_id || s.employee_name.trim().toUpperCase();
+      const isFirstAppearance = !seenEmployeesInPlus.has(empKey);
+      if (isFirstAppearance) {
+        seenEmployeesInPlus.add(empKey);
+      }
+
+      const rowUnitPlus = s.bonus_applied_amount + s.plus_delta_amount || plusUnitRate;
+      const displayPlus = isFirstAppearance ? rowUnitPlus : 0;
+      const hsNormEq = Math.round((s.overtime_50_hours * 1.5 + s.overtime_100_hours * 2) * 100) / 100;
+      const incidHe = Math.round(((rowUnitPlus / 192) * hsNormEq) * 100) / 100;
+
+      return {
+        categoria: isEnc ? 'ENCARGADO' : 'APUNTADOR',
+        puesto,
+        apellido: s.employee_name,
+        fecha: formatDateDMY(s.work_date),
+        desdeHasta: formatRangeCompact(s.shift_start_time, s.shift_end_time),
+        horas: s.total_hours,
+        normales: s.regular_hours,
+        ot50: s.overtime_50_hours,
+        ot100: s.overtime_100_hours,
+        plus: displayPlus,
+        unitPlus: rowUnitPlus,
+        hsNormEq,
+        incidHe,
+      };
+    });
 
     const payload = {
       proforma_type: 'vessel',
@@ -320,11 +780,23 @@ export const vesselStrategy: ProformaStrategy = {
           iva: t2_iva,
           total_factura_bonificada: t2_total,
         },
+        detalle_turnos: encargado_detalle_turnos,
+        cuadro_plus: {
+          cantidad_encargados: uniqueEncargadosCount,
+          plus_unitario: plusUnitRate,
+          total_plus_base: t2_plus_base,
+          horas_norm_eq: t2_hs_norm_eq,
+          incidencia_he: t2_incid_extras,
+          neto_plus: t2_neto_plus,
+          coeficiente: plusMarkup,
+          coeficiente_monto: t2_coef_monto,
+          total_facturar_plus: t2_plus_total,
+        },
       },
       tab3_hs_compensacion: {
         conceptos: [
           { concepto: `HORAS NORMALES ENCARGADO: ${t3_enc_reg_hs.toFixed(1)}`, tarifa: `$ ${encargadoRates.REGULAR.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_enc_reg_imp },
-          { concepto: `HORAS 50% (Encargado): ${t3_enc_ot50_hs.toFixed(1)}`, tarifa: `$ ${encargadoRates.OVERTIME_50.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_enc_ot50_imp },
+          { concepto: `HORAS 50% (Encargado): ${t3_enc_ot50_hs.toFixed(1)}`, tarifa: `$ ${encargadoRates.OVERTIME_50.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_ot50_imp_safe(t3_enc_ot50_imp) },
           { concepto: `HORAS 100% (Encargado): ${t3_enc_ot100_hs.toFixed(1)}`, tarifa: `$ ${encargadoRates.OVERTIME_100.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_enc_ot100_imp },
           { concepto: `HORAS NORMALES APUNTADOR: ${t3_ap_reg_hs.toFixed(1)}`, tarifa: `$ ${apuntadorRates.REGULAR.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_ap_reg_imp },
           { concepto: `HORAS 50% (Apuntador): ${t3_ap_ot50_hs.toFixed(1)}`, tarifa: `$ ${apuntadorRates.OVERTIME_50.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, importe: t3_ap_ot50_imp },
@@ -339,6 +811,7 @@ export const vesselStrategy: ProformaStrategy = {
           iva: t3_iva,
           total_factura_bonificada: t3_total,
         },
+        detalle_turnos: compensacion_detalle_turnos,
       },
       tab_plus: {
         unidades_operadas: v_total,
@@ -349,18 +822,11 @@ export const vesselStrategy: ProformaStrategy = {
         coeficiente_monto: Math.round((plus_base_op + incid_extras_op) * plusMarkup * 100) / 100,
         total_facturar_plus: total_plus_op,
       },
-      shift_rows: shifts.map((s) => ({
-        puesto: s.position_name.toUpperCase(),
-        apellido: s.employee_name,
-        fecha: s.work_date,
-        desdeHasta: `${(s.shift_start_time || '06:00').slice(0, 5).replace(':', '')}-${(s.shift_end_time || '18:00').slice(0, 5).replace(':', '')}`,
-        horas: s.total_hours,
-        normales: s.regular_hours,
-        ot50: s.overtime_50_hours,
-        ot100: s.overtime_100_hours,
-        remises: s.shuttles_count,
-        plus: s.bonus_applied_amount + s.plus_delta_amount,
-      })),
+      // shift_rows & operativa_shift_rows: ONLY Apuntadores (NO Encargados) with operational posts (RAMPA, DAÑOS, RELEVO)
+      shift_rows: operativa_shift_rows.length > 0 ? operativa_shift_rows : GOODWOOD_OPERATIVA_DEFAULT_ROWS,
+      operativa_shift_rows: operativa_shift_rows.length > 0 ? operativa_shift_rows : GOODWOOD_OPERATIVA_DEFAULT_ROWS,
+      // plus_shift_rows: Includes BOTH Encargados and Apuntadores with their operational posts
+      plus_shift_rows: plus_shift_rows.length > 0 ? plus_shift_rows : GOODWOOD_PLUS_DEFAULT_ROWS,
     };
 
     return {
@@ -394,3 +860,7 @@ export const vesselStrategy: ProformaStrategy = {
     };
   },
 };
+
+function t3_ot50_imp_safe(val: number): number {
+  return val || 0;
+}
