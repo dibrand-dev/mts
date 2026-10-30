@@ -281,17 +281,47 @@ export function buildProformaWorkbook(
       const unitP = Number(sr.unitPlus || 143503.03);
       const eqHs = Number(sr.hsNormEq ?? (Number(sr.ot50 || 0) * 1.5 + Number(sr.ot100 || 0) * 2));
       const incAmt = Number(sr.incidHe ?? Math.round((unitP / 192) * eqHs * 100) / 100);
+
+      // In Jorge's proforma, when an employee is in a secondary turn where hours were already counted in Turno 1 (46 hs),
+      // e.g. Turno 3 for Brites Lucas David, Belo Bruno Joaquin, Cornejo Nelson, Brites Enzo Nicolas:
+      // sr.horas is 12, but Normal, 50%, and 100% are left completely blank ('') rather than 0,00!
+      const isContinuousSecondary =
+        Number(sr.horas || 0) > 0 &&
+        Number(sr.normales || 0) === 0 &&
+        Number(sr.ot50 || 0) === 0 &&
+        Number(sr.ot100 || 0) === 0;
+
+      const normCell = isContinuousSecondary
+        ? c('', 'center')
+        : Number(sr.normales || 0) > 0
+        ? c(Number(sr.normales), 'number')
+        : c('', 'center');
+
+      const ot50Cell = isContinuousSecondary
+        ? c('', 'center')
+        : Number(sr.ot50 || 0) > 0
+        ? c(Number(sr.ot50), 'number')
+        : Number(sr.horas || 0) === 46
+        ? c(0, 'number')
+        : c('', 'center');
+
+      const ot100Cell = isContinuousSecondary
+        ? c('', 'center')
+        : Number(sr.ot100 || 0) > 0
+        ? c(Number(sr.ot100), 'number')
+        : c('', 'center');
+
       setRowCells(s3, 5 + idx, {
         0: c(sr.puesto || 'RAMPA', sr.puesto === 'ENCARGADO' ? 'highlight_label' : 'label'),
         1: c(sr.apellido || '', 'label'),
         2: c(sr.fecha || '', 'center'),
         3: c(sr.desdeHasta || '', 'center'),
         4: c(Number(sr.horas || 0), 'number'),
-        5: c(Number(sr.normales || 0), 'number'),
-        6: c(Number(sr.ot50 || 0), 'number'),
-        7: c(Number(sr.ot100 || 0), 'number'),
+        5: normCell,
+        6: ot50Cell,
+        7: ot100Cell,
         8: c(pAmt, 'currency'),
-        9: c(eqHs, 'number', `=+R${excelRowNum}C7*1.5+R${excelRowNum}C8*2`),
+        9: c(eqHs, 'number', isContinuousSecondary ? undefined : `=+R${excelRowNum}C7*1.5+R${excelRowNum}C8*2`),
         10: c(incAmt, 'currency'),
       });
     });
@@ -1535,8 +1565,11 @@ export function generateProformaExcelXml(wb: ExcelWorkbookData): string {
             const styleId = cell.style || 'Default';
             const formulaAttr = cell.formula ? ` ss:Formula="${escapeXml(cell.formula)}"` : '';
             const spanAttr = cell.colSpan && cell.colSpan > 1 ? ` ss:MergeAcross="${cell.colSpan - 1}"` : '';
-            const valStr = isNum ? String(cell.value) : escapeXml(String(cell.value));
-            cellsXml += `<Cell ss:Index="${cIdx + 1}" ss:StyleID="${styleId}"${formulaAttr}${spanAttr}><Data ss:Type="${dataType}">${valStr}</Data></Cell>`;
+            const isEmptyVal = cell.value === '' || cell.value === null || cell.value === undefined;
+            const dataTag = isEmptyVal
+              ? ''
+              : `<Data ss:Type="${dataType}">${isNum ? String(cell.value) : escapeXml(String(cell.value))}</Data>`;
+            cellsXml += `<Cell ss:Index="${cIdx + 1}" ss:StyleID="${styleId}"${formulaAttr}${spanAttr}>${dataTag}</Cell>`;
           });
           return `<Row ss:Height="18">${cellsXml}</Row>`;
         })

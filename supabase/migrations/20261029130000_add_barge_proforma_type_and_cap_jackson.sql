@@ -23,8 +23,14 @@ DECLARE
     emp_acosta UUID;
     emp_martinoli UUID;
     emp_libarono UUID;
-    admin_id UUID := '00000000-0000-0000-0000-000000000001'::UUID;
+    admin_id UUID;
 BEGIN
+    -- Dynamically resolve existing profile for foreign key compliance
+    SELECT id INTO admin_id FROM public.profiles LIMIT 1;
+    IF admin_id IS NULL THEN
+        SELECT id INTO admin_id FROM auth.users LIMIT 1;
+    END IF;
+
     SELECT id INTO cat_id FROM public.clients WHERE company_name ILIKE '%CAT%' LIMIT 1;
     SELECT id INTO loc_muelle FROM public.locations WHERE code = 'LOC-001' LIMIT 1;
 
@@ -54,7 +60,7 @@ BEGIN
     SELECT id INTO emp_acosta FROM public.employees WHERE full_name ILIKE '%ACOSTA%' LIMIT 1;
     SELECT id INTO emp_libarono FROM public.employees WHERE full_name ILIKE '%LIBARONO%' OR full_name ILIKE '%PEREZ%' LIMIT 1;
 
-    IF cat_id IS NOT NULL AND loc_muelle IS NOT NULL AND emp_brites IS NOT NULL THEN
+    IF cat_id IS NOT NULL AND loc_muelle IS NOT NULL AND emp_brites IS NOT NULL AND admin_id IS NOT NULL THEN
         -- Delete any duplicate log for CAP JACKSON on 2026-10-14
         DELETE FROM public.daily_work_logs
         WHERE client_id = cat_id AND vessel_name = 'CAP JACKSON' AND work_date = '2026-10-14';

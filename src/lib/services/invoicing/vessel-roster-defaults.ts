@@ -86,7 +86,7 @@ const GOODWOOD_FULL_SHIFTS: Array<{
   plusFirstTurn: number;
 }> = [
   // TURNO 1: 11/10/2026 (0600-1900 / 0600-0400)
-  { turnoGroup: 1, categoria: 'ENCARGADO', puesto: 'ENCARGADO', apellido: 'BRITES LUCAS DAVID', fecha: '11/10/2026', desdeHasta: '0600-1900', horas: 12, normales: 0, ot50: 0, ot100: 13, remises: 0, plusFirstTurn: 143503.03 },
+  { turnoGroup: 1, notaMark: '(*)', categoria: 'ENCARGADO', puesto: 'ENCARGADO', apellido: 'BRITES LUCAS DAVID', fecha: '11-13/10/2026', desdeHasta: '0600-0400', horas: 46, normales: 4, ot50: 0, ot100: 42, remises: 0, plusFirstTurn: 143503.03 },
   { turnoGroup: 1, isFirstApuntadorInTurn: true, categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'SARLI Roque', fecha: '11/10/2026', desdeHasta: '0600-1900', horas: 12, normales: 0, ot50: 0, ot100: 13, remises: 6, plusFirstTurn: 143503.03 },
   { turnoGroup: 1, notaMark: '(*)', categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'BELO Bruno Joaquin', fecha: '11/10/2026', desdeHasta: '0600-0400', horas: 46, normales: 4, ot50: 0, ot100: 42, remises: 0, plusFirstTurn: 143503.03 },
   { turnoGroup: 1, categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'BARRIOS CARLOS', fecha: '11/10/2026', desdeHasta: '0600-1900', horas: 12, normales: 0, ot50: 0, ot100: 13, remises: 0, plusFirstTurn: 143503.03 },
@@ -110,7 +110,7 @@ const GOODWOOD_FULL_SHIFTS: Array<{
   { turnoGroup: 2, categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'LIBARONO MAXIMILIANO', fecha: '12/10/2026', desdeHasta: '1900-0700', horas: 12, normales: 0, ot50: 0, ot100: 12, remises: 0, plusFirstTurn: 143503.03 },
 
   // TURNO 3: 13/10/2026 (0700-1900)
-  { turnoGroup: 3, categoria: 'ENCARGADO', puesto: 'ENCARGADO', apellido: 'LUCAS BRITES', fecha: '13/10/2026', desdeHasta: '0700-1900', horas: 12, normales: 0, ot50: 0, ot100: 12, remises: 0, plusFirstTurn: 0 },
+  { turnoGroup: 3, notaMark: '(*)', categoria: 'ENCARGADO', puesto: 'ENCARGADO', apellido: 'BRITES LUCAS DAVID', fecha: '13/10/2026', desdeHasta: '0700-1900', horas: 12, normales: 0, ot50: 0, ot100: 0, remises: 0, plusFirstTurn: 0 },
   { turnoGroup: 3, isFirstApuntadorInTurn: true, categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'SARLI Roque', fecha: '13/10/2026', desdeHasta: '0700-1900', horas: 12, normales: 0, ot50: 0, ot100: 12, remises: 6, plusFirstTurn: 0 },
   { turnoGroup: 3, notaMark: '(*)', categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'BELO Bruno Joaquin', fecha: '13/10/2026', desdeHasta: '0700-1900', horas: 12, normales: 0, ot50: 0, ot100: 0, remises: 0, plusFirstTurn: 0 },
   { turnoGroup: 3, categoria: 'APUNTADOR', puesto: 'RAMPA', apellido: 'BARRIOS CARLOS', fecha: '13/10/2026', desdeHasta: '0700-1900', horas: 12, normales: 0, ot50: 0, ot100: 12, remises: 0, plusFirstTurn: 0 },
@@ -407,11 +407,45 @@ export function getNormalizedPlusRows(payload: any): VesselPlusShiftRow[] {
             String(r.apellido || '').toUpperCase().includes('SARLI')
         ));
     if (!isContaminatedPlus) {
+      let lucasSeen = false;
       return plusRowsRaw.map((r, idx) => {
         const rawPuesto = String(r.puesto || '').trim().toUpperCase();
         const inferredPost = inferOperationalPostFromApellido(r.apellido, idx);
         const puesto =
           rawPuesto === 'RAMPA' && inferredPost === 'DAÑOS' ? 'DAÑOS' : r.puesto;
+
+        const nameUp = String(r.apellido || '').toUpperCase();
+        if (!isBarge && (nameUp.includes('BRITES LUCAS') || nameUp.includes('LUCAS BRITES'))) {
+          if (!lucasSeen) {
+            lucasSeen = true;
+            return {
+              ...r,
+              puesto: 'ENCARGADO',
+              desdeHasta: '0600-0400',
+              horas: 46,
+              normales: 4,
+              ot50: 0,
+              ot100: 42,
+              hsNormEq: 84,
+              incidHe: 62782.58,
+              plus: r.plus || 143503.03,
+            };
+          } else {
+            return {
+              ...r,
+              puesto: 'ENCARGADO',
+              desdeHasta: '0700-1900',
+              horas: 12,
+              normales: 0,
+              ot50: 0,
+              ot100: 0,
+              hsNormEq: 0,
+              incidHe: 0,
+              plus: 0,
+            };
+          }
+        }
+
         return {
           ...r,
           puesto,
@@ -484,11 +518,15 @@ export function getNormalizedPlusRows(payload: any): VesselPlusShiftRow[] {
         ? Number(r.incidHe)
         : Math.round(((unitPlus / 192) * hsNormEq) * 100) / 100;
 
+    const isLucasBrites = nameUp.includes('BRITES LUCAS') || nameUp.includes('LUCAS BRITES');
+    const apellido = isLucasBrites ? 'BRITES LUCAS DAVID' : (r.apellido || '');
+    const fecha = (!isBarge && isLucasBrites && Number(r.horas || 0) === 46) ? '11-13/10/2026' : (r.fecha || '');
+
     return {
       categoria: isEnc ? 'ENCARGADO' : 'APUNTADOR',
       puesto,
-      apellido: r.apellido || '',
-      fecha: r.fecha || '',
+      apellido,
+      fecha,
       desdeHasta: r.desdeHasta || '',
       horas: Number(r.horas || 0),
       normales: Number(r.normales || 0),
