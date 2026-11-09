@@ -277,18 +277,32 @@ export async function getOrCreateDailyWorkLog(
   }
 
   const normalizedTargetVessel = (vesselName || '').trim().toUpperCase();
+  const targetLocationId = locationId || null;
+
   const existing = (existingList || []).find((log: any) => {
     const logVessel = (log.vessel_name || '').trim().toUpperCase();
-    if (normalizedTargetVessel && logVessel) {
-      return logVessel === normalizedTargetVessel;
-    }
-    if (!normalizedTargetVessel && !logVessel) {
+    const logLocId = log.location_id || null;
+
+    const vesselMatches =
+      (normalizedTargetVessel && logVessel === normalizedTargetVessel) ||
+      (!normalizedTargetVessel && !logVessel);
+
+    const locationMatches =
+      (targetLocationId && logLocId === targetLocationId) ||
+      (!targetLocationId && !logLocId);
+
+    // Exact match for both vessel/operation and work location
+    if (vesselMatches && locationMatches) {
       return true;
     }
-    // If existing log had no vessel_name yet and has 0 entries, allow adopting vesselName
-    if (normalizedTargetVessel && !logVessel && (!log.entries || log.entries.length === 0)) {
-      return true;
+
+    // Allow adopting if existing log has 0 entries
+    if (!log.entries || log.entries.length === 0) {
+      if (vesselMatches || locationMatches) {
+        return true;
+      }
     }
+
     return false;
   });
 

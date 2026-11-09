@@ -41,6 +41,7 @@ import {
 } from '@tanstack/react-table';
 import { queryKeys } from '@/lib/queries/queryKeys';
 import { DataTablePagination } from '@/components/ui/DataTablePagination';
+import { createClient } from '@/lib/supabase/client';
 import { getClients } from '@/lib/services/clients';
 import { getLocations } from '@/lib/services/locations';
 import { getEmployees } from '@/lib/services/employees';
@@ -182,6 +183,7 @@ export default function DailyEntryPage() {
   // Slideover & Form State
   const [isSlideoverOpen, setIsSlideoverOpen] = useState<boolean>(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingEntryOriginalLogId, setEditingEntryOriginalLogId] = useState<string | null>(null);
 
   // Slideover Shift Context (Día, Cliente, Ubicación, Buque, Unidades Operadas)
   const [formWorkDate, setFormWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -568,6 +570,7 @@ export default function DailyEntryPage() {
   // Open Slideover to Add New Staff Hours
   const handleOpenNewEntry = () => {
     setEditingEntryId(null);
+    setEditingEntryOriginalLogId(null);
     setFormWorkDate(filterDate || new Date().toISOString().split('T')[0]);
     if (filterClientId) setFormClientId(filterClientId);
     else if (clients.length > 0) setFormClientId(clients[0].id);
@@ -645,6 +648,7 @@ export default function DailyEntryPage() {
     setAdvancePaymentAmount('0');
     setIsManualHoursMode(false);
     setEditingEntryId(null);
+    setEditingEntryOriginalLogId(null);
     setIsSlideoverOpen(false);
     setNotification({
       type: 'success',
@@ -701,6 +705,7 @@ export default function DailyEntryPage() {
   // Open Slideover in Edit Mode
   const handleEditEntry = (entry: FlatDailyStaffEntry) => {
     setEditingEntryId(entry.id);
+    setEditingEntryOriginalLogId(entry.daily_work_log_id);
     setFormWorkDate(entry.work_date);
     setFormClientId(entry.client_id);
     setFormLocationId(entry.location_id || '');
@@ -813,7 +818,8 @@ export default function DailyEntryPage() {
       const parsedTurn = parseInt(shiftTurn, 10);
       const cleanTurn = !isNaN(parsedTurn) && parsedTurn > 0 ? parsedTurn : 1;
 
-      const payload = {
+      const payload: any = {
+        daily_work_log_id: workLog.id,
         employee_id: selectedEmployeeId,
         position_id: selectedPositionId || null,
         shift_number: cleanTurn,
@@ -839,12 +845,29 @@ export default function DailyEntryPage() {
 
       if (editingEntryId) {
         await updateStaffEntry(editingEntryId, payload);
+        if (editingEntryOriginalLogId && editingEntryOriginalLogId !== workLog.id) {
+          try {
+            const { count } = await (createClient() as any)
+              .from('daily_staff_entries')
+              .select('id', { count: 'exact', head: true })
+              .eq('daily_work_log_id', editingEntryOriginalLogId);
+            if (count === 0) {
+              await (createClient() as any)
+                .from('daily_work_logs')
+                .delete()
+                .eq('id', editingEntryOriginalLogId);
+            }
+          } catch {
+            // ignore non-critical cleanup
+          }
+        }
         const successMsg = 'Registro de personal actualizado correctamente.';
         setNotification({
           type: 'success',
           message: successMsg,
         });
         setEditingEntryId(null);
+        setEditingEntryOriginalLogId(null);
         setSelectedEmployeeId('');
         setEmployeeSearchTerm('');
         setIsEmployeeDropdownOpen(false);

@@ -42,10 +42,17 @@ function resolveVesselOperationalPost(
     return posUpper;
   }
 
-  if (isEncargado) return 'ENCARGADO';
+  const empUpper = (shift.employee_name || '').toUpperCase();
+  const isKnownEncargado =
+    empUpper.includes('MARTINOLI') ||
+    empUpper.includes('ENZO BRITES') ||
+    empUpper.includes('BRITES ENZO') ||
+    empUpper.includes('LUCAS BRITES') ||
+    empUpper.includes('BRITES LUCAS');
+
+  if (isEncargado || isKnownEncargado) return 'ENCARGADO';
 
   // Known vessel crew mapping from official Goodwood / Brasilia proformas
-  const empUpper = (shift.employee_name || '').toUpperCase();
   if (
     empUpper.includes('SELLANES') ||
     empUpper.includes('MORALES') ||
@@ -62,7 +69,6 @@ function resolveVesselOperationalPost(
   }
   if (
     empUpper.includes('CASTRO CARLOS') ||
-    empUpper.includes('BRITES ENZO') ||
     empUpper.includes('CHIORAZZO JUAN') ||
     empUpper.includes('CORONEL MATIAS')
   ) {
@@ -150,10 +156,21 @@ export const vesselStrategy: ProformaStrategy = {
     // -------------------------------------------------------------------------
 
     // 3. Separate Encargados vs Apuntadores
-    // IMPORTANT: Encargados are identified either by position_name ('Encargado') or operational_role ('ENCARGADO')
-    const isShiftEncargado = (s: ClientShiftRecordForBilling) =>
-      s.position_name.toLowerCase().includes('encargad') ||
-      (s.operational_role || '').trim().toUpperCase().includes('ENCARGAD');
+    // IMPORTANT: Diego Martinoli, Enzo Brites and Lucas Brites are the 3 encargados
+    const isShiftEncargado = (s: ClientShiftRecordForBilling) => {
+      const emp = (s.employee_name || '').toUpperCase();
+      const isKnownEncargado =
+        emp.includes('MARTINOLI') ||
+        emp.includes('ENZO BRITES') ||
+        emp.includes('BRITES ENZO') ||
+        emp.includes('LUCAS BRITES') ||
+        emp.includes('BRITES LUCAS');
+      return (
+        isKnownEncargado ||
+        s.position_name.toLowerCase().includes('encargad') ||
+        (s.operational_role || '').trim().toUpperCase().includes('ENCARGAD')
+      );
+    };
 
     const encargadoShifts = shifts.filter((s) => isShiftEncargado(s));
     const apuntadorShifts = shifts.filter((s) => !isShiftEncargado(s));
