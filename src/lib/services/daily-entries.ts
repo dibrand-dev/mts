@@ -251,7 +251,8 @@ export async function getOrCreateDailyWorkLog(
   locationId?: string | null,
   vesselName?: string | null,
   totalVehiclesHandled?: number | null,
-  isExportDay?: boolean | null
+  isExportDay?: boolean | null,
+  options?: { originalLogId?: string | null }
 ): Promise<DailyWorkLogWithEntries> {
   const supabase = createClient() as any;
 
@@ -276,9 +277,43 @@ export async function getOrCreateDailyWorkLog(
     throw new Error(findError.message);
   }
 
-  const normalizedTargetVessel = (vesselName || '').trim().toUpperCase();
+  let normalizedTargetVessel = (vesselName || '').trim().toUpperCase();
   const targetLocationId = locationId || null;
 
+  // Auto-infer vessel/operation name from location if vesselName was not explicitly provided
+  if (!normalizedTargetVessel && targetLocationId) {
+    const locMatch = (existingList || []).find((l: any) => l.location_id === targetLocationId)?.location;
+    let locNameUpper = `${locMatch?.name || ''} ${locMatch?.code || ''}`.trim().toUpperCase();
+    if (!locNameUpper) {
+      try {
+        const { data: locData } = await supabase
+          .from('locations')
+          .select('name, code')
+          .eq('id', targetLocationId)
+          .maybeSingle();
+        if (locData) {
+          locNameUpper = `${locData.name || ''} ${locData.code || ''}`.trim().toUpperCase();
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (locNameUpper.includes('DEPOSITO FISCAL') || locNameUpper.includes('DEPÓSITO FISCAL') || locNameUpper.includes('DEP-FISC')) {
+      normalizedTargetVessel = 'DEPÓSITO FISCAL';
+    } else if (locNameUpper.includes('DEPOSITO NACIONAL') || locNameUpper.includes('DEPÓSITO NACIONAL') || locNameUpper.includes('DEP-NAC')) {
+      normalizedTargetVessel = 'DEPÓSITO NACIONAL';
+    } else if (locNameUpper.includes('PLAZOLETA FISCAL') || locNameUpper.includes('PF')) {
+      normalizedTargetVessel = 'PLAZOLETA FISCAL';
+    } else if (locNameUpper.includes('CAP') && locNameUpper.includes('JACKSON')) {
+      normalizedTargetVessel = 'CAP. JACKSON';
+    } else if (locNameUpper.includes('GOODWOOD')) {
+      normalizedTargetVessel = 'GOODWOOD';
+    }
+  }
+
+  const finalVesselName = normalizedTargetVessel || vesselName || null;
+
+  // A. Exact match for both vessel/operation and work location
   const existing = (existingList || []).find((log: any) => {
     const logVessel = (log.vessel_name || '').trim().toUpperCase();
     const logLocId = log.location_id || null;
@@ -308,9 +343,9 @@ export async function getOrCreateDailyWorkLog(
 
   if (existing) {
     const updates: Partial<DailyWorkLogInsert> = {};
-    if (vesselName && existing.vessel_name !== vesselName) {
-      updates.vessel_name = vesselName;
-      existing.vessel_name = vesselName;
+    if (finalVesselName && existing.vessel_name !== finalVesselName) {
+      updates.vessel_name = finalVesselName;
+      existing.vessel_name = finalVesselName;
     }
     if (locationId && existing.location_id !== locationId) {
       updates.location_id = locationId;
@@ -355,6 +390,28 @@ export async function getOrCreateDailyWorkLog(
     return existing as DailyWorkLogWithEntries;
   }
 
+  // B. In-place update of original log if editing an entry and the original log only had <= 1 entry
+  if (options?.originalLogId) {
+    const origLog = (existingList || []).find((l: any) => l.id === options.originalLogId);
+    if (origLog && (!origLog.entries || origLog.entries.length <= 1)) {
+      const updates: Partial<DailyWorkLogInsert> = {
+        location_id: targetLocationId,
+        vessel_name: finalVesselName,
+        total_vehicles_handled: typeof totalVehiclesHandled === 'number' ? totalVehiclesHandled : origLog.total_vehicles_handled,
+        is_export_day: isExportDay === true,
+      };
+      await supabase
+        .from('daily_work_logs')
+        .update(updates)
+        .eq('id', origLog.id);
+
+      return {
+        ...origLog,
+        ...updates,
+      } as DailyWorkLogWithEntries;
+    }
+  }
+
   // 2. Get current authenticated user
   const { data: authData } = await supabase.auth.getUser();
   const userId = authData?.user?.id;
@@ -369,7 +426,7 @@ export async function getOrCreateDailyWorkLog(
       work_date: workDate,
       client_id: clientId,
       location_id: locationId || null,
-      vessel_name: vesselName || null,
+      vessel_name: finalVesselName,
       total_vehicles_handled: typeof totalVehiclesHandled === 'number' ? totalVehiclesHandled : 0,
       vehicles_discharged: 0,
       vehicles_loaded: 0,
@@ -391,27 +448,27 @@ export async function getOrCreateDailyWorkLog(
 
   if (insertError) {
     if (insertError.code === '23505' || insertError.message?.includes('duplicate key')) {
-      // Fallback: adopt the existing work log for (workDate, clientId) if table has legacy UNIQUE (work_date, client_id)
-      const { data: fallbackLog } = await supabase
-        .from('daily_work_logs')
-        .select(`
-          *,
-          client:clients(id, company_name),
-          location:locations(id, name, code),
-          entries:daily_staff_entries(
-            *,
-            employee:employees(id, full_name, national_id, file_number),
-            position:positions(id, name, requires_vehicle_bonus)
-          )
-        `)
-        .eq('work_date', workDate)
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Find matching log by vessel or location
+      const matchingLog = (existingList || []).find((l: any) => {
+        const lv = (l.vessel_name || '').trim().toUpperCase();
+        const lid = l.location_id || null;
+        return (finalVesselName && lv === normalizedTargetVessel) || (targetLocationId && lid === targetLocationId);
+      });
 
-      if (fallbackLog) {
-        return fallbackLog as DailyWorkLogWithEntries;
+      if (matchingLog) {
+        const updates: Partial<DailyWorkLogInsert> = {};
+        if (targetLocationId && matchingLog.location_id !== targetLocationId) {
+          updates.location_id = targetLocationId;
+          matchingLog.location_id = targetLocationId;
+        }
+        if (finalVesselName && matchingLog.vessel_name !== finalVesselName) {
+          updates.vessel_name = finalVesselName;
+          matchingLog.vessel_name = finalVesselName;
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('daily_work_logs').update(updates).eq('id', matchingLog.id);
+        }
+        return matchingLog as DailyWorkLogWithEntries;
       }
     }
     console.error('Error creating daily work log:', insertError);

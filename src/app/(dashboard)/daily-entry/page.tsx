@@ -799,7 +799,8 @@ export default function DailyEntryPage() {
         formLocationId || null,
         formVesselName || null,
         vehiclesHandled,
-        formIsExportDay
+        formIsExportDay,
+        { originalLogId: editingEntryOriginalLogId }
       );
 
       const reg = parseFloat(regularHours) || 0;
@@ -1931,6 +1932,12 @@ export default function DailyEntryPage() {
                       } else if (locText.includes('DEPOSITO NACIONAL') || locText.includes('DEPÓSITO NACIONAL') || locObj?.code === 'DEP-NAC') {
                         setShuttlesCount('1,00');
                         setFormVesselName('DEPÓSITO NACIONAL');
+                      } else if (locText.includes('PLAZOLETA FISCAL') || locObj?.code === 'LOC-001' || locObj?.code === 'PF') {
+                        setFormVesselName('PLAZOLETA FISCAL');
+                      } else if (locText.includes('CAP') && locText.includes('JACKSON')) {
+                        setFormVesselName('CAP. JACKSON');
+                      } else if (locText.includes('GOODWOOD')) {
+                        setFormVesselName('GOODWOOD');
                       } else if (formVesselName === 'DEPÓSITO FISCAL' || formVesselName === 'DEPÓSITO NACIONAL') {
                         setFormVesselName('');
                       }
