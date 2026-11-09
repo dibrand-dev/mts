@@ -922,15 +922,6 @@ export default function DailyEntryPage() {
   const columns = useMemo<ColumnDef<FlatDailyStaffEntry>[]>(
     () => [
       {
-        accessorKey: 'work_date',
-        header: 'Fecha',
-        cell: ({ getValue }) => (
-          <span className="font-mono text-xs font-bold text-slate-700 whitespace-nowrap">
-            {String(getValue())}
-          </span>
-        ),
-      },
-      {
         accessorKey: 'shift_turn',
         header: () => <span className="block text-center">Turno</span>,
         cell: ({ row }) => {
@@ -1051,6 +1042,15 @@ export default function DailyEntryPage() {
             </div>
           );
         },
+      },
+      {
+        accessorKey: 'work_date',
+        header: () => <span className="block text-center">Fecha</span>,
+        cell: ({ getValue }) => (
+          <div className="text-center font-mono text-xs font-bold text-slate-700 whitespace-nowrap">
+            {String(getValue())}
+          </div>
+        ),
       },
       {
         id: 'shift_time',
@@ -1689,8 +1689,8 @@ export default function DailyEntryPage() {
                     key={headerGroup.id}
                     className="bg-slate-100/80 text-slate-600 font-bold text-xs uppercase tracking-wider border-b border-slate-200"
                   >
-                    {headerGroup.headers.map((header) => {
-                      const isFirstCol = header.column.id === 'work_date';
+                    {headerGroup.headers.map((header, headerIndex) => {
+                      const isFirstCol = headerIndex === 0;
                       const isLastCol = header.column.id === 'actions';
                       return (
                         <th
@@ -1716,8 +1716,8 @@ export default function DailyEntryPage() {
                     key={row.id}
                     className="hover:bg-slate-50/80 transition-colors group"
                   >
-                    {row.getVisibleCells().map((cell) => {
-                      const isFirstCol = cell.column.id === 'work_date';
+                    {row.getVisibleCells().map((cell, cellIndex) => {
+                      const isFirstCol = cellIndex === 0;
                       const isLastCol = cell.column.id === 'actions';
                       return (
                         <td
@@ -1737,7 +1737,7 @@ export default function DailyEntryPage() {
               </tbody>
               <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs text-[#0B1C30]">
                 <tr>
-                  <td colSpan={6} className="p-3.5 pl-4 text-right uppercase tracking-wider text-slate-600">
+                  <td colSpan={7} className="p-3.5 pl-4 text-right uppercase tracking-wider text-slate-600">
                     Totales Planilla:
                   </td>
                   <td className="p-3.5 text-center font-mono text-sm text-emerald-800 bg-slate-200/60">
