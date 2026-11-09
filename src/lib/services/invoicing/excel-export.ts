@@ -1200,16 +1200,23 @@ export function buildProformaWorkbook(
       payload.operation_dates ||
       ''
     );
-    const isQ1Dates = opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera');
-    const isQ2 = !isQ1Dates && String((source as any).fortnight_period || '').toUpperCase().includes('Q2');
+    const fnPeriod = String((source as any).fortnight_period || payload.fortnight_period || '').toUpperCase();
+    const isQ2Dates =
+      opDates.includes('16-31') ||
+      opDates.includes('16-30') ||
+      opDates.toLowerCase().includes('segunda') ||
+      fnPeriod.includes('Q2') ||
+      fnPeriod.includes('16-31') ||
+      fnPeriod.includes('16-30');
+    const isQ1Dates = !isQ2Dates && (opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera') || fnPeriod.includes('Q1'));
     const fromDate =
       (source as any).from_date ||
       payload.from_date ||
-      (isQ1Dates ? '2026-10-01' : isQ2 ? '2026-10-16' : '2026-10-01');
+      (isQ2Dates ? '2026-10-16' : '2026-10-01');
     const toDate =
       (source as any).to_date ||
       payload.to_date ||
-      (isQ1Dates ? '2026-10-15' : isQ2 ? '2026-10-31' : '2026-10-15');
+      (isQ2Dates ? '2026-10-31' : '2026-10-15');
 
     const rawDepositos: any[] = payload.depositos && payload.depositos.length > 0
       ? payload.depositos
@@ -1257,24 +1264,35 @@ export function buildProformaWorkbook(
           : dep.code === 'arroz' || String(dep.title || '').toUpperCase().includes('ARROZ')
           ? 'arroz'
           : 'nacional';
+      const existingTurnos = Array.isArray(dep.turnos) && dep.turnos.length > 0 ? dep.turnos : [];
+      const turnos = existingTurnos.length > 0
+        ? existingTurnos
+        : buildFortnightDepositDays(fromDate, toDate, depCode, []);
+      const totalTte = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.tte) || 0), 0);
+      const hs50 = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.hs50) || 0), 0);
+      const hs100 = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.hs100) || 0), 0);
       return {
         ...dep,
         code: depCode,
-        turnos: buildFortnightDepositDays(
-          fromDate,
-          toDate,
-          depCode,
-          Array.isArray(dep.turnos) ? dep.turnos : []
-        ),
+        turnos,
+        totalTte: totalTte > 0 ? totalTte : dep.totalTte,
+        hs50: hs50 > 0 ? hs50 : dep.hs50 || 0,
+        hs100: hs100 > 0 ? hs100 : dep.hs100 || 0,
       };
     });
 
+    const sumTteFromDepositos = Math.round(depositos.reduce((acc, d) => acc + (Number(d.totalTte) || 0), 0) * 100) / 100;
     const transporteTramos =
-      payload.transporte?.tramos && payload.transporte.tramos >= 15
-        ? payload.transporte.tramos
+      payload.transporte?.tramos !== undefined
+        ? Number(payload.transporte.tramos)
+        : sumTteFromDepositos > 0
+        ? sumTteFromDepositos
         : 15.0;
-    const transporteTarifa = payload.transporte?.tarifa_tramo || 37249.77;
-    const transporteTotal = Math.round(transporteTramos * transporteTarifa * 100) / 100;
+    const transporteTarifa = Number(payload.transporte?.tarifa_tramo || 37249.77);
+    const transporteTotal =
+      payload.transporte?.total_transporte !== undefined
+        ? Number(payload.transporte.total_transporte)
+        : Math.round((transporteTramos * transporteTarifa + 1e-6) * 100) / 100;
     const transporte = {
       tramos: transporteTramos,
       tarifa_tramo: transporteTarifa,
@@ -1282,9 +1300,12 @@ export function buildProformaWorkbook(
     };
 
     const sumDepositosNeto = depositos.reduce((acc, d) => acc + (d.importeTotalBlock || 0), 0);
-    const totalNeto = sumDepositosNeto > 0 ? sumDepositosNeto + transporteTotal : Number(payload.totales?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
-    const iva = Math.round(totalNeto * 0.21 * 100) / 100;
-    const totalFactura = Math.round((totalNeto + iva) * 100) / 100;
+    const totalNeto =
+      sumDepositosNeto > 0
+        ? Math.round((sumDepositosNeto + transporteTotal + 1e-6) * 100) / 100
+        : Number(payload.totales?.total_neto ?? source.total_neto ?? source.subtotal ?? 0);
+    const iva = Math.round((totalNeto * 0.21 + 1e-6) * 100) / 100;
+    const totalFactura = Math.round((totalNeto + iva + 1e-6) * 100) / 100;
 
     // Left column (Cols 0 & 1): Exact rows from MTS-CTYC SA - DD - DEPOSITOS - 01-15 OCTUBRE 2026.xls
     setRowCells(s1, 0, { 0: c('FACTURA', 'header'), 1: c(invoiceNumber, 'subheader') });
@@ -1332,7 +1353,14 @@ export function buildProformaWorkbook(
     const sumBlocksFormula = [...depTotalRowExcelList.map((r) => `R${r}C2`), `R${tteTotalRowExcel}C2`].join('+');
 
     setRowCells(s1, leftRow++, { 0: c('TRANSPORTE DIARIO PERSONAL', 'label'), 1: c(Number(transporte.tarifa_tramo || 37249.77), 'currency') });
-    setRowCells(s1, leftRow++, { 0: c('TRAMOS', 'label'), 1: c(Number(transporte.tramos || 0), 'number') });
+    setRowCells(s1, leftRow++, {
+      0: c('TRAMOS', 'label'),
+      1: c(
+        Number(transporte.tramos || 0),
+        'number',
+        depositos.length >= 2 ? '=+R1C12+R16C12' : '=+R1C12'
+      ),
+    });
     setRowCells(s1, leftRow++, { 0: c('IMPORTE TOTAL TTE. PERSONAL', 'highlight_label'), 1: c(Number(transporte.total_transporte || 0), 'highlight_currency', `=+R${tteTarifaRowExcel}C2*R${tteTramosRowExcel}C2`) });
     setRowCells(s1, leftRow++, { 0: c('IMPORTE TOTAL', 'total_label'), 1: c(totalNeto, 'total_currency', `=+${sumBlocksFormula}`) });
     setRowCells(s1, leftRow++, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', `=+R${impTotalRowExcel}C2*0.21`) });
@@ -1344,7 +1372,10 @@ export function buildProformaWorkbook(
 
     // Right side (Cols 3 to 11): Both deposits tables stacked (`DEPOSITO NACIONAL` then `DEPOSITO FISCAL`)
     let rightRow = 0;
-    depositos.forEach((dep) => {
+    depositos.forEach((dep, depIndex) => {
+      if (depIndex > 0) {
+        rightRow = Math.max(rightRow, 15);
+      }
       const turnos: any[] = dep.turnos || [];
       const firstDataExcelRow = rightRow + 3;
       const lastDataExcelRow = Math.max(firstDataExcelRow, firstDataExcelRow + turnos.length - 1);

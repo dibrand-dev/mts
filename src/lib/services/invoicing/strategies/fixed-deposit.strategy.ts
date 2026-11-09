@@ -291,24 +291,31 @@ export const fixedDepositStrategy: ProformaStrategy = {
         const lName = (s.location_name || '').toUpperCase();
         const lCode = (s.location_code || '').toUpperCase();
 
+        const isFiscalByShuttle = s.shuttles_count > 0 && s.shuttles_count < 1;
+        const isNacionalByShuttle = s.shuttles_count >= 1;
+
         const isLocNacional = lName.includes('NACIONAL') || lCode === 'DEP-NAC';
         const isLocFiscal = (lName.includes('FISCAL') && !lName.includes('NACIONAL')) || lCode === 'DEP-FISC';
 
         const isFiscal =
-          isLocFiscal ||
-          (!isLocNacional && (
-            vName.includes('FISCAL') ||
-            pName.includes('2') ||
-            pName.includes('3') ||
-            (s.shuttles_count > 0 && s.shuttles_count < 1)
+          isFiscalByShuttle ||
+          (!isNacionalByShuttle && (
+            isLocFiscal ||
+            (!isLocNacional && (
+              vName.includes('FISCAL') ||
+              pName.includes('2') ||
+              pName.includes('3')
+            ))
           ));
 
         const isNacional =
-          isLocNacional ||
-          (!isLocFiscal && (
-            vName.includes('NACIONAL') ||
-            pName.includes('1') ||
-            s.shuttles_count >= 1
+          isNacionalByShuttle ||
+          (!isFiscalByShuttle && (
+            isLocNacional ||
+            (!isLocFiscal && (
+              vName.includes('NACIONAL') ||
+              pName.includes('1')
+            ))
           ));
 
         if (isFiscal) {
@@ -330,6 +337,10 @@ export const fixedDepositStrategy: ProformaStrategy = {
           explicitFiscal.push(s);
         }
       }
+
+      // Sort chronologically by operational work_date ASC
+      explicitNacional.sort((a, b) => a.work_date.localeCompare(b.work_date));
+      explicitFiscal.sort((a, b) => a.work_date.localeCompare(b.work_date));
 
       // Build Turnos for Nacional (TTE default = 1.0 per working day)
       const rawNacional: DepositShiftRow[] = explicitNacional.map((s) => ({
@@ -458,10 +469,10 @@ export const fixedDepositStrategy: ProformaStrategy = {
         ? (sumTramosFromBlocks > 0 ? sumTramosFromBlocks : 5.0)
         : Math.max(15.0, sumTramosFromBlocks);
 
-    const imp_transporte = Math.round(tramos * rateTramoTransporte * 100) / 100;
-    const total_neto = Math.round((sumBlocks + imp_transporte) * 100) / 100;
-    const total_iva = Math.round(total_neto * 0.21 * 100) / 100;
-    const total_factura = Math.round((total_neto + total_iva) * 100) / 100;
+    const imp_transporte = Math.round((tramos * rateTramoTransporte + 1e-6) * 100) / 100;
+    const total_neto = Math.round((sumBlocks + imp_transporte + 1e-6) * 100) / 100;
+    const total_iva = Math.round((total_neto * 0.21 + 1e-6) * 100) / 100;
+    const total_factura = Math.round((total_neto + total_iva + 1e-6) * 100) / 100;
 
     const items: ProformaCalculationItem[] = [];
 

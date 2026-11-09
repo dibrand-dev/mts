@@ -20,18 +20,15 @@ export function FixedDepositViewer({ proforma }: Props) {
   const horasExtras = payload?.horas_extras;
   const transporte = payload?.transporte;
   const isArroz = sector.toLowerCase().includes('arroz');
-  const tramosCount =
-    Number(transporte?.tramos || 0) >= 15
-      ? Number(transporte?.tramos)
-      : isArroz
-      ? Number(transporte?.tramos || 7)
-      : 15.0;
-  const tarifaTramo = Number(transporte?.tarifa_tramo || 37249.77);
-  const totalTransporte = tramosCount * tarifaTramo;
-  const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
   const opDates = String(proforma.operation_dates || payload?.operation_dates || '');
-  const isQ1Dates = opDates.includes('1-15') || opDates.includes('01-15') || opDates.toLowerCase().includes('primera');
-  const isQ2 = !isQ1Dates && String(proforma.fortnight_period || '').toUpperCase().includes('Q2');
+  const fnPeriod = String(proforma.fortnight_period || payload?.fortnight_period || '').toUpperCase();
+  const isQ2 =
+    opDates.includes('16-31') ||
+    opDates.includes('16-30') ||
+    opDates.toLowerCase().includes('segunda') ||
+    fnPeriod.includes('Q2') ||
+    fnPeriod.includes('16-31') ||
+    fnPeriod.includes('16-30');
   const fromDate = payload?.from_date || (isQ2 ? '2026-10-16' : '2026-10-01');
   const toDate = payload?.to_date || (isQ2 ? '2026-10-31' : '2026-10-15');
 
@@ -109,18 +106,35 @@ export function FixedDepositViewer({ proforma }: Props) {
         : dep.code === 'arroz' || String(dep.title || '').toUpperCase().includes('ARROZ')
         ? 'arroz'
         : 'nacional';
-    const turnos = buildFortnightDepositDays(
-      fromDate,
-      toDate,
-      depCode,
-      Array.isArray(dep.turnos) ? dep.turnos : []
-    );
+    const existingTurnos = Array.isArray(dep.turnos) && dep.turnos.length > 0 ? dep.turnos : [];
+    const turnos = existingTurnos.length > 0
+      ? existingTurnos
+      : buildFortnightDepositDays(fromDate, toDate, depCode, []);
+    const totalTte = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.tte) || 0), 0);
+    const hs50 = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.hs50) || 0), 0);
+    const hs100 = turnos.reduce((acc: number, t: any) => acc + (t.isHoliday || String(t.apellido || '').toUpperCase() === 'FERIADO' ? 0 : Number(t.hs100) || 0), 0);
     return {
       ...dep,
       code: depCode,
       turnos,
+      totalTte: totalTte > 0 ? totalTte : dep.totalTte,
+      hs50: hs50 > 0 ? hs50 : dep.hs50 || 0,
+      hs100: hs100 > 0 ? hs100 : dep.hs100 || 0,
     };
   });
+
+  const sumTteFromDepositos = Math.round(depositos.reduce((acc, d) => acc + (Number(d.totalTte) || 0), 0) * 100) / 100;
+  const tramosCount =
+    Number(transporte?.tramos || 0) > 0
+      ? Number(transporte?.tramos)
+      : sumTteFromDepositos > 0
+      ? sumTteFromDepositos
+      : isArroz
+      ? 7.0
+      : 15.0;
+  const tarifaTramo = Number(transporte?.tarifa_tramo || 37249.77);
+  const totalTransporte = Math.round(tramosCount * tarifaTramo * 100) / 100;
+  const notes = proforma.notes?.length ? proforma.notes : payload?.notes || [];
 
   return (
     <div className="space-y-6">
