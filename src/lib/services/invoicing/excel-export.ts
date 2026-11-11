@@ -1457,9 +1457,171 @@ export function buildProformaWorkbook(
   }
 
   // =========================================================================
-  // MODELO 4: INCIDENCIA PLUS (3 PESTAÑAS: FACTURA, OPERATIVA, PLUS)
+  // MODELO 4: INCIDENCIA PLUS
+  // Submodelo 4A: Single Vessel (e.g. INQUEBRANTABLE - 3 pestañas: Factura, Operativa, Plus)
+  // Submodelo 4B: Mensual Consolidado (e.g. OCTUBRE 2026 - 2 pestañas: INCIDENCIA, HORAS EXTRAS PLAZ FISCAL)
   // =========================================================================
   if (proformaType === 'plus_incidence') {
+    const isMonthlyConsolidated =
+      Boolean(payload.is_monthly_consolidated) ||
+      Boolean(payload.monthly_incidence) ||
+      Boolean(payload.buques_detalle) ||
+      vesselName.toLowerCase().includes('consolid') ||
+      String((source as any).proforma_number || '').toLowerCase().includes('incidencia') ||
+      (operationDates.toLowerCase().includes('octubre') && !vesselName.toLowerCase().includes('inquebrantable'));
+
+    if (isMonthlyConsolidated) {
+      // -----------------------------------------------------------------------
+      // SUB-MODELO 4B: MENSUAL CONSOLIDADO (MTS-CTYC SA - OCTUBRE 2026)
+      // -----------------------------------------------------------------------
+      const monthlyRows: Array<{
+        apellido: string;
+        ot50?: number;
+        ot100?: number;
+        gw?: number;
+        cj14?: number;
+        cj18?: number;
+        cj23?: number;
+        totPlus?: number;
+        hsNorm?: number;
+        incidHe?: number;
+      }> = (payload.monthly_rows && payload.monthly_rows.length > 0)
+        ? payload.monthly_rows
+        : [
+            { apellido: 'ACOSTA JOAQUIN', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0, incidHe: 6726.70 },
+            { apellido: 'ARENA Cecilia', ot50: 38.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 57.0, incidHe: 94971.50 },
+            { apellido: 'BARRIOS CARLOS', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
+            { apellido: 'BELO Bruno Joaquin', ot50: 38.0, ot100: 4.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 65.0, incidHe: 48581.75 },
+            { apellido: 'BRITES  PEDRO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
+            { apellido: 'BRITES Enzo Nicolas', ot50: 18.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 27.0, incidHe: 57389.69 },
+            { apellido: 'BRITES LUCAS DAVID', ot50: 40.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 68.0, incidHe: 144537.00 },
+            { apellido: 'BUET MARIA', ot50: 34.0, gw: 143503.03, cj18: 88200.48, totPlus: 231703.51, hsNorm: 51.0, incidHe: 61546.24 },
+            { apellido: 'CORNEJO NELSON', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 42.0, incidHe: 69979.00 },
+            { apellido: 'GRASSI CANDELA', ot50: 2.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 3.0, incidHe: 2242.23 },
+            { apellido: 'GUERRERO ANGEL', ot50: 22.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 33.0, incidHe: 54983.50 },
+            { apellido: 'LIBARONO MAXIMILIANO', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, totPlus: 319903.99, hsNorm: 42.0, incidHe: 69979.00 },
+            { apellido: 'MARTINOLI DIEGO RICARDO', ot50: 14.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 29.0, incidHe: 61640.78 },
+            { apellido: 'MARTINOLI LAUTARO', gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 0.0, incidHe: 0.0 },
+            { apellido: 'MORALES ROSANA LORENA', ot50: 18.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 35.0, incidHe: 74394.04 },
+            { apellido: 'PERALTA JOAQUIN', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
+            { apellido: 'SALGUERO OSVALDO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
+            { apellido: 'SARLI Roque', ot50: 38.0, gw: 143503.03, cj14: 88200.48, totPlus: 231703.51, hsNorm: 57.0, incidHe: 68786.98 },
+            { apellido: 'SELLANES MARIA ELENA', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0, incidHe: 6726.70 },
+            { apellido: 'SUAREZ ROMINA', ot50: 20.0, ot100: 4.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 38.0, incidHe: 63314.33 },
+          ];
+
+      const s1: (ExcelCell | null)[][] = [];
+
+      // Row 1: Header + Factura Proforma
+      setRowCells(s1, 0, {
+        0: c(`MTS-CTYC SA - ${operationDates || 'OCTUBRE 2026'} - INCIDENCIA PLUS EN HORAS EXTRAS TRABAJADAS EN PLAZOLETA FISCAL`, 'header'),
+        15: c('FACTURA', 'header'),
+        16: c('PROFORMA', 'subheader'),
+      });
+      // Row 2: Fecha Factura
+      setRowCells(s1, 1, {
+        15: c('FECHA FACTURA', 'label'),
+        16: c(formatDateExcel(issueDate), 'date'),
+      });
+      // Row 3: Fecha Vencimiento + Column Headers
+      setRowCells(s1, 2, {
+        0: c('APELLIDO Y NOMBRE', 'header'),
+        1: c(0.5, 'header'),
+        2: c(1.0, 'header'),
+        3: c('GOODWOOD 11-13 OCT', 'header'),
+        4: c('CAP. JACKSON 14 OCT', 'header'),
+        5: c('CAP. JACKSON 18-19  OCT', 'header'),
+        6: c('CAP. JACKSON 23 OCT', 'header'),
+        11: c('TOTAL PLUS', 'header'),
+        12: c('HS.NORM.', 'header'),
+        13: c('INCID HE ', 'header'),
+        15: c('FECHA VENCIMIENTO', 'label'),
+        16: c(formatDateExcel(dueDate), 'date'),
+      });
+
+      // Invoice summary on lines 5 to 11
+      setRowCells(s1, 4, { 15: c('CAT ARGENTINA S.A.', 'header') });
+      setRowCells(s1, 6, {
+        15: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'),
+        16: c(885799.46, 'highlight_currency', '=+R28C14'),
+      });
+      setRowCells(s1, 7, {
+        15: c('Coeficiente costos:  0,52', 'label'),
+        16: c(460615.72, 'currency', '=+R7C17*0.52'),
+      });
+      setRowCells(s1, 8, {
+        15: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'),
+        16: c(1346415.18, 'total_currency', '=+R7C17+R8C17'),
+      });
+      setRowCells(s1, 9, {
+        15: c('IVA', 'label'),
+        16: c(282747.19, 'currency', '=+R9C17*0.21'),
+      });
+      setRowCells(s1, 10, {
+        15: c('Total a facturar por  Inc. Plus en Hs. Extras Fiscal', 'total_label'),
+        16: c(1629162.37, 'total_currency', '=+R9C17+R10C17'),
+      });
+
+      // Table rows (Rows 4 to 23 in Excel, index 3 to 22)
+      monthlyRows.forEach((row, idx) => {
+        const rIndex = 3 + idx;
+        const excelRow = rIndex + 1; // 1-based
+        setRowCells(s1, rIndex, {
+          0: c(row.apellido, 'label'),
+          1: row.ot50 ? c(row.ot50, 'number') : c('', 'center'),
+          2: row.ot100 ? c(row.ot100, 'number') : c('', 'center'),
+          3: row.gw ? c(row.gw, 'currency') : c('', 'center'),
+          4: row.cj14 ? c(row.cj14, 'currency') : c('', 'center'),
+          5: row.cj18 ? c(row.cj18, 'currency') : c('', 'center'),
+          6: row.cj23 ? c(row.cj23, 'currency') : c('', 'center'),
+          11: c(row.totPlus || 0, 'currency', `=+R${excelRow}C4+R${excelRow}C5+R${excelRow}C6+R${excelRow}C7`),
+          12: c(row.hsNorm || 0, 'number', `=+R${excelRow}C2*1.5+R${excelRow}C3*2`),
+          13: c(row.incidHe || 0, 'currency', `=+(R${excelRow}C12/192)*R${excelRow}C13`),
+        });
+      });
+
+      // Row 28 (index 27): Total row
+      setRowCells(s1, 27, {
+        11: c(5251473.56, 'total_currency', '=SUM(R4C12:R27C12)'),
+        13: c(885799.46, 'total_currency', '=SUM(R4C14:R27C14)'),
+      });
+
+      // Sheet 2: HORAS EXTRAS PLAZ FISCAL (resumen y turnos de plazoleta)
+      const s2: (ExcelCell | null)[][] = [];
+      setRowCells(s2, 0, {
+        0: c('PUESTO', 'header'),
+        1: c('APELLIDO Y NOMBRE', 'header'),
+        2: c('FECHA', 'header'),
+        3: c('DESDE-HASTA', 'header'),
+        4: c('HORAS', 'header'),
+        5: c('Normales', 'header'),
+        6: c('50%', 'header'),
+        7: c('100%', 'header'),
+        9: c('APELLIDO Y NOMBRE', 'header'),
+        10: c('Suma de 50%', 'header'),
+        11: c('Suma de 100%', 'header'),
+      });
+
+      monthlyRows.forEach((r, idx) => {
+        setRowCells(s2, 1 + idx, {
+          9: c(r.apellido, 'label'),
+          10: r.ot50 ? c(r.ot50, 'number') : c('', 'center'),
+          11: r.ot100 ? c(r.ot100, 'number') : c('', 'center'),
+        });
+      });
+
+      const safeDates = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
+      return {
+        filename: `MTS-CTYC SA - Proforma factura- Incidencia Plus - ${safeDates || 'OCTUBRE 2026'}.xls`,
+        title: `Proforma Incidencia Plus Mensual Consolidado — ${operationDates || 'OCTUBRE 2026'}`,
+        proformaType,
+        sheets: [
+          { name: 'INCIDENCIA', colWidths: [220, 50, 50, 110, 110, 110, 110, 30, 30, 30, 30, 110, 70, 110, 30, 240, 120], rows: s1 },
+          { name: 'HORAS EXTRAS PLAZ FISCAL', colWidths: [180, 200, 90, 90, 60, 60, 60, 60, 30, 200, 90, 90], rows: s2 },
+        ],
+      };
+    }
+
     const plusSum = payload.plus_summary || {};
     const rawTurnos: any[] = payload.turnos || [];
     const turnos: any[] =

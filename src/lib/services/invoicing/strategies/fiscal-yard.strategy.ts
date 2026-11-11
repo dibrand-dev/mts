@@ -39,12 +39,20 @@ export const fiscalYardStrategy: ProformaStrategy = {
       (s.vessel_name || '').toLowerCase().includes('inspec') ||
       (s.position_name || '').toLowerCase().includes('inspec');
 
+    // En Plazoleta Fiscal (CAT Argentina), contractualmente solo se abona 1 Encargado (slot ENCARGADO PF, asignado a Lucas Brites).
+    // Diego Martinoli y Enzo Brites, a pesar de tener rango interno de Encargados en la empresa, operan y se facturan
+    // en el pool de Apuntadores de Plazoleta Fiscal (slots APUNTADOR PF 01 al PF 12).
+    const isPrimaryYardEncargado = (s: ClientShiftRecordForBilling) =>
+      s.position_name.toLowerCase().includes('encargad') &&
+      !s.employee_name.toLowerCase().includes('martinoli') &&
+      !s.employee_name.toLowerCase().includes('enzo');
+
     const expoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.is_export_day && !isInspecShift(s));
     const inspecShifts = shifts.filter((s: ClientShiftRecordForBilling) => isInspecShift(s));
     const yardShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.is_export_day && !isInspecShift(s));
 
-    const encargadoShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => s.position_name.toLowerCase().includes('encargad'));
-    const apuntadorShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => !s.position_name.toLowerCase().includes('encargad'));
+    const encargadoShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => isPrimaryYardEncargado(s));
+    const apuntadorShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => !isPrimaryYardEncargado(s));
 
     // Encargado totals
     let yard_enc_reg = 0;
@@ -188,7 +196,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
 
     // 5. Construcción de Filas de Turnos Diarios (Panel Derecho del Excel)
     const shift_rows: FiscalYardShiftRow[] = yardShifts.map((s: ClientShiftRecordForBilling) => {
-      const isEnc = s.position_name.toLowerCase().includes('encargad');
+      const isEnc = isPrimaryYardEncargado(s);
       const empKey = s.employee_id || s.employee_name;
       const slotPos = isEnc ? 'ENCARGADO   PF' : (employeeToSlotMap.get(empKey) || 'APUNTADOR      PF');
       const timeRange = formatRange(s.shift_start_time, s.shift_end_time);
@@ -415,7 +423,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
     }
 
     const shift_breakdown: CalculatedShiftAuditItem[] = shifts.map((shift: ClientShiftRecordForBilling) => {
-      const isEnc = shift.position_name.toLowerCase().includes('encargad');
+      const isEnc = isPrimaryYardEncargado(shift);
       const r = isEnc ? encargadoRates : apuntadorRates;
       const sub =
         shift.regular_hours * r.REGULAR +
