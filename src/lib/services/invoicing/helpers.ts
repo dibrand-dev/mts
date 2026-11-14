@@ -22,7 +22,83 @@ export interface ClientRatesContext {
   serviceRatesMap: Map<string, { rate: number; metadata: any }>;
 }
 
-export async function fetchClientRatesContext(clientId: string): Promise<ClientRatesContext> {
+export function normalizeMatchName(value?: string | null): string {
+  if (!value) return '';
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[.,\-_\/()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isMatchingOperationName(candidate?: string | null, target?: string | null): boolean {
+  const cNorm = normalizeMatchName(candidate);
+  const tNorm = normalizeMatchName(target);
+  if (!cNorm || !tNorm) return false;
+  return cNorm === tNorm || cNorm.includes(tNorm) || tNorm.includes(cNorm);
+}
+
+function selectEffectiveRows<T extends Record<string, any>>(
+  rows: T[],
+  effectiveDate?: string
+): T[] {
+  const sorted = [...rows].sort((a, b) =>
+    String(a.effective_from || '').localeCompare(String(b.effective_from || ''))
+  );
+  if (!effectiveDate) return sorted;
+  const eligible = sorted.filter((r) => !r.effective_from || r.effective_from <= effectiveDate);
+  return eligible.length > 0 ? eligible : sorted;
+}
+
+export async function fetchUnionBonusScale(
+  totalVehicles: number,
+  effectiveDate?: string
+): Promise<number> {
+  const supabase = createClient() as any;
+  try {
+    const { data, error } = await supabase
+      .from('union_bonus_scales')
+      .select('min_vehicles, max_vehicles, bonus_amount, effective_from')
+      .order('min_vehicles', { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      return 88200.48;
+    }
+
+    // Group brackets by min_vehicles keeping the latest effective_from <= effectiveDate per bracket
+    const byBracket = new Map<string, any>();
+    for (const row of selectEffectiveRows(data, effectiveDate)) {
+      const key = `${row.min_vehicles}:${row.max_vehicles}`;
+      byBracket.set(key, row);
+    }
+    const brackets = Array.from(byBracket.values()).sort(
+      (a, b) => Number(a.min_vehicles || 0) - Number(b.min_vehicles || 0)
+    );
+
+    const matched = brackets.find(
+      (b) =>
+        totalVehicles >= Number(b.min_vehicles || 0) &&
+        totalVehicles <= Number(b.max_vehicles ?? 999999)
+    );
+    if (matched) return Number(matched.bonus_amount || 88200.48);
+
+    // If exceeds max bracket, use highest; otherwise lowest
+    const last = brackets[brackets.length - 1];
+    if (last && totalVehicles > Number(last.max_vehicles || 0)) {
+      return Number(last.bonus_amount || 88200.48);
+    }
+    return Number(brackets[0]?.bonus_amount || 88200.48);
+  } catch {
+    return 88200.48;
+  }
+}
+
+export async function fetchClientRatesContext(
+  clientId: string,
+  effectiveDate?: string
+): Promise<ClientRatesContext> {
   const supabase = createClient() as any;
 
   // 1. Client metadata
@@ -53,10 +129,12 @@ export async function fetchClientRatesContext(clientId: string): Promise<ClientR
   const ratesMap = new Map<string, { REGULAR: number; OVERTIME_50: number; OVERTIME_100: number }>();
   let encargadoRates = { REGULAR: 22362.87, OVERTIME_50: 29082.92, OVERTIME_100: 37743.22 };
   let apuntadorRates = { REGULAR: 16254.43, OVERTIME_50: 22919.57, OVERTIME_100: 29749.58 };
+  let hasExactEncargado = false;
+  let hasExactApuntador = false;
 
-  for (const r of ratesData || []) {
+  for (const r of selectEffectiveRows(ratesData || [], effectiveDate)) {
     const posId = r.position_id;
-    const posName = r.position?.name?.toLowerCase() || '';
+    const posName = (r.position?.name || '').trim().toLowerCase();
     if (!ratesMap.has(posId)) {
       ratesMap.set(posId, { REGULAR: 0, OVERTIME_50: 0, OVERTIME_100: 0 });
     }
@@ -65,9 +143,15 @@ export async function fetchClientRatesContext(clientId: string): Promise<ClientR
     if (code && typeof current[code] !== 'undefined') {
       const rateVal = Number(r.hourly_rate || 0);
       current[code] = rateVal;
-      if (posName.includes('encargad')) {
+      if (posName === 'encargado') {
         encargadoRates[code] = rateVal;
-      } else if (posName.includes('apuntad')) {
+        hasExactEncargado = true;
+      } else if (posName.includes('encargad') && !hasExactEncargado) {
+        encargadoRates[code] = rateVal;
+      } else if (posName === 'apuntador') {
+        apuntadorRates[code] = rateVal;
+        hasExactApuntador = true;
+      } else if (posName.includes('apuntad') && !hasExactApuntador) {
         apuntadorRates[code] = rateVal;
       }
     }
@@ -80,7 +164,7 @@ export async function fetchClientRatesContext(clientId: string): Promise<ClientR
     .eq('client_id', clientId);
 
   const serviceRatesMap = new Map<string, { rate: number; metadata: any }>();
-  for (const sr of serviceRatesData || []) {
+  for (const sr of selectEffectiveRows(serviceRatesData || [], effectiveDate)) {
     serviceRatesMap.set(sr.service_code, {
       rate: Number(sr.rate_value || 0),
       metadata: sr.metadata || {},

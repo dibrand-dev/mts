@@ -47,6 +47,54 @@ function formatDateExcel(rawDate?: string): string {
   return rawDate;
 }
 
+function dateOrCenterStyle(formattedDate: string): 'date' | 'center' {
+  return /^\d{2}\/\d{2}\/\d{4}$/.test(formattedDate.trim()) ? 'date' : 'center';
+}
+
+function parseDateToUtcMs(rawDate?: string): number | null {
+  if (!rawDate) return null;
+  const trimmed = rawDate.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (isoMatch) {
+    return Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+  }
+  const dmyMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (dmyMatch) {
+    return Date.UTC(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
+  }
+  return null;
+}
+
+function computeDateDiffDays(issueRaw?: string, dueRaw?: string): number | null {
+  const startMs = parseDateToUtcMs(issueRaw);
+  const endMs = parseDateToUtcMs(dueRaw);
+  if (startMs === null || endMs === null) return null;
+  const diff = Math.round((endMs - startMs) / 86400000);
+  return diff > 0 ? diff : null;
+}
+
+function abbreviateMonthNames(raw: string): string {
+  const monthMap: Record<string, string> = {
+    ENERO: 'ENE',
+    FEBRERO: 'FEB',
+    MARZO: 'MAR',
+    ABRIL: 'ABR',
+    MAYO: 'MAY',
+    JUNIO: 'JUN',
+    JULIO: 'JUL',
+    AGOSTO: 'AGO',
+    SEPTIEMBRE: 'SEP',
+    SETIEMBRE: 'SEP',
+    OCTUBRE: 'OCT',
+    NOVIEMBRE: 'NOV',
+    DICIEMBRE: 'DIC',
+  };
+  return raw
+    .trim()
+    .replace(/\b(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|SETIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\b/gi, (m) => monthMap[m.toUpperCase()] || m)
+    .replace(/\s+/g, ' ');
+}
+
 function setRowCells(
   grid: (ExcelCell | null)[][],
   rowIdx: number,
@@ -89,10 +137,13 @@ export function buildProformaWorkbook(
     (isRecord ? source.due_date : undefined) ||
     payload.due_date ||
     issueDate;
-  const invoiceNumber =
+  const explicitInvoiceNumber =
     meta?.invoiceNumber ||
     (isRecord ? source.invoice?.invoice_number : undefined) ||
     payload.invoice_number ||
+    '';
+  const invoiceNumber =
+    explicitInvoiceNumber ||
     (vesselName.toUpperCase().includes('JACKSON')
       ? '1-537'
       : operationDates.includes('OCTUBRE') && clientName.toUpperCase().includes('DELTA')
@@ -102,6 +153,11 @@ export function buildProformaWorkbook(
       : operationDates.includes('OCTUBRE') && clientName.toUpperCase().includes('DANCHUK')
       ? '1-533'
       : 'A DEFINIR');
+  const dueDiffDays = computeDateDiffDays(issueDate, dueDate);
+  const hasExplicitNotes = Boolean(
+    (source.notes && source.notes.length > 0) ||
+    (Array.isArray(payload.notes) && payload.notes.length > 0)
+  );
   const notes: string[] = (source.notes && source.notes.length > 0 ? source.notes : payload.notes) || [
     'NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026',
   ];
@@ -166,14 +222,21 @@ export function buildProformaWorkbook(
       ? Math.round((totalNeto + iva) * 100) / 100
       : Number(tab1.consolidado?.total_factura_final ?? source.total ?? Math.round((totalNeto + iva) * 100) / 100);
 
+    const shortVessel = vesselName.slice(0, 14);
+    const shortOpDatesWithYear = abbreviateMonthNames(operationDates).replace(/^(\d+)-\1\b/, '$1');
+    const shortOpDatesNoYear = shortOpDatesWithYear.replace(/\s+\d{4}$/, '').trim();
+    const bargeFacturaSheetName = `FACTURA ${shortVessel}${shortOpDatesNoYear ? ` - ${shortOpDatesNoYear}` : ''}`.slice(0, 31);
+    const bargeOperativaSheetName = `${shortVessel}${shortOpDatesWithYear ? ` - ${shortOpDatesWithYear}` : ''}`.slice(0, 31);
+    const bargePlusSheetName = 'Plus';
+
     // Sheet 1: FACTURA BUQUE / BARCAZA
     const s1: (ExcelCell | null)[][] = [];
-    setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
-    setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
-    setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
-    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
     if (!isBargeModel) {
+      setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
+      setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+      setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
+      setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
+      setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
       setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(subOp, 'currency') });
       setRowCells(s1, 7, { 0: c(`HORAS COMPENSACION - ${operationDates}`, 'label'), 1: c(subComp, 'currency') });
       setRowCells(s1, 8, { 0: c(`ENCARGADO A BORDO - ${operationDates}`, 'label'), 1: c(subEnc, 'currency') });
@@ -181,11 +244,24 @@ export function buildProformaWorkbook(
       setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=+R11C2*0.21') });
       setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=+R11C2+R12C2') });
     } else {
-      // Barcaza Fluvial: 1 sola línea comercial sin acuerdos de ultramar
-      setRowCells(s1, 6, { 0: c(`${vesselName} - ${operationDates}`, 'label'), 1: c(totalNeto, 'currency') });
-      setRowCells(s1, 8, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', '=+R7C2') });
-      setRowCells(s1, 9, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=+R9C2*0.21') });
-      setRowCells(s1, 10, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=+R9C2+R10C2') });
+      // Barcaza Fluvial (modelo CAP JACKSON): carátula vinculada a Operativa B31
+      setRowCells(s1, 0, explicitInvoiceNumber
+        ? { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(explicitInvoiceNumber, 'subheader') }
+        : { 0: c('FACTURA ELECTRONICA', 'header') });
+      setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formatDateExcel(issueDate), 'date') });
+      setRowCells(s1, 2, {
+        0: c('FECHA VENCIMIENTO', 'label'),
+        1: c(formatDateExcel(dueDate), 'date', dueDiffDays ? `=+R2C2+${dueDiffDays}` : undefined),
+      });
+      setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
+      setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(payload.lugar || 'DELTA DOCK - LIMA', 'label') });
+      setRowCells(s1, 6, {
+        0: c(bargeOperativaSheetName, 'label'),
+        1: c(totalNeto, 'currency', `=+'${bargeOperativaSheetName}'!R31C2`),
+      });
+      setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', '=+R7C2+R8C2+R9C2') });
+      setRowCells(s1, 11, { 0: c('IVA', 'label'), 1: c(iva, 'currency', '=+R11C2*0.21') });
+      setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFinal, 'total_currency', '=+R12C2+R11C2') });
     }
 
     // Sheet 2: OPERATIVA BUQUE + GRILLA DE TURNOS DE APUNTADORES A LA DERECHA (SIN ENCARGADOS)
@@ -205,40 +281,39 @@ export function buildProformaWorkbook(
     const coefMonto = Number(tabPlus.coeficiente_monto ?? Math.round(netoPlus * coef * 100) / 100);
     const totalPlusFacturar = Number(tabPlus.total_facturar_plus ?? Math.round((netoPlus + coefMonto) * 100) / 100);
 
-    setRowCells(s2, 0, {
-      0: c('SERVICIO', 'header'),
-      1: c(operationDates, 'subheader'),
-      10: c(sumNorm, 'number', `=SUM(R3C11:R${lastOpExcelRow}C11)`),
-      11: c(sum50, 'number', `=SUM(R3C12:R${lastOpExcelRow}C12)`),
-      12: c(sum100, 'number', `=SUM(R3C13:R${lastOpExcelRow}C13)`),
-      13: c(sumRem, 'number', `=SUM(R3C14:R${lastOpExcelRow}C14)`),
-    });
-    setRowCells(s2, 1, {
-      0: c('PERITAJE CALIDAD Y TALLY', 'header'),
-      1: c(vesselName, 'header'),
-      3: c('TURNO', 'header'),
-      4: c('(*)', 'header'),
-      5: c('PUESTO', 'header'),
-      6: c('APELLIDO', 'header'),
-      7: c('FECHA', 'header'),
-      8: c('DESDE-HASTA', 'header'),
-      9: c('HS', 'header'),
-      10: c('NORM', 'header'),
-      11: c('50%', 'header'),
-      12: c('100%', 'header'),
-      13: c('REMISES', 'header'),
-    });
     const vDescargados = Number(veh.descargados ?? (isBargeModel ? 355 : 1283));
     const vCargados = Number(veh.cargados ?? (isBargeModel ? 0 : 1837));
     const vRemovidos = Number(veh.removidos ?? 0);
     const vTotalControlados = Number(veh.total_controlados ?? (vDescargados + vCargados + vRemovidos));
 
-    setRowCells(s2, 2, { 0: c('VEHICULOS DESCARGADOS', 'label'), 1: c(vDescargados, 'number') });
-    setRowCells(s2, 3, { 0: c('VEHICULOS CARGADOS', 'label'), 1: c(vCargados, 'number') });
-    setRowCells(s2, 4, { 0: c('VEHICULOS REMOVIDOS', 'label'), 1: c(vRemovidos, 'number') });
-    setRowCells(s2, 5, { 0: c('TOTAL VEHICULOS CONTROLADOS', 'highlight_label'), 1: c(vTotalControlados, 'number', '=+R3C2+R4C2+R5C2') });
-
     if (!isBargeModel) {
+      setRowCells(s2, 0, {
+        0: c('SERVICIO', 'header'),
+        1: c(operationDates, 'subheader'),
+        10: c(sumNorm, 'number', `=SUM(R3C11:R${lastOpExcelRow}C11)`),
+        11: c(sum50, 'number', `=SUM(R3C12:R${lastOpExcelRow}C12)`),
+        12: c(sum100, 'number', `=SUM(R3C13:R${lastOpExcelRow}C13)`),
+        13: c(sumRem, 'number', `=SUM(R3C14:R${lastOpExcelRow}C14)`),
+      });
+      setRowCells(s2, 1, {
+        0: c('PERITAJE CALIDAD Y TALLY', 'header'),
+        1: c(vesselName, 'header'),
+        3: c('TURNO', 'header'),
+        4: c('(*)', 'header'),
+        5: c('PUESTO', 'header'),
+        6: c('APELLIDO', 'header'),
+        7: c('FECHA', 'header'),
+        8: c('DESDE-HASTA', 'header'),
+        9: c('HS', 'header'),
+        10: c('NORM', 'header'),
+        11: c('50%', 'header'),
+        12: c('100%', 'header'),
+        13: c('REMISES', 'header'),
+      });
+      setRowCells(s2, 2, { 0: c('VEHICULOS DESCARGADOS', 'label'), 1: c(vDescargados, 'number') });
+      setRowCells(s2, 3, { 0: c('VEHICULOS CARGADOS', 'label'), 1: c(vCargados, 'number') });
+      setRowCells(s2, 4, { 0: c('VEHICULOS REMOVIDOS', 'label'), 1: c(vRemovidos, 'number') });
+      setRowCells(s2, 5, { 0: c('TOTAL VEHICULOS CONTROLADOS', 'highlight_label'), 1: c(vTotalControlados, 'number', '=+R3C2+R4C2+R5C2') });
       // Exact 31-row left-side breakdown of GOODWOOD 11-13 OCT & BRASILIA HWY templates
       const vHabil = Number(veh.habil ?? 293);
       const vInhabil = Number(veh.inhabil ?? (vTotalControlados - vHabil));
@@ -286,151 +361,345 @@ export function buildProformaWorkbook(
       notes.forEach((n, idx) => {
         setRowCells(s2, 33 + idx, { 0: c(n, 'note') });
       });
-    } else {
-      let rIdx = 6;
-      for (const item of desglose) {
-        const labelText = item.tarifa ? `${item.concepto} (${item.tarifa})` : String(item.concepto || '');
-        setRowCells(s2, rIdx, {
-          0: c(labelText, item.is_total_row ? 'highlight_label' : 'label'),
-          1: c(Number(item.importe || 0), item.is_total_row ? 'highlight_currency' : 'currency'),
+
+      // Populate right-side Apuntador-only shift rows in Sheet 2
+      operativaRows.forEach((sr, idx) => {
+        const targetRow = 2 + idx;
+        const isContinuousSecondary =
+          Number(sr.horas || 0) > 0 &&
+          Number(sr.normales || 0) === 0 &&
+          Number(sr.ot50 || 0) === 0 &&
+          Number(sr.ot100 || 0) === 0;
+
+        const normCell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.normales || 0) > 0
+          ? c(Number(sr.normales), 'number')
+          : c('', 'center');
+
+        const ot50Cell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.ot50 || 0) > 0
+          ? c(Number(sr.ot50), 'number')
+          : Number(sr.horas || 0) === 46
+          ? c(0, 'number')
+          : c('', 'center');
+
+        const ot100Cell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.ot100 || 0) > 0
+          ? c(Number(sr.ot100), 'number')
+          : c('', 'center');
+
+        const remCell = Number(sr.remises || 0) > 0 ? c(Number(sr.remises), 'number') : c('', 'center');
+
+        setRowCells(s2, targetRow, {
+          ...(s2[targetRow] ? {} : {}),
+          3: c(sr.turno ?? '', 'center'),
+          4: c(sr.notaMark || '', 'center'),
+          5: c(sr.puesto || 'RAMPA', 'label'),
+          6: c(sr.apellido || '', 'label'),
+          7: c(sr.fecha || '', 'center'),
+          8: c(sr.desdeHasta || '', 'center'),
+          9: c(Number(sr.horas || 0), 'number'),
+          10: normCell,
+          11: ot50Cell,
+          12: ot100Cell,
+          13: remCell,
         });
-        rIdx++;
-      }
-      const opTotalRowExcel = rIdx + 2;
-      setRowCells(s2, rIdx + 1, { 0: c('IMPORTE BONIFICADO OPERATIVA', 'total_label'), 1: c(subOp, 'total_currency') });
-      setRowCells(s2, rIdx + 2, { 0: c('IVA (21%)', 'label'), 1: c(Math.round(subOp * 0.21 * 100) / 100, 'currency', `=+R${opTotalRowExcel}C2*0.21`) });
-      setRowCells(s2, rIdx + 3, { 0: c('TOTAL FACTURA OPERATIVA', 'total_label'), 1: c(Math.round(subOp * 1.21 * 100) / 100, 'total_currency', `=+R${opTotalRowExcel}C2+R${opTotalRowExcel + 1}C2`) });
-
-      notes.forEach((n, idx) => {
-        setRowCells(s2, rIdx + 5 + idx, { 0: c(n, 'note') });
       });
+    } else {
+      // Barcaza (modelo CAP JACKSON): 33 filas x 12 columnas (A..L)
+      const endBargeOpRow = Math.max(12, 2 + operativaRows.length);
+      const parseDesgloseHours = (conceptSubstr: string, fallback: number): number => {
+        const found = desglose.find((d) => String(d.concepto || '').toUpperCase().includes(conceptSubstr));
+        if (!found?.tarifa) return fallback;
+        const parsed = parseFloat(String(found.tarifa));
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      const parseDesgloseAmount = (conceptSubstr: string, fallback: number): number => {
+        const found = desglose.find((d) => String(d.concepto || '').toUpperCase().includes(conceptSubstr));
+        return found && found.importe !== undefined ? Number(found.importe) : fallback;
+      };
+
+      const encRowsOp = operativaRows.filter((r) => String(r.puesto || '').toUpperCase().includes('ENCARGADO'));
+      const apRowsOp = operativaRows.filter((r) => !String(r.puesto || '').toUpperCase().includes('ENCARGADO'));
+      const encHoursSrc = tab1.horas_encargado || payload.horas_encargado || {};
+      const apHoursSrc = tab1.horas_apuntador || payload.horas_apuntador || {};
+      const encRatesSrc = tab1.tarifas_encargado || payload.tarifas_encargado || {};
+      const apRatesSrc = tab1.tarifas_apuntador || payload.tarifas_apuntador || {};
+      const encNormB = Number(encHoursSrc.norm ?? (encRowsOp.length > 0 ? encRowsOp.reduce((a, r) => a + Number(r.normales || 0), 0) : parseDesgloseHours('NORMALES ENCARGADO', 8)));
+      const enc50B = Number(encHoursSrc.ot50 ?? (encRowsOp.length > 0 ? encRowsOp.reduce((a, r) => a + Number(r.ot50 || 0), 0) : parseDesgloseHours('50% ENCARGADO', 0)));
+      const enc100B = Number(encHoursSrc.ot100 ?? (encRowsOp.length > 0 ? encRowsOp.reduce((a, r) => a + Number(r.ot100 || 0), 0) : parseDesgloseHours('100% ENCARGADO', 0)));
+      const apNormB = Number(apHoursSrc.norm ?? (apRowsOp.length > 0 ? apRowsOp.reduce((a, r) => a + Number(r.normales || 0), 0) : parseDesgloseHours('NORMALES APUNTADOR', 56)));
+      const ap50B = Number(apHoursSrc.ot50 ?? (apRowsOp.length > 0 ? apRowsOp.reduce((a, r) => a + Number(r.ot50 || 0), 0) : parseDesgloseHours('50% APUNTADOR', 0)));
+      const ap100B = Number(apHoursSrc.ot100 ?? (apRowsOp.length > 0 ? apRowsOp.reduce((a, r) => a + Number(r.ot100 || 0), 0) : parseDesgloseHours('100% APUNTADOR', 0)));
+
+      const encNormAmtB = parseDesgloseAmount('NORMALES ENCARGADO', 0);
+      const enc50AmtB = parseDesgloseAmount('50% ENCARGADO', 0);
+      const enc100AmtB = parseDesgloseAmount('100% ENCARGADO', 0);
+      const apNormAmtB = parseDesgloseAmount('NORMALES APUNTADOR', 0);
+      const ap50AmtB = parseDesgloseAmount('50% APUNTADOR', 0);
+      const ap100AmtB = parseDesgloseAmount('100% APUNTADOR', 0);
+      const transAmtB = parseDesgloseAmount('TRANSPORTE', 0);
+
+      const tarifaEncNormB = Number(encRatesSrc.REGULAR ?? (encNormB > 0 && encNormAmtB > 0 ? Math.round((encNormAmtB / encNormB) * 100) / 100 : 22362.87));
+      const tarifaEnc50B = Number(encRatesSrc.OVERTIME_50 ?? (enc50B > 0 && enc50AmtB > 0 ? Math.round((enc50AmtB / enc50B) * 100) / 100 : 29082.92));
+      const tarifaEnc100B = Number(encRatesSrc.OVERTIME_100 ?? (enc100B > 0 && enc100AmtB > 0 ? Math.round((enc100AmtB / enc100B) * 100) / 100 : 37743.22));
+      const tarifaApNormB = Number(apRatesSrc.REGULAR ?? (apNormB > 0 && apNormAmtB > 0 ? Math.round((apNormAmtB / apNormB) * 100) / 100 : 16254.43));
+      const tarifaAp50B = Number(apRatesSrc.OVERTIME_50 ?? (ap50B > 0 && ap50AmtB > 0 ? Math.round((ap50AmtB / ap50B) * 100) / 100 : 22919.57));
+      const tarifaAp100B = Number(apRatesSrc.OVERTIME_100 ?? (ap100B > 0 && ap100AmtB > 0 ? Math.round((ap100AmtB / ap100B) * 100) / 100 : 29749.58));
+      const tarifaViajeB = Number(tab1.tarifa_viaje ?? payload.transporte?.tarifa_viaje ?? (sumRem > 0 && transAmtB > 0 ? Math.round((transAmtB / sumRem) * 100) / 100 : 35594.34));
+
+      const impEncNormB = Math.round(encNormB * tarifaEncNormB * 100) / 100;
+      const impEnc50B = Math.round(enc50B * tarifaEnc50B * 100) / 100;
+      const impEnc100B = Math.round(enc100B * tarifaEnc100B * 100) / 100;
+      const impApNormB = Math.round(apNormB * tarifaApNormB * 100) / 100;
+      const impAp50B = Math.round(ap50B * tarifaAp50B * 100) / 100;
+      const impAp100B = Math.round(ap100B * tarifaAp100B * 100) / 100;
+      const impPersonalB = Math.round((impEncNormB + impEnc50B + impEnc100B + impApNormB + impAp50B + impAp100B) * 100) / 100;
+      const impViajesB = Math.round(sumRem * tarifaViajeB * 100) / 100;
+      const opTotalB = Number(tab1.consolidado?.subtotal_operativa ?? subOp ?? (impPersonalB + totalPlusFacturar + impViajesB));
+      const opIvaB = Number(tab1.consolidado?.iva_21 ?? Math.round(opTotalB * 0.21 * 100) / 100);
+      const opFinalB = Number(tab1.consolidado?.total_factura_final ?? Math.round((opTotalB + opIvaB) * 100) / 100);
+      const firstShiftFecha = operativaRows[0]?.fecha ? formatDateExcel(operativaRows[0].fecha) : operationDates;
+
+      setRowCells(s2, 0, {
+        0: c('CLIENTE', 'label'),
+        1: c(clientName, 'subheader'),
+        8: c(sumNorm, 'number', `=SUM(R3C9:R${endBargeOpRow}C9)`),
+        9: c(sum50, 'number', `=SUM(R3C10:R${endBargeOpRow}C10)`),
+        10: c(sum100, 'number', `=SUM(R3C11:R${endBargeOpRow}C11)`),
+        11: c(sumRem, 'number', `=SUM(R3C12:R${endBargeOpRow}C12)`),
+      });
+      setRowCells(s2, 1, {
+        0: c('LUGAR', 'label'),
+        1: c(payload.lugar || 'DELTA DOCK - LIMA', 'label'),
+        3: c('PUESTO', 'header'),
+        4: c('APELLIDO', 'header'),
+        5: c('FECHA', 'header'),
+        6: c('DESDE-HASTA', 'header'),
+        7: c('HORAS', 'header'),
+        8: c('Normales', 'header'),
+        9: c(0.5, 'header'),
+        10: c(1, 'header'),
+        11: c('VIAJES', 'header'),
+      });
+      setRowCells(s2, 2, { 0: c('FECHAS', 'label'), 1: c(firstShiftFecha, dateOrCenterStyle(firstShiftFecha)) });
+      setRowCells(s2, 3, { 0: c('SERVICIO', 'label') });
+      setRowCells(s2, 4, { 1: c(vesselName, 'header') });
+      setRowCells(s2, 5, { 1: c(' ', 'label') });
+
+      setRowCells(s2, 6, { 0: c('HORAS NORMALES ENCARGADO', 'label'), 1: c(encNormB, 'number') });
+      setRowCells(s2, 7, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(tarifaEncNormB, 'currency') });
+      setRowCells(s2, 8, { 0: c('IMPORTE HORAS NORMALES', 'label'), 1: c(impEncNormB, 'currency', '=+R8C2*R7C2') });
+      setRowCells(s2, 9, { 0: c('HORAS 50%', 'label'), 1: c(enc50B, 'number', '=+R3C10') });
+      setRowCells(s2, 10, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(tarifaEnc50B, 'currency') });
+      setRowCells(s2, 11, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(impEnc50B, 'currency', '=+R10C2*R11C2') });
+      setRowCells(s2, 12, { 0: c('HORAS 100%', 'label'), 1: c(enc100B, 'number') });
+      setRowCells(s2, 13, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaEnc100B, 'currency') });
+      setRowCells(s2, 14, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(impEnc100B, 'currency', '=+R13C2*R14C2') });
+      setRowCells(s2, 15, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(apNormB, 'number', '=+R1C9-R7C2') });
+      setRowCells(s2, 16, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(tarifaApNormB, 'currency') });
+      setRowCells(s2, 17, { 0: c('IMPORTE HORAS NORMALES', 'label'), 1: c(impApNormB, 'currency', '=+R17C2*R16C2') });
+      setRowCells(s2, 18, { 0: c('HORAS 50%', 'label'), 1: c(ap50B, 'number', '=+R1C10-R10C2') });
+      setRowCells(s2, 19, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(tarifaAp50B, 'currency') });
+      setRowCells(s2, 20, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(impAp50B, 'currency', '=+R19C2*R20C2') });
+      setRowCells(s2, 21, { 0: c('HORAS 100%', 'label'), 1: c(ap100B, 'number', '=+R1C11-R13C2') });
+      setRowCells(s2, 22, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaAp100B, 'currency') });
+      setRowCells(s2, 23, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(impAp100B, 'currency', '=+R22C2*R23C2') });
+      setRowCells(s2, 24, { 0: c('IMPORTE PERSONAL NORMAL', 'highlight_label'), 1: c(impPersonalB, 'highlight_currency', '=+R9C2+R12C2+R15C2+R18C2+R21C2+R24C2') });
+      setRowCells(s2, 25, { 0: c('Total a facturar por Plus e Inc. Hs. Extras', 'highlight_label'), 1: c(totalPlusFacturar, 'highlight_currency', `=+'${bargePlusSheetName}'!R10C16`) });
+      setRowCells(s2, 27, { 0: c('TRANSPORTE - VIAJES', 'label'), 1: c(sumRem, 'number', '=+R1C12') });
+      setRowCells(s2, 28, { 0: c('IMPORTE POR VIAJE', 'label'), 1: c(tarifaViajeB, 'currency') });
+      setRowCells(s2, 29, { 0: c('TOTAL VIAJES', 'label'), 1: c(impViajesB, 'currency', '=+R28C2*R29C2') });
+      setRowCells(s2, 30, { 0: c('IMPORTE TOTAL BONIFICADO', 'total_label'), 1: c(opTotalB, 'total_currency', '=+R9C2+R12C2+R15C2+R18C2+R21C2+R24C2+R26C2+R30C2') });
+      setRowCells(s2, 31, { 0: c('IVA', 'label'), 1: c(opIvaB, 'currency', '=+R31C2*0.21') });
+      setRowCells(s2, 32, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(opFinalB, 'total_currency', '=+R31C2+R32C2') });
+
+      operativaRows.forEach((sr, idx) => {
+        const targetRow = 2 + idx;
+        const formattedFecha = formatDateExcel(sr.fecha || '');
+        const normVal = Number(sr.normales || 0);
+        const ot50Val = Number(sr.ot50 || 0);
+        const ot100Val = Number(sr.ot100 || 0);
+        const remVal = Number(sr.remises || 0);
+
+        setRowCells(s2, targetRow, {
+          3: c(sr.puesto || 'RAMPA', 'label'),
+          4: c(sr.apellido || '', 'label'),
+          5: c(formattedFecha, dateOrCenterStyle(formattedFecha)),
+          6: c(sr.desdeHasta || '', 'center'),
+          7: Number(sr.horas || 0) > 0 ? c(Number(sr.horas), 'number') : c('', 'center'),
+          8: normVal > 0 ? c(normVal, 'number') : c('', 'center'),
+          9: ot50Val > 0 ? c(ot50Val, 'number') : c('', 'center'),
+          10: ot100Val > 0 ? c(ot100Val, 'number') : c('', 'center'),
+          11: remVal > 0 ? c(remVal, 'number') : c('', 'center'),
+        });
+      });
+
+      // Right-panel notes at D21 and D27 (rows 20 and 26)
+      const noteLine1 = notes.find((n) => n.toUpperCase().includes('PENDIENTE')) || 'PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANALISIS DE ESTRUCTURAS DE COSTOS';
+      const noteLine2 = notes.find((n) => n.toUpperCase().includes('PARITARIAS')) || notes[0] || 'NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026';
+      setRowCells(s2, 20, { 3: c(noteLine1, 'note') });
+      setRowCells(s2, 26, { 3: c(noteLine2, 'note') });
     }
-
-    // Populate right-side Apuntador-only shift rows in Sheet 2
-    operativaRows.forEach((sr, idx) => {
-      const targetRow = 2 + idx;
-      const isContinuousSecondary =
-        Number(sr.horas || 0) > 0 &&
-        Number(sr.normales || 0) === 0 &&
-        Number(sr.ot50 || 0) === 0 &&
-        Number(sr.ot100 || 0) === 0;
-
-      const normCell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.normales || 0) > 0
-        ? c(Number(sr.normales), 'number')
-        : c('', 'center');
-
-      const ot50Cell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.ot50 || 0) > 0
-        ? c(Number(sr.ot50), 'number')
-        : Number(sr.horas || 0) === 46
-        ? c(0, 'number')
-        : c('', 'center');
-
-      const ot100Cell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.ot100 || 0) > 0
-        ? c(Number(sr.ot100), 'number')
-        : c('', 'center');
-
-      const remCell = Number(sr.remises || 0) > 0 ? c(Number(sr.remises), 'number') : c('', 'center');
-
-      setRowCells(s2, targetRow, {
-        ...(s2[targetRow] ? {} : {}),
-        3: c(sr.turno ?? '', 'center'),
-        4: c(sr.notaMark || '', 'center'),
-        5: c(sr.puesto || 'RAMPA', 'label'),
-        6: c(sr.apellido || '', 'label'),
-        7: c(sr.fecha || '', 'center'),
-        8: c(sr.desdeHasta || '', 'center'),
-        9: c(Number(sr.horas || 0), 'number'),
-        10: normCell,
-        11: ot50Cell,
-        12: ot100Cell,
-        13: remCell,
-      });
-    });
 
     // Sheet 3: PLUS (CON ENCARGADOS Y APUNTADORES)
     const s3: (ExcelCell | null)[][] = [];
 
-    setRowCells(s3, 0, {
-      0: c(`MTS - HORAS Y PLUS - ${vesselName} - ${operationDates}`, 'header'),
-    });
-    setRowCells(s3, 2, { 0: c('Total unidades operadas:', 'highlight_label'), 1: c(veh.total_controlados ?? (isBargeModel ? 355 : 3120), 'number') });
-    setRowCells(s3, 4, {
-      0: c('PUESTO', 'header'),
-      1: c('APELLIDO', 'header'),
-      2: c('Fecha', 'header'),
-      3: c('Desde - Hasta', 'header'),
-      4: c('Total Horas', 'header'),
-      5: c('Normal', 'header'),
-      6: c('50%', 'header'),
-      7: c('100%', 'header'),
-      8: c('PLUS ($)', 'header'),
-      9: c('HS.NORM.', 'header'),
-      10: c('INCID HE ($)', 'header'),
-      12: c(clientName, 'header'),
-      13: c('IMPORTE ($)', 'header'),
-    });
-    setRowCells(s3, 5, { 12: c('Plus Base Operativo', 'label'), 13: c(plusBase, 'currency') });
-    setRowCells(s3, 6, { 12: c('Incidencia plus Rem en Hs. Extras', 'label'), 13: c(incidHe, 'currency') });
-    setRowCells(s3, 7, { 12: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 13: c(netoPlus, 'highlight_currency', '=+R6C14+R7C14') });
-    setRowCells(s3, 8, { 12: c(`Coeficiente costos: ${coef}`, 'label'), 13: c(coefMonto, 'currency', `=+R8C14*${coef}`) });
-    setRowCells(s3, 9, { 12: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 13: c(totalPlusFacturar, 'total_currency', '=+R8C14+R9C14') });
-
-    plusRows.forEach((sr, idx) => {
-      const excelRowNum = 6 + idx;
-      const pAmt = Number(sr.plus || 0);
-      const unitP = Number(sr.unitPlus || 143503.03);
-      const eqHs = Number(sr.hsNormEq ?? (Number(sr.ot50 || 0) * 1.5 + Number(sr.ot100 || 0) * 2));
-      const incAmt = Number(sr.incidHe ?? Math.round((unitP / 192) * eqHs * 100) / 100);
-
-      // In Jorge's proforma, when an employee is in a secondary turn where hours were already counted in Turno 1 (46 hs),
-      // e.g. Turno 3 for Brites Lucas David, Belo Bruno Joaquin, Cornejo Nelson, Brites Enzo Nicolas:
-      // sr.horas is 12, but Normal, 50%, and 100% are left completely blank ('') rather than 0,00!
-      const isContinuousSecondary =
-        Number(sr.horas || 0) > 0 &&
-        Number(sr.normales || 0) === 0 &&
-        Number(sr.ot50 || 0) === 0 &&
-        Number(sr.ot100 || 0) === 0;
-
-      const normCell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.normales || 0) > 0
-        ? c(Number(sr.normales), 'number')
-        : c('', 'center');
-
-      const ot50Cell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.ot50 || 0) > 0
-        ? c(Number(sr.ot50), 'number')
-        : Number(sr.horas || 0) === 46
-        ? c(0, 'number')
-        : c('', 'center');
-
-      const ot100Cell = isContinuousSecondary
-        ? c('', 'center')
-        : Number(sr.ot100 || 0) > 0
-        ? c(Number(sr.ot100), 'number')
-        : c('', 'center');
-
-      setRowCells(s3, 5 + idx, {
-        0: c(sr.puesto || 'RAMPA', sr.puesto === 'ENCARGADO' ? 'highlight_label' : 'label'),
-        1: c(sr.apellido || '', 'label'),
-        2: c(sr.fecha || '', 'center'),
-        3: c(sr.desdeHasta || '', 'center'),
-        4: c(Number(sr.horas || 0), 'number'),
-        5: normCell,
-        6: ot50Cell,
-        7: ot100Cell,
-        8: c(pAmt, 'currency'),
-        9: c(eqHs, 'number', isContinuousSecondary ? undefined : `=+R${excelRowNum}C7*1.5+R${excelRowNum}C8*2`),
-        10: c(incAmt, 'currency'),
+    if (!isBargeModel) {
+      setRowCells(s3, 0, {
+        0: c(`MTS - HORAS Y PLUS - ${vesselName} - ${operationDates}`, 'header'),
       });
-    });
+      setRowCells(s3, 2, { 0: c('Total unidades operadas:', 'highlight_label'), 1: c(vTotalControlados, 'number') });
+      setRowCells(s3, 4, {
+        0: c('PUESTO', 'header'),
+        1: c('APELLIDO', 'header'),
+        2: c('Fecha', 'header'),
+        3: c('Desde - Hasta', 'header'),
+        4: c('Total Horas', 'header'),
+        5: c('Normal', 'header'),
+        6: c('50%', 'header'),
+        7: c('100%', 'header'),
+        8: c('PLUS ($)', 'header'),
+        9: c('HS.NORM.', 'header'),
+        10: c('INCID HE ($)', 'header'),
+        12: c(clientName, 'header'),
+        13: c('IMPORTE ($)', 'header'),
+      });
+      setRowCells(s3, 5, { 12: c('Plus Base Operativo', 'label'), 13: c(plusBase, 'currency') });
+      setRowCells(s3, 6, { 12: c('Incidencia plus Rem en Hs. Extras', 'label'), 13: c(incidHe, 'currency') });
+      setRowCells(s3, 7, { 12: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 13: c(netoPlus, 'highlight_currency', '=+R6C14+R7C14') });
+      setRowCells(s3, 8, { 12: c(`Coeficiente costos: ${coef}`, 'label'), 13: c(coefMonto, 'currency', `=+R8C14*${coef}`) });
+      setRowCells(s3, 9, { 12: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 13: c(totalPlusFacturar, 'total_currency', '=+R8C14+R9C14') });
+
+      plusRows.forEach((sr, idx) => {
+        const excelRowNum = 6 + idx;
+        const pAmt = Number(sr.plus || 0);
+        const unitP = Number(sr.unitPlus || 143503.03);
+        const eqHs = Number(sr.hsNormEq ?? (Number(sr.ot50 || 0) * 1.5 + Number(sr.ot100 || 0) * 2));
+        const incAmt = Number(sr.incidHe ?? Math.round((unitP / 192) * eqHs * 100) / 100);
+
+        // In Jorge's proforma, when an employee is in a secondary turn where hours were already counted in Turno 1 (46 hs),
+        // e.g. Turno 3 for Brites Lucas David, Belo Bruno Joaquin, Cornejo Nelson, Brites Enzo Nicolas:
+        // sr.horas is 12, but Normal, 50%, and 100% are left completely blank ('') rather than 0,00!
+        const isContinuousSecondary =
+          Number(sr.horas || 0) > 0 &&
+          Number(sr.normales || 0) === 0 &&
+          Number(sr.ot50 || 0) === 0 &&
+          Number(sr.ot100 || 0) === 0;
+
+        const normCell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.normales || 0) > 0
+          ? c(Number(sr.normales), 'number')
+          : c('', 'center');
+
+        const ot50Cell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.ot50 || 0) > 0
+          ? c(Number(sr.ot50), 'number')
+          : Number(sr.horas || 0) === 46
+          ? c(0, 'number')
+          : c('', 'center');
+
+        const ot100Cell = isContinuousSecondary
+          ? c('', 'center')
+          : Number(sr.ot100 || 0) > 0
+          ? c(Number(sr.ot100), 'number')
+          : c('', 'center');
+
+        setRowCells(s3, 5 + idx, {
+          0: c(sr.puesto || 'RAMPA', sr.puesto === 'ENCARGADO' ? 'highlight_label' : 'label'),
+          1: c(sr.apellido || '', 'label'),
+          2: c(sr.fecha || '', 'center'),
+          3: c(sr.desdeHasta || '', 'center'),
+          4: c(Number(sr.horas || 0), 'number'),
+          5: normCell,
+          6: ot50Cell,
+          7: ot100Cell,
+          8: c(pAmt, 'currency'),
+          9: c(eqHs, 'number', isContinuousSecondary ? undefined : `=+R${excelRowNum}C7*1.5+R${excelRowNum}C8*2`),
+          10: c(incAmt, 'currency'),
+        });
+      });
+    } else {
+      // Barcaza (modelo CAP JACKSON): hoja 'Plus' inicia en Columna B (índice 1)
+      const totalPlusRowIdx = 5 + plusRows.length; // 0-based
+      const lastPlusExcelRow = 5 + plusRows.length; // 1-based last data row
+      const totalPlusExcelRow = totalPlusRowIdx + 1;
+      const sumPlusNorm = plusRows.reduce((a, r) => a + Number(r.normales || 0), 0);
+      const coefFormatted = String(coef).replace('.', ',');
+
+      setRowCells(s3, 0, {
+        1: c(`${vesselName} - ${operationDates}`, 'header'),
+        7: c(explicitInvoiceNumber ? `FAC  ${explicitInvoiceNumber}` : 'FAC  1- ', 'subheader'),
+      });
+      setRowCells(s3, 2, {
+        1: c('Total unidades operadas:', 'highlight_label'),
+        4: c(vTotalControlados, 'number'),
+        8: c(Number(veh.unidades_plus ?? vTotalControlados), 'number'),
+      });
+      setRowCells(s3, 4, {
+        1: c('APELLIDO', 'header'),
+        2: c('Fecha', 'header'),
+        3: c('Desde-Hasta', 'header'),
+        4: c('Total Horas', 'header'),
+        5: c('Normal', 'header'),
+        6: c(0.5, 'header'),
+        7: c(1, 'header'),
+        8: c('  PLUS', 'header'),
+        9: c(0.5, 'header'),
+        10: c(1, 'header'),
+        11: c('HS.NORM.', 'header'),
+        12: c('INCID HE ', 'header'),
+        14: c(clientName, 'header'),
+      });
+
+      plusRows.forEach((sr, idx) => {
+        const rIdx = 5 + idx;
+        const excelRowNum = rIdx + 1;
+        const pAmt = Number(sr.plus || 0);
+        const prevPAmt = idx > 0 ? Number(plusRows[idx - 1].plus || 0) : null;
+        const ot50Val = Number(sr.ot50 || 0);
+        const ot100Val = Number(sr.ot100 || 0);
+        const eqHs = Number(sr.hsNormEq ?? (ot50Val * 1.5 + ot100Val * 2));
+        const incAmt = Number(sr.incidHe ?? (pAmt / 192) * eqHs);
+        const formattedFecha = formatDateExcel(sr.fecha || '');
+
+        setRowCells(s3, rIdx, {
+          1: c(sr.apellido || '', 'label'),
+          2: c(formattedFecha, dateOrCenterStyle(formattedFecha)),
+          3: c(sr.desdeHasta || '', 'center'),
+          4: Number(sr.horas || 0) > 0 ? c(Number(sr.horas), 'number') : c('', 'center'),
+          5: Number(sr.normales || 0) > 0 ? c(Number(sr.normales), 'number') : c('', 'center'),
+          6: c('', 'center'),
+          7: c('', 'center'),
+          8: c(pAmt, 'currency', idx > 0 && prevPAmt === pAmt ? `=+R${excelRowNum - 1}C9` : undefined),
+          9: ot50Val > 0 ? c(ot50Val, 'number') : c('', 'center'),
+          10: ot100Val > 0 ? c(ot100Val, 'number') : c('', 'center'),
+          11: eqHs > 0 ? c(eqHs, 'number', `=+R${excelRowNum}C10*1.5+R${excelRowNum}C11*2`) : c('', 'center'),
+          12: c(incAmt, 'currency', `=+R${excelRowNum}C9/192*R${excelRowNum}C12`),
+        });
+      });
+
+      setRowCells(s3, totalPlusRowIdx, {
+        5: c(sumPlusNorm, 'number', `=SUM(R6C6:R${lastPlusExcelRow}C6)`),
+        8: c(plusBase, 'total_currency', `=SUM(R6C9:R${lastPlusExcelRow}C9)`),
+        12: c(incidHe, 'total_currency', `=SUM(R6C13:R${lastPlusExcelRow}C13)`),
+      });
+
+      // Cuadro resumen en O6:P10 (sobreescribiendo filas 5..9 en cols 14..15)
+      setRowCells(s3, 5, { 14: c('Plus', 'label'), 15: c(plusBase, 'currency', `=+R${totalPlusExcelRow}C9`) });
+      setRowCells(s3, 6, { 14: c('Incidencia plus Rem en Hs. Extras', 'label'), 15: c(incidHe, 'currency', `=+R${totalPlusExcelRow}C13`) });
+      setRowCells(s3, 7, { 14: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'), 15: c(netoPlus, 'highlight_currency', '=SUM(R6C16:R7C16)') });
+      setRowCells(s3, 8, { 14: c(`Coeficiente costos:  ${coefFormatted}`, 'label'), 15: c(coefMonto, 'currency', `=+R8C16*${coef}`) });
+      setRowCells(s3, 9, { 14: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'), 15: c(totalPlusFacturar, 'total_currency', '=+R9C16+R8C16') });
+
+      const bargeNote = notes.find((n) => n.toUpperCase().includes('PARITARIAS')) || notes[0] || 'NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026';
+      setRowCells(s3, totalPlusRowIdx + 4, { 1: c(bargeNote, 'note') });
+    }
 
     // Sheet 4: HS COMPENSACION + DETALLE DE PERSONAL Y HORAS A LA DERECHA
     const s4: (ExcelCell | null)[][] = [];
@@ -677,14 +946,19 @@ export function buildProformaWorkbook(
       6: c(totalPlusFactEnc, 'total_currency', `=+R${plusBoxStartRow + 8}C7+R${plusBoxStartRow + 7}C7`),
     });
 
-    const shortVessel = vesselName.slice(0, 14);
     const safeDates = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
 
-    const sheets: ExcelWorksheetData[] = [
-      { name: `FACTURA ${shortVessel}`, colWidths: [320, 160], rows: s1 },
-      { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 25, 55, 45, 100, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
-      { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 75, 110, 25, 260, 140], rows: s3 },
-    ];
+    const sheets: ExcelWorksheetData[] = isBargeModel
+      ? [
+          { name: bargeFacturaSheetName, colWidths: [320, 160], rows: s1 },
+          { name: bargeOperativaSheetName, colWidths: [280, 150, 25, 130, 180, 95, 95, 65, 70, 55, 55, 65], rows: s2 },
+          { name: bargePlusSheetName, colWidths: [25, 180, 95, 95, 75, 65, 55, 55, 110, 55, 55, 75, 110, 25, 260, 140], rows: s3 },
+        ]
+      : [
+          { name: `FACTURA ${shortVessel}`, colWidths: [320, 160], rows: s1 },
+          { name: `${shortVessel} OPERATIVA`, colWidths: [280, 140, 25, 55, 45, 100, 180, 95, 95, 55, 55, 55, 55, 70], rows: s2 },
+          { name: 'PLUS', colWidths: [110, 180, 95, 95, 75, 65, 55, 55, 110, 75, 110, 25, 260, 140], rows: s3 },
+        ];
 
     if (!isBargeModel) {
       sheets.push(
@@ -746,29 +1020,34 @@ export function buildProformaWorkbook(
     const formattedIssueDate = formatDateExcel(issueDate);
     const formattedDueDate = formatDateExcel(dueDate) || (issueDate ? formatDateExcel(issueDate) : '');
 
-    setRowCells(s1, 0, { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(invoiceNumber, 'subheader') });
+    setRowCells(s1, 0, explicitInvoiceNumber
+      ? { 0: c('FACTURA ELECTRONICA', 'header'), 1: c(explicitInvoiceNumber, 'subheader') }
+      : { 0: c('FACTURA ELECTRONICA', 'header') });
     setRowCells(s1, 1, { 0: c('FECHA FACTURA', 'label'), 1: c(formattedIssueDate, 'date') });
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formattedDueDate, 'date') });
+    setRowCells(s1, 2, {
+      0: c('FECHA VENCIMIENTO', 'label'),
+      1: c(formattedDueDate, 'date', dueDiffDays ? `=+R2C2+${dueDiffDays}` : undefined),
+    });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName, 'subheader') });
-    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
+    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(payload.lugar || 'DELTA DOCK - LIMA', 'label') });
 
     if (!hasInspec) {
       // Modelo 4 pestañas (ej. Septiembre)
-      setRowCells(s1, 6, { 0: c(`PLAZOLETA FISCAL - ${cleanOpDates}`, 'label'), 1: c(pfNeto, 'currency', `='${pfSheetName}'!R24C2`) });
+      setRowCells(s1, 6, { 0: c(`PLAZOLETA FISCAL - ${cleanOpDates}`, 'label'), 1: c(pfNeto, 'currency', `='${pfSheetName}'!R25C2`) });
       setRowCells(s1, 7, { 0: c(`TRANSPORTE PERSONAL -  ${cleanOpDates}`, 'label'), 1: c(tteNeto, 'currency', `='${tteSheetName}'!R6C2`) });
       setRowCells(s1, 8, { 0: c(`EXPO -  ${cleanOpDates}`, 'label'), 1: c(expoNeto, 'currency', `='${expoSheetName}'!R13C2`) });
       setRowCells(s1, 10, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', `=+R7C2+R8C2+R9C2`) });
-      setRowCells(s1, 11, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', `=+R11C2*0.21`) });
+      setRowCells(s1, 11, { 0: c('IVA', 'label'), 1: c(iva, 'currency', `=+R11C2*0.21`) });
       setRowCells(s1, 12, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency', `=+R11C2+R12C2`) });
     } else {
       // Modelo 5 pestañas (ej. Octubre con Inspecciones)
-      setRowCells(s1, 6, { 0: c(`PLAZOLETA FISCAL - ${cleanOpDates}`, 'label'), 1: c(pfNeto, 'currency', `='${pfSheetName}'!R24C2`) });
+      setRowCells(s1, 6, { 0: c(`PLAZOLETA FISCAL - ${cleanOpDates}`, 'label'), 1: c(pfNeto, 'currency', `='${pfSheetName}'!R25C2`) });
       setRowCells(s1, 7, { 0: c(`INSPECCIONES ESPECIALES - ${cleanOpDates}`, 'label'), 1: c(inspecNeto, 'currency', `='${inspecSheetName}'!R15C2`) });
       setRowCells(s1, 8, { 0: c(`TRANSPORTE PERSONAL -  ${cleanOpDates}`, 'label'), 1: c(tteNeto, 'currency', `='${tteSheetName}'!R6C2`) });
-      setRowCells(s1, 9, { 0: c(`EXPO -  ${cleanOpDates}`, 'label'), 1: c(expoNeto, 'currency', `='${expoSheetName}'!R13C2`) });
-      setRowCells(s1, 11, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', `=+R7C2+R8C2+R9C2+R10C2`) });
-      setRowCells(s1, 12, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', `=+R12C2*0.21`) });
-      setRowCells(s1, 13, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency', `=+R12C2+R13C2`) });
+      setRowCells(s1, 9, { 0: c(` EXPO - ${cleanOpDates}`, 'label'), 1: c(expoNeto, 'currency', `='${expoSheetName}'!R13C2`) });
+      setRowCells(s1, 11, { 0: c('TOTAL NETO FACTURA', 'total_label'), 1: c(totalNeto, 'total_currency', `=+R10C2+R9C2+R7C2+R8C2`) });
+      setRowCells(s1, 12, { 0: c('IVA', 'label'), 1: c(iva, 'currency', `=+R12C2*0.21`) });
+      setRowCells(s1, 13, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency', `=+R13C2+R12C2`) });
     }
 
     // -----------------------------------------------------------------------
@@ -884,60 +1163,61 @@ export function buildProformaWorkbook(
 
     setRowCells(s2, 0, {
       0: c('SERVICIO', 'header'),
-      1: c('APUNTADORES  PLAZ. FISCAL', 'header'),
+      1: c(' APUNTADORES  PLAZ. FISCAL', 'header'),
       8: c(totRegExpected, 'number', `=SUM(R3C9:R${endRowPF}C9)`),
       9: c(totOt50Expected, 'number', `=SUM(R3C10:R${endRowPF}C10)`),
       10: c(totOt100Expected, 'number', `=SUM(R3C11:R${endRowPF}C11)`),
     });
 
     setRowCells(s2, 1, {
-      1: c(cleanOpDates, 'subheader'),
+      1: c(` ${cleanOpDates}`, 'subheader'),
       3: c('PUESTO', 'header'),
       4: c('APELLIDO Y NOMBRE', 'header'),
       5: c('FECHA', 'header'),
       6: c('DESDE-HASTA', 'header'),
       7: c('HORAS', 'header'),
-      8: c('Normales', 'header'),
-      9: c('0.5', 'header'),
-      10: c('1.0', 'header'),
+      8: c(totRegExpected, 'number', `=SUBTOTAL(9,R3C9:R${Math.max(3, endRowPF - 1)}C9)`),
+      9: c(0.5, 'header'),
+      10: c(1, 'header'),
     });
 
-    // Panel izquierdo: exactamente las 22 filas operativas del modelo
+    // Panel izquierdo: filas operativas del modelo PF (con fila 17 vacía antes de IMPORTE HORAS 50% en fila 18)
     const tarifaEncReg = Number(tabPF.tarifas_encargado?.REGULAR || 22362.87);
     const tarifaEnc50 = Number(tabPF.tarifas_encargado?.OVERTIME_50 || 29082.92);
     const tarifaEnc100 = Number(tabPF.tarifas_encargado?.OVERTIME_100 || 37743.22);
     const tarifaApReg = Number(tabPF.tarifas_apuntador?.REGULAR || 16254.43);
     const tarifaAp50 = Number(tabPF.tarifas_apuntador?.OVERTIME_50 || 22919.57);
     const tarifaAp100 = Number(tabPF.tarifas_apuntador?.OVERTIME_100 || 29749.58);
+    const bonifPctPf = Number(payload.discount_percentage ?? 3);
 
     setRowCells(s2, 2, { 0: c('HORAS NORMALES ENCARGADO', 'label'), 1: c(Number(tabPF.horas_encargado?.norm || 0), 'number') });
     setRowCells(s2, 3, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(tarifaEncReg, 'currency') });
     setRowCells(s2, 4, { 0: c('IMPORTE HORAS NORMALES', 'label'), 1: c(Number(tabPF.importes?.enc_reg || 0), 'currency', '=+R3C2*R4C2') });
     setRowCells(s2, 5, { 0: c('HORAS 50%', 'label'), 1: c(Number(tabPF.horas_encargado?.ot50 || 0), 'number') });
     setRowCells(s2, 6, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(tarifaEnc50, 'currency') });
-    setRowCells(s2, 7, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(Number(tabPF.importes?.enc_ot50 || 0), 'currency', '=+R6C2*R7C2') });
+    setRowCells(s2, 7, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(Number(tabPF.importes?.enc_ot50 || 0), 'currency', '=+R7C2*R6C2') });
     setRowCells(s2, 8, { 0: c('HORAS 100%', 'label'), 1: c(Number(tabPF.horas_encargado?.ot100 || 0), 'number') });
     setRowCells(s2, 9, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaEnc100, 'currency') });
-    setRowCells(s2, 10, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabPF.importes?.enc_ot100 || 0), 'currency', '=+R9C2*R10C2') });
+    setRowCells(s2, 10, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabPF.importes?.enc_ot100 || 0), 'currency', '=+R10C2*R9C2') });
 
     setRowCells(s2, 11, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(tabPF.horas_apuntador?.norm || 0), 'number', '=+R1C9-R3C2') });
     setRowCells(s2, 12, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(tarifaApReg, 'currency') });
     setRowCells(s2, 13, { 0: c('IMPORTE HORAS NORMALES', 'label'), 1: c(Number(tabPF.importes?.ap_reg || 0), 'currency', '=+R12C2*R13C2') });
     setRowCells(s2, 14, { 0: c('HORAS 50%', 'label'), 1: c(Number(tabPF.horas_apuntador?.ot50 || 0), 'number', '=+R1C10-R6C2') });
     setRowCells(s2, 15, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(tarifaAp50, 'currency') });
-    setRowCells(s2, 16, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(Number(tabPF.importes?.ap_ot50 || 0), 'currency', '=+R15C2*R16C2') });
-    setRowCells(s2, 17, { 0: c('HORAS 100%', 'label'), 1: c(Number(tabPF.horas_apuntador?.ot100 || 0), 'number', '=+R1C11-R9C2') });
-    setRowCells(s2, 18, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaAp100, 'currency') });
-    setRowCells(s2, 19, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabPF.importes?.ap_ot100 || 0), 'currency', '=+R18C2*R19C2') });
+    setRowCells(s2, 17, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(Number(tabPF.importes?.ap_ot50 || 0), 'currency', '=+R15C2*R16C2') });
+    setRowCells(s2, 18, { 0: c('HORAS 100%', 'label'), 1: c(Number(tabPF.horas_apuntador?.ot100 || 0), 'number', '=+R1C11-R9C2') });
+    setRowCells(s2, 19, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaAp100, 'currency') });
+    setRowCells(s2, 20, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabPF.importes?.ap_ot100 || 0), 'currency', '=+R19C2*R20C2') });
 
-    setRowCells(s2, 20, { 0: c('IMPORTE PERSONAL NORMAL', 'highlight_label'), 1: c(Number(tabPF.importes?.neto_sin_bonif || 0), 'highlight_currency', '=+R5C2+R8C2+R11C2+R14C2+R17C2+R20C2') });
-    setRowCells(s2, 21, { 0: c('NETO  FACTURA ', 'highlight_label'), 1: c(Number(tabPF.importes?.neto_sin_bonif || 0), 'highlight_currency', '=+R21C2') });
-    setRowCells(s2, 22, { 0: c(`BONIFICACION ${payload.discount_percentage ?? 3}%  `, 'label'), 1: c(Number(tabPF.importes?.bonificacion || 0), 'currency', '=+R22C2*0.03') });
-    setRowCells(s2, 23, { 0: c('SUB TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tabPF.importes?.subtotal_bonificado || pfNeto), 'total_currency', '=+R22C2-R23C2') });
+    setRowCells(s2, 21, { 0: c('IMPORTE PERSONAL NORMAL', 'highlight_label'), 1: c(Number(tabPF.importes?.neto_sin_bonif || 0), 'highlight_currency', '=+R5C2+R8C2+R11C2+R14C2+R18C2+R21C2') });
+    setRowCells(s2, 22, { 0: c('NETO  FACTURA ', 'highlight_label'), 1: c(Number(tabPF.importes?.neto_sin_bonif || 0), 'highlight_currency', '=+R22C2') });
+    setRowCells(s2, 23, { 0: c(`BONIFICACION ${bonifPctPf}%  `, 'label'), 1: c(Number(tabPF.importes?.bonificacion || 0), 'currency', `=+R23C2*${bonifPctPf / 100}`) });
+    setRowCells(s2, 24, { 0: c('SUB TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tabPF.importes?.subtotal_bonificado || pfNeto), 'total_currency', '=+R23C2-R24C2') });
+    setRowCells(s2, 25, { 1: c(' ', 'label') });
 
-    setRowCells(s2, 25, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
-    setRowCells(s2, 27, { 0: c('PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANALISIS DE ESTRUCTURAS DE COSTOS', 'note') });
-    setRowCells(s2, 29, { 0: c('(*) PERSONAL ADICIONAL ACORDADO CON LA EMPRESA', 'note') });
+    setRowCells(s2, 27, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+    setRowCells(s2, 29, { 0: c('PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANALISIS DE ESTRUCTURAS DE COSTOS', 'note') });
 
     // Panel derecho: Filas de turnos individuales (Cols 3 a 10)
     rightSourcePF.forEach((r, idx) => {
@@ -947,7 +1227,7 @@ export function buildProformaWorkbook(
         ...(s2[targetRow] ? {} : {}),
         3: c(r.puesto, 'label'),
         4: c(r.operario, 'label'),
-        5: c(r.fecha, 'center'),
+        5: c(r.fecha, dateOrCenterStyle(r.fecha)),
         6: c(isBonificadoOrEmpty ? '' : r.desdeHasta, 'center'),
         7: Number(r.horas || 0) > 0 ? c(Number(r.horas), 'number') : c('', 'center'),
         8: Number(r.norm || 0) > 0 ? c(Number(r.norm), 'number') : c('', 'center'),
@@ -983,7 +1263,7 @@ export function buildProformaWorkbook(
     if (hasInspec) {
       setRowCells(s3, 0, {
         0: c('SERVICIO', 'header'),
-        1: c(cleanOpDates, 'subheader'),
+        1: c(` ${cleanOpDates}`, 'subheader'),
         7: c(inspecNorm, 'number', `=SUM(R3C8:R${endRowInspec}C8)`),
         8: c(inspec50, 'number', `=SUM(R3C9:R${endRowInspec}C9)`),
         9: c(inspec100, 'number', `=SUM(R3C10:R${endRowInspec}C10)`),
@@ -996,8 +1276,8 @@ export function buildProformaWorkbook(
         5: c('DESDE-HASTA', 'header'),
         6: c('HORAS', 'header'),
         7: c('Normales', 'header'),
-        8: c('0.5', 'header'),
-        9: c('1.0', 'header'),
+        8: c(0.5, 'header'),
+        9: c(1, 'header'),
       });
 
       const tarifaInspecReg = Number(tabInspec.tarifas_apuntador?.REGULAR || tarifaApReg);
@@ -1014,17 +1294,20 @@ export function buildProformaWorkbook(
       setRowCells(s3, 10, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaInspec100, 'currency') });
       setRowCells(s3, 11, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabInspec.importes?.ap_ot100 || 0), 'currency', '=+R10C2*R11C2') });
       setRowCells(s3, 12, { 0: c('NETO  FACTURA ', 'highlight_label'), 1: c(Number(tabInspec.importes?.neto_sin_bonif || 0), 'highlight_currency', '=+R6C2+R9C2+R12C2') });
-      setRowCells(s3, 13, { 0: c(`BONIFICACION ${payload.discount_percentage ?? 3}%`, 'label'), 1: c(Number(tabInspec.importes?.bonificacion || 0), 'currency', '=+R13C2*0.03') });
+      setRowCells(s3, 13, { 0: c(`BONIFICACION ${bonifPctPf}%  `, 'label'), 1: c(Number(tabInspec.importes?.bonificacion || 0), 'currency', `=+R13C2*${bonifPctPf / 100}`) });
       setRowCells(s3, 14, { 0: c('SUB TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tabInspec.importes?.subtotal_bonificado || inspecNeto), 'total_currency', '=+R13C2-R14C2') });
-      setRowCells(s3, 17, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+      setRowCells(s3, 16, { 0: c('(*) PERSONAL ADICIONAL ACORDADO CON SR. LUIS DAGOSTINO Y EL SR. ALEJANDRO ESCALANTE', 'note') });
+      setRowCells(s3, 18, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+      setRowCells(s3, 20, { 0: c('PENDIENTE AJUSTAR PORCENTAJE UTILIDAD QUE ACORDEMOS SEGÚN ANALISIS DE ESTRUCTURAS DE COSTOS', 'note') });
 
       // Grilla de inspecciones a la derecha (Cols 3 a 9)
       inspecShiftRows.forEach((sr: any, idx: number) => {
         const targetRow = 2 + idx;
+        const formattedInspecDate = formatDateExcel(sr.workDate);
         setRowCells(s3, targetRow, {
           ...(s3[targetRow] ? {} : {}),
           3: c(sr.slotPosition || 'INSPEC ESPECIALES', 'label'),
-          4: c(formatDateExcel(sr.workDate), 'center'),
+          4: c(formattedInspecDate, dateOrCenterStyle(formattedInspecDate)),
           5: c(sr.timeRange || '0700-1700', 'center'),
           6: Number(sr.totalHours || 0) > 0 ? c(Number(sr.totalHours), 'number') : c('', 'center'),
           7: Number(sr.regularHours || 0) > 0 ? c(Number(sr.regularHours), 'number') : c('', 'center'),
@@ -1060,7 +1343,7 @@ export function buildProformaWorkbook(
 
     setRowCells(s4, 0, {
       0: c('SERVICIO', 'header'),
-      1: c(cleanOpDates, 'subheader', `='${pfSheetName}'!R2C2`),
+      1: c(` ${cleanOpDates}`, 'subheader', `='${pfSheetName}'!R2C2`),
       5: c(totalViajesTte, 'number', `=SUM(R3C6:R${endRowTte}C6)`),
     });
     setRowCells(s4, 1, {
@@ -1074,17 +1357,23 @@ export function buildProformaWorkbook(
     setRowCells(s4, 4, { 0: c('IMPORTE POR VIAJE', 'label'), 1: c(Number(tabTte.tarifa_por_viaje || 35594.34), 'currency') });
     setRowCells(s4, 5, { 0: c('TOTAL VIAJES', 'total_label'), 1: c(Number(tabTte.total_transporte || tteNeto), 'total_currency', '=+R4C2*R5C2') });
 
+    const hasDoubleStarTte = viajesRows.some((vr: any) => String(vr.notaMark || '').includes('**'));
     setRowCells(s4, 7, { 0: c('(*) VIAJARON MAS DE 8 APUNTADORES', 'note') });
-    setRowCells(s4, 8, { 0: c('(**)VIAJARON 13 APUNTADORES', 'note') });
-    setRowCells(s4, 9, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+    if (hasDoubleStarTte) {
+      setRowCells(s4, 8, { 0: c('(**)VIAJARON 13 APUNTADORES', 'note') });
+      setRowCells(s4, 9, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+    } else {
+      setRowCells(s4, 9, { 0: c('NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA MAYO 2026', 'note') });
+    }
 
     // Panel derecho: Cronograma de viajes diarios
     viajesRows.forEach((vr: any, idx: number) => {
       const targetRow = 2 + idx;
+      const formattedTteDate = formatDateExcel(vr.workDate);
       setRowCells(s4, targetRow, {
         ...(s4[targetRow] ? {} : {}),
         2: c(vr.notaMark || '', 'center'),
-        3: c(formatDateExcel(vr.workDate), 'center'),
+        3: c(formattedTteDate, dateOrCenterStyle(formattedTteDate)),
         4: c(vr.timeRange || '0700-1700', 'center'),
         5: c(Number(vr.viajes || 0), 'number'),
       });
@@ -1112,11 +1401,12 @@ export function buildProformaWorkbook(
           overtime100Hours: expoHours100,
         }];
 
-    const endRowExpo = Math.max(25, 2 + expoShiftRows.length);
+    const endRowExpo = Math.max(26, 2 + expoShiftRows.length);
+    const factorExpo = Number(tabExpo.factor_asignacion || 0.9);
 
     setRowCells(s5, 0, {
       0: c('SERVICIO', 'header'),
-      1: c(cleanOpDates, 'subheader', `='${tteSheetName}'!R1C2`),
+      1: c(` ${cleanOpDates}`, 'subheader', `='${tteSheetName}'!R1C2`),
       7: c(expoHoursNorm, 'number', `=SUM(R3C8:R${endRowExpo}C8)`),
       8: c(expoHours50, 'number', `=SUM(R3C9:R${endRowExpo}C9)`),
       9: c(expoHours100, 'number', `=SUM(R3C10:R${endRowExpo}C10)`),
@@ -1128,18 +1418,18 @@ export function buildProformaWorkbook(
       5: c('DESDE-HASTA', 'header'),
       6: c('HORAS', 'header'),
       7: c('Normales', 'header'),
-      8: c('0.5', 'header'),
-      9: c('1.0', 'header'),
+      8: c(0.5, 'header'),
+      9: c(1, 'header'),
     });
 
-    setRowCells(s5, 2, { 1: c(Number(tabExpo.factor_asignacion || 0.9), 'number') });
-    setRowCells(s5, 3, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(tabExpo.horas_facturadas?.norm || 0), 'number', '=+R1C8*0.9') });
+    setRowCells(s5, 2, { 1: c(factorExpo, 'number') });
+    setRowCells(s5, 3, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(tabExpo.horas_facturadas?.norm || 0), 'number', `=+R1C8*${factorExpo}`) });
     setRowCells(s5, 4, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(tarifaApReg, 'currency') });
     setRowCells(s5, 5, { 0: c('IMPORTE HORAS NORMALES', 'label'), 1: c(Number(tabExpo.importes?.reg || 0), 'currency', '=+R4C2*R5C2') });
-    setRowCells(s5, 6, { 0: c('HORAS 50%', 'label'), 1: c(Number(tabExpo.horas_facturadas?.ot50 || 0), 'number', '=+R1C9*0.9') });
+    setRowCells(s5, 6, { 0: c('HORAS 50%', 'label'), 1: c(Number(tabExpo.horas_facturadas?.ot50 || 0), 'number', `=+R1C9*${factorExpo}`) });
     setRowCells(s5, 7, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(tarifaAp50, 'currency') });
     setRowCells(s5, 8, { 0: c('IMPORTE HORAS 50%', 'label'), 1: c(Number(tabExpo.importes?.ot50 || 0), 'currency', '=+R7C2*R8C2') });
-    setRowCells(s5, 9, { 0: c('HORAS 100%', 'label'), 1: c(Number(tabExpo.horas_facturadas?.ot100 || 0), 'number', '=+R1C10*0.9') });
+    setRowCells(s5, 9, { 0: c('HORAS 100%', 'label'), 1: c(Number(tabExpo.horas_facturadas?.ot100 || 0), 'number', `=+R1C10*${factorExpo}`) });
     setRowCells(s5, 10, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(tarifaAp100, 'currency') });
     setRowCells(s5, 11, { 0: c('IMPORTE HORAS 100%', 'label'), 1: c(Number(tabExpo.importes?.ot100 || 0), 'currency', '=+R10C2*R11C2') });
     setRowCells(s5, 12, { 0: c('SUB TOTAL FACTURA BONIFICADA', 'total_label'), 1: c(Number(tabExpo.importes?.total || expoNeto), 'total_currency', '=+R6C2+R9C2+R12C2') });
@@ -1149,10 +1439,11 @@ export function buildProformaWorkbook(
     // Panel derecho: Detalle de turnos de exportación (Cols 3 a 9)
     expoShiftRows.forEach((sr: any, idx: number) => {
       const targetRow = 2 + idx;
+      const formattedExpoDate = formatDateExcel(sr.workDate);
       setRowCells(s5, targetRow, {
         ...(s5[targetRow] ? {} : {}),
         3: c(sr.slotPosition || 'APUNTADOR      PF', 'label'),
-        4: c(formatDateExcel(sr.workDate), 'center'),
+        4: c(formattedExpoDate, dateOrCenterStyle(formattedExpoDate)),
         5: c(sr.timeRange || '0700-1700', 'center'),
         6: Number(sr.totalHours || 0) > 0 ? c(Number(sr.totalHours), 'number') : c('', 'center'),
         7: Number(sr.regularHours || 0) > 0 ? c(Number(sr.regularHours), 'number') : c('', 'center'),
@@ -1488,33 +1779,44 @@ export function buildProformaWorkbook(
       }> = (payload.monthly_rows && payload.monthly_rows.length > 0)
         ? payload.monthly_rows
         : [
-            { apellido: 'ACOSTA JOAQUIN', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0, incidHe: 6726.70 },
-            { apellido: 'ARENA Cecilia', ot50: 38.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 57.0, incidHe: 94971.50 },
-            { apellido: 'BARRIOS CARLOS', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
-            { apellido: 'BELO Bruno Joaquin', ot50: 38.0, ot100: 4.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 65.0, incidHe: 48581.75 },
-            { apellido: 'BRITES  PEDRO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
-            { apellido: 'BRITES Enzo Nicolas', ot50: 18.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 27.0, incidHe: 57389.69 },
-            { apellido: 'BRITES LUCAS DAVID', ot50: 40.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 68.0, incidHe: 144537.00 },
-            { apellido: 'BUET MARIA', ot50: 34.0, gw: 143503.03, cj18: 88200.48, totPlus: 231703.51, hsNorm: 51.0, incidHe: 61546.24 },
-            { apellido: 'CORNEJO NELSON', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 42.0, incidHe: 69979.00 },
-            { apellido: 'GRASSI CANDELA', ot50: 2.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 3.0, incidHe: 2242.23 },
-            { apellido: 'GUERRERO ANGEL', ot50: 22.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 33.0, incidHe: 54983.50 },
-            { apellido: 'LIBARONO MAXIMILIANO', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, totPlus: 319903.99, hsNorm: 42.0, incidHe: 69979.00 },
-            { apellido: 'MARTINOLI DIEGO RICARDO', ot50: 14.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 29.0, incidHe: 61640.78 },
-            { apellido: 'MARTINOLI LAUTARO', gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 0.0, incidHe: 0.0 },
-            { apellido: 'MORALES ROSANA LORENA', ot50: 18.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 35.0, incidHe: 74394.04 },
-            { apellido: 'PERALTA JOAQUIN', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
-            { apellido: 'SALGUERO OSVALDO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0, incidHe: 0.0 },
-            { apellido: 'SARLI Roque', ot50: 38.0, gw: 143503.03, cj14: 88200.48, totPlus: 231703.51, hsNorm: 57.0, incidHe: 68786.98 },
-            { apellido: 'SELLANES MARIA ELENA', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0, incidHe: 6726.70 },
-            { apellido: 'SUAREZ ROMINA', ot50: 20.0, ot100: 4.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 38.0, incidHe: 63314.33 },
+            { apellido: 'ACOSTA JOAQUIN', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0 },
+            { apellido: 'ARENA Cecilia', ot50: 38.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 57.0 },
+            { apellido: 'BARRIOS CARLOS', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0 },
+            { apellido: 'BELO Bruno Joaquin', ot50: 38.0, ot100: 4.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 65.0 },
+            { apellido: 'BRITES  PEDRO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0 },
+            { apellido: 'BRITES Enzo Nicolas', ot50: 18.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 27.0 },
+            { apellido: 'BRITES LUCAS DAVID', ot50: 40.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 68.0 },
+            { apellido: 'BUET MARIA', ot50: 34.0, gw: 143503.03, cj18: 88200.48, totPlus: 231703.51, hsNorm: 51.0 },
+            { apellido: 'CORNEJO NELSON', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 42.0 },
+            { apellido: 'GRASSI CANDELA', ot50: 2.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 3.0 },
+            { apellido: 'GUERRERO ANGEL', ot50: 22.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 33.0 },
+            { apellido: 'LIBARONO MAXIMILIANO', ot50: 28.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, totPlus: 319903.99, hsNorm: 42.0 },
+            { apellido: 'MARTINOLI DIEGO RICARDO', ot50: 14.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 29.0 },
+            { apellido: 'MARTINOLI LAUTARO', gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 0.0 },
+            { apellido: 'MORALES ROSANA LORENA', ot50: 18.0, ot100: 4.0, gw: 143503.03, cj14: 88200.48, cj18: 88200.48, cj23: 88200.48, totPlus: 408104.47, hsNorm: 35.0 },
+            { apellido: 'PERALTA JOAQUIN', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0 },
+            { apellido: 'SALGUERO OSVALDO', gw: 143503.03, totPlus: 143503.03, hsNorm: 0.0 },
+            { apellido: 'SARLI Roque', ot50: 38.0, gw: 143503.03, cj14: 88200.48, totPlus: 231703.51, hsNorm: 57.0 },
+            { apellido: 'SELLANES MARIA ELENA', ot50: 6.0, gw: 143503.03, totPlus: 143503.03, hsNorm: 9.0 },
+            { apellido: 'SUAREZ ROMINA', ot50: 20.0, ot100: 4.0, gw: 143503.03, cj18: 88200.48, cj23: 88200.48, totPlus: 319903.99, hsNorm: 38.0 },
           ];
 
+      const vesselCols: Array<{ key?: string; legacySlotKey?: string; label: string }> =
+        Array.isArray(payload.vessel_columns) && payload.vessel_columns.length > 0
+          ? payload.vessel_columns.slice(0, 8)
+          : [
+              { key: 'gw', label: 'GOODWOOD 11-13 OCT' },
+              { key: 'cj14', label: 'CAP. JACKSON 14 OCT' },
+              { key: 'cj18', label: 'CAP. JACKSON 18-19  OCT' },
+              { key: 'cj23', label: 'CAP. JACKSON 23 OCT' },
+            ];
+
       const s1: (ExcelCell | null)[][] = [];
+      const headerMonthLabel = String(operationDates || 'OCTUBRE 2026').replace(/^1-\d+\s+/i, '').trim() || 'OCTUBRE 2026';
 
       // Row 1: Header + Factura Proforma
       setRowCells(s1, 0, {
-        0: c(`MTS-CTYC SA - ${operationDates || 'OCTUBRE 2026'} - INCIDENCIA PLUS EN HORAS EXTRAS TRABAJADAS EN PLAZOLETA FISCAL`, 'header'),
+        0: c(`MTS-CTYC SA - ${headerMonthLabel} - INCIDENCIA PLUS EN HORAS EXTRAS TRABAJADAS EN PLAZOLETA FISCAL`, 'header'),
         15: c('FACTURA', 'header'),
         16: c('PROFORMA', 'subheader'),
       });
@@ -1524,69 +1826,134 @@ export function buildProformaWorkbook(
         16: c(formatDateExcel(issueDate), 'date'),
       });
       // Row 3: Fecha Vencimiento + Column Headers
-      setRowCells(s1, 2, {
+      const row3Headers: Record<number, ExcelCell> = {
         0: c('APELLIDO Y NOMBRE', 'header'),
         1: c(0.5, 'header'),
-        2: c(1.0, 'header'),
-        3: c('GOODWOOD 11-13 OCT', 'header'),
-        4: c('CAP. JACKSON 14 OCT', 'header'),
-        5: c('CAP. JACKSON 18-19  OCT', 'header'),
-        6: c('CAP. JACKSON 23 OCT', 'header'),
+        2: c(1, 'header'),
         11: c('TOTAL PLUS', 'header'),
         12: c('HS.NORM.', 'header'),
         13: c('INCID HE ', 'header'),
         15: c('FECHA VENCIMIENTO', 'label'),
-        16: c(formatDateExcel(dueDate), 'date'),
+        16: c(formatDateExcel(dueDate), 'date', dueDiffDays ? `=+R2C17+${dueDiffDays}` : undefined),
+      };
+      vesselCols.forEach((vc, vIdx) => {
+        row3Headers[3 + vIdx] = c(vc.label, 'header');
+      });
+      setRowCells(s1, 2, row3Headers);
+
+      const totalRowIdx = Math.max(27, 3 + monthlyRows.length);
+      const lastSumExcelRow = totalRowIdx; // 1-based row before total row
+      const totalExcelRow = totalRowIdx + 1;
+
+      const resolvedMonthlyRows = monthlyRows.map((row) => {
+        const vesselAmts = vesselCols.map((vc, vIdx) => {
+          const key = vc.key || `v${vIdx}`;
+          const rowAny = row as any;
+          if (rowAny.vessel_bonuses && rowAny.vessel_bonuses[key] !== undefined) return Number(rowAny.vessel_bonuses[key] || 0);
+          if (rowAny.vessels && rowAny.vessels[key] !== undefined) return Number(rowAny.vessels[key] || 0);
+          if (rowAny[key] !== undefined) return Number(rowAny[key] || 0);
+          if (vc.legacySlotKey) {
+            if (rowAny.vessel_bonuses && rowAny.vessel_bonuses[vc.legacySlotKey] !== undefined) return Number(rowAny.vessel_bonuses[vc.legacySlotKey] || 0);
+            if (rowAny[vc.legacySlotKey] !== undefined) return Number(rowAny[vc.legacySlotKey] || 0);
+          }
+          return 0;
+        });
+        const ot50 = Number(row.ot50 || 0);
+        const ot100 = Number(row.ot100 || 0);
+        const hsNorm = row.hsNorm !== undefined ? Number(row.hsNorm) : ot50 * 1.5 + ot100 * 2;
+        const totPlus = row.totPlus !== undefined ? Number(row.totPlus) : vesselAmts.reduce((a, b) => a + b, 0);
+        const incidHe = row.incidHe !== undefined ? Number(row.incidHe) : (totPlus / 192) * hsNorm;
+        return { ...row, vesselAmts, ot50, ot100, hsNorm, totPlus, incidHe };
       });
 
-      // Invoice summary on lines 5 to 11
-      setRowCells(s1, 4, { 15: c('CAT ARGENTINA S.A.', 'header') });
+      const plusSumMonthly = payload.plus_summary || {};
+      const sumTotalPlus = Number(
+        payload.totales?.total_plus ??
+        plusSumMonthly.total_plus ??
+        resolvedMonthlyRows.reduce((a, r) => a + r.totPlus, 0)
+      );
+      const sumIncidHeRaw = Number(
+        payload.totales?.neto_incidencia ??
+        plusSumMonthly.neto_incidencia ??
+        resolvedMonthlyRows.reduce((a, r) => a + r.incidHe, 0)
+      );
+      const sumIncidHeRounded = Math.round(sumIncidHeRaw * 100) / 100;
+      const coefInc = Number(payload.coeficiente ?? plusSumMonthly.coeficiente ?? 0.52);
+      const coefMontoInc = Number(payload.totales?.coeficiente_monto ?? plusSumMonthly.coeficiente_monto ?? Math.round(sumIncidHeRounded * coefInc * 100) / 100);
+      const totalConCoefInc = Number(payload.totales?.total_neto ?? plusSumMonthly.total_neto ?? Math.round((sumIncidHeRounded + coefMontoInc) * 100) / 100);
+      const ivaInc = Number(payload.totales?.iva_21 ?? plusSumMonthly.iva_21 ?? Math.round(totalConCoefInc * 0.21 * 100) / 100);
+      const totalFacturaInc = Number(payload.totales?.total_factura ?? plusSumMonthly.total_factura ?? Math.round((totalConCoefInc + ivaInc) * 100) / 100);
+
+      // Invoice summary on lines 5 to 11 (P5:Q11)
+      setRowCells(s1, 4, { 15: c(clientName || 'CAT ARGENTINA S.A.', 'header') });
+      setRowCells(s1, 5, {
+        15: c('INCID HE ', 'highlight_label', '=+R3C14'),
+        16: c(sumIncidHeRounded, 'highlight_currency', `=+R${totalExcelRow}C14`),
+      });
       setRowCells(s1, 6, {
         15: c('Neto Plus + Inc. Hs. Extras', 'highlight_label'),
-        16: c(885799.46, 'highlight_currency', '=+R28C14'),
+        16: c(sumIncidHeRounded, 'highlight_currency', '=+R6C17'),
       });
       setRowCells(s1, 7, {
-        15: c('Coeficiente costos:  0,52', 'label'),
-        16: c(460615.72, 'currency', '=+R7C17*0.52'),
+        15: c(`Coeficiente costos:  ${String(coefInc).replace('.', ',')}`, 'label'),
+        16: c(coefMontoInc, 'currency', `=+R7C17*${coefInc}`),
       });
       setRowCells(s1, 8, {
         15: c('Total a facturar por Plus e Inc. Hs. Extras', 'total_label'),
-        16: c(1346415.18, 'total_currency', '=+R7C17+R8C17'),
+        16: c(totalConCoefInc, 'total_currency', '=+R8C17+R7C17'),
       });
       setRowCells(s1, 9, {
         15: c('IVA', 'label'),
-        16: c(282747.19, 'currency', '=+R9C17*0.21'),
+        16: c(ivaInc, 'currency', '=+R9C17*0.21'),
       });
       setRowCells(s1, 10, {
         15: c('Total a facturar por  Inc. Plus en Hs. Extras Fiscal', 'total_label'),
-        16: c(1629162.37, 'total_currency', '=+R9C17+R10C17'),
+        16: c(totalFacturaInc, 'total_currency', '=+R10C17+R9C17'),
       });
 
-      // Table rows (Rows 4 to 23 in Excel, index 3 to 22)
-      monthlyRows.forEach((row, idx) => {
+      // Table rows (Rows 4 to N in Excel, index 3..)
+      resolvedMonthlyRows.forEach((row, idx) => {
         const rIndex = 3 + idx;
         const excelRow = rIndex + 1; // 1-based
-        setRowCells(s1, rIndex, {
+        const rowCells: Record<number, ExcelCell> = {
           0: c(row.apellido, 'label'),
           1: row.ot50 ? c(row.ot50, 'number') : c('', 'center'),
           2: row.ot100 ? c(row.ot100, 'number') : c('', 'center'),
-          3: row.gw ? c(row.gw, 'currency') : c('', 'center'),
-          4: row.cj14 ? c(row.cj14, 'currency') : c('', 'center'),
-          5: row.cj18 ? c(row.cj18, 'currency') : c('', 'center'),
-          6: row.cj23 ? c(row.cj23, 'currency') : c('', 'center'),
-          11: c(row.totPlus || 0, 'currency', `=+R${excelRow}C4+R${excelRow}C5+R${excelRow}C6+R${excelRow}C7`),
-          12: c(row.hsNorm || 0, 'number', `=+R${excelRow}C2*1.5+R${excelRow}C3*2`),
-          13: c(row.incidHe || 0, 'currency', `=+(R${excelRow}C12/192)*R${excelRow}C13`),
+        };
+        row.vesselAmts.forEach((amt, vIdx) => {
+          if (vIdx === 0) {
+            const prevAmt = idx > 0 ? resolvedMonthlyRows[idx - 1].vesselAmts[0] : null;
+            rowCells[3] = amt
+              ? c(amt, 'currency', idx > 0 && prevAmt === amt ? `=+R${excelRow - 1}C4` : undefined)
+              : c('', 'center');
+          } else {
+            rowCells[3 + vIdx] = amt ? c(amt, 'currency') : c('', 'center');
+          }
         });
+        const extraColsFormula = vesselCols.length > 5
+          ? vesselCols.slice(5).map((_, ei) => `+R${excelRow}C${9 + ei}`).join('')
+          : '';
+        rowCells[11] = c(
+          row.totPlus,
+          'currency',
+          `=+R${excelRow}C4+R${excelRow}C5+R${excelRow}C7+R${excelRow}C8+R${excelRow}C6${extraColsFormula}`
+        );
+        rowCells[12] = c(
+          row.hsNorm,
+          'number',
+          row.ot50 > 0 && row.ot100 === 0 ? `=+R${excelRow}C2*1.5` : `=+R${excelRow}C2*1.5+R${excelRow}C3*2`
+        );
+        rowCells[13] = c(row.incidHe, 'currency', `=+R${excelRow}C12/192*R${excelRow}C13`);
+        setRowCells(s1, rIndex, rowCells);
       });
 
-      // Row 28 (index 27): Total row
-      setRowCells(s1, 27, {
-        11: c(5251473.56, 'total_currency', '=SUM(R4C12:R27C12)'),
-        13: c(885799.46, 'total_currency', '=SUM(R4C14:R27C14)'),
+      // Total row (Row 28 / dynamic if > 24 rows)
+      setRowCells(s1, totalRowIdx, {
+        11: c(Math.round(sumTotalPlus * 100) / 100, 'total_currency', `=SUM(R4C12:R${lastSumExcelRow}C12)`),
+        13: c(sumIncidHeRounded, 'total_currency', `=SUM(R4C14:R${lastSumExcelRow}C14)`),
       });
 
-      // Sheet 2: HORAS EXTRAS PLAZ FISCAL (resumen y turnos de plazoleta)
+      // Sheet 2: HORAS EXTRAS PLAZ FISCAL (turnos a la izquierda A..H y tabla dinámica J1:L2+ a la derecha)
       const s2: (ExcelCell | null)[][] = [];
       setRowCells(s2, 0, {
         0: c('PUESTO', 'header'),
@@ -1595,19 +1962,56 @@ export function buildProformaWorkbook(
         3: c('DESDE-HASTA', 'header'),
         4: c('HORAS', 'header'),
         5: c('Normales', 'header'),
-        6: c('50%', 'header'),
-        7: c('100%', 'header'),
+        6: c(0.5, 'header'),
+        7: c(1, 'header'),
+        10: c('Datos', 'header'),
+      });
+      setRowCells(s2, 1, {
         9: c('APELLIDO Y NOMBRE', 'header'),
         10: c('Suma de 50%', 'header'),
         11: c('Suma de 100%', 'header'),
       });
 
-      monthlyRows.forEach((r, idx) => {
+      const heShifts: any[] = payload.pf_shift_rows || payload.horas_extras_shifts || payload.pf_shifts || payload.turnos || payload.shift_rows || [];
+      heShifts.forEach((sr, idx) => {
+        const formattedHeDate = formatDateExcel(sr.workDate || sr.work_date || sr.fecha || '');
+        const heHoras = Number(sr.totalHours ?? sr.total_hours ?? sr.horas ?? 0);
+        const heNorm = Number(sr.regularHours ?? sr.regular_hours ?? sr.normales ?? 0);
+        const he50 = Number(sr.overtime50Hours ?? sr.overtime_50_hours ?? sr.ot50 ?? 0);
+        const he100 = Number(sr.overtime100Hours ?? sr.overtime_100_hours ?? sr.ot100 ?? 0);
         setRowCells(s2, 1 + idx, {
-          9: c(r.apellido, 'label'),
-          10: r.ot50 ? c(r.ot50, 'number') : c('', 'center'),
-          11: r.ot100 ? c(r.ot100, 'number') : c('', 'center'),
+          0: c(sr.slotPosition || sr.puesto || 'APUNTADOR PF', 'label'),
+          1: c(sr.employeeName || sr.apellido || '', 'label'),
+          2: c(formattedHeDate, dateOrCenterStyle(formattedHeDate)),
+          3: c(sr.timeRange || sr.desdeHasta || '0700-1700', 'center'),
+          4: heHoras > 0 ? c(heHoras, 'number') : c('', 'center'),
+          5: heNorm > 0 ? c(heNorm, 'number') : c('', 'center'),
+          6: he50 > 0 ? c(he50, 'number') : c('', 'center'),
+          7: he100 > 0 ? c(he100, 'number') : c('', 'center'),
         });
+      });
+
+      const pivotRows: Array<{ apellido: string; ot50: number; ot100: number }> =
+        Array.isArray(payload.pivot_rows) && payload.pivot_rows.length > 0
+          ? payload.pivot_rows
+          : resolvedMonthlyRows
+              .filter((r) => r.ot50 > 0 || r.ot100 > 0)
+              .map((r) => ({ apellido: r.apellido, ot50: r.ot50, ot100: r.ot100 }));
+
+      pivotRows.forEach((pr, idx) => {
+        setRowCells(s2, 2 + idx, {
+          9: c(pr.apellido, 'label'),
+          10: pr.ot50 > 0 ? c(pr.ot50, 'number') : c('', 'center'),
+          11: pr.ot100 > 0 ? c(pr.ot100, 'number') : c('', 'center'),
+        });
+      });
+      const pivotTotRowIdx = 2 + pivotRows.length;
+      const sumPivot50 = pivotRows.reduce((a, r) => a + Number(r.ot50 || 0), 0);
+      const sumPivot100 = pivotRows.reduce((a, r) => a + Number(r.ot100 || 0), 0);
+      setRowCells(s2, pivotTotRowIdx, {
+        9: c('Total general', 'total_label'),
+        10: c(sumPivot50, 'number'),
+        11: c(sumPivot100, 'number'),
       });
 
       const safeDates = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
@@ -1802,7 +2206,7 @@ export function buildProformaWorkbook(
     const horasImp = payload.horas_imputadas || {};
     const tarifas = payload.tarifas || {};
     const importes = payload.importes || {};
-    const factor = Number(payload.factor_coparticipacion ?? 0.10);
+    const factor = Number(payload.factor_coparticipacion ?? payload.coparticipation_factor ?? 0.10);
 
     const coopShifts =
       shiftsList.length > 0
@@ -1847,38 +2251,56 @@ export function buildProformaWorkbook(
       5: c('DESDE-HASTA', 'header'),
       6: c('HORAS', 'header'),
       7: c('Normales', 'header'),
-      8: c('0.5', 'header'),
-      9: c('1.0', 'header'),
+      8: c(0.5, 'header'),
+      9: c(1, 'header'),
     });
 
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
+    setRowCells(s1, 2, {
+      0: c('FECHA VENCIMIENTO', 'label'),
+      1: c(formatDateExcel(dueDate), 'date', dueDiffDays ? `=+R2C2+${dueDiffDays}` : undefined),
+    });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName || 'COOPTACORD SA', 'subheader') });
-    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('DELTA DOCK - LIMA', 'label') });
+    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(payload.lugar || 'DELTA DOCK - LIMA', 'label') });
     setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
     setRowCells(s1, 6, { 0: c('SERVICIO', 'label') });
-    setRowCells(s1, 7, { 1: c('APUNTADORES  PLAZ. FISCAL', 'header') });
+    setRowCells(s1, 7, { 1: c(' APUNTADORES  PLAZ. FISCAL', 'header') });
     setRowCells(s1, 8, { 1: c(factor, 'number') });
 
-    setRowCells(s1, 9, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(horasImp.reg ?? 14.0), 'number', `=+R1C8*R9C2`) });
+    const rateViandaCoop = Number(payload.rate_vianda ?? 0);
+    const countViandaCoop = Number(payload.viandas_count ?? 0);
+    const totViandaCoop = Number(importes.viandas ?? 0);
+    const countShuttlesCoop = Number(payload.shuttles_count ?? 0);
+    const rateShuttleCoop = Number(payload.rate_shuttle ?? 0);
+    const totShuttleCoop = Number(importes.shuttles ?? 0);
+
+    setRowCells(s1, 9, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(Number(horasImp.reg ?? 14.0), 'number', `=+R1C8*${factor}`) });
     setRowCells(s1, 10, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(Number(tarifas.reg ?? 31602.72), 'currency') });
     setRowCells(s1, 11, { 0: c('IMPORTE HORAS NORMALES', 'highlight_label'), 1: c(Number(importes.reg ?? 442438.09), 'highlight_currency', '=+R10C2*R11C2') });
-    setRowCells(s1, 12, { 0: c('HORAS 50%', 'label'), 1: c(Number(horasImp.ot50 ?? 3.2), 'number', `=+R1C9*R9C2`) });
+    setRowCells(s1, 12, { 0: c('HORAS 50%', 'label'), 1: c(Number(horasImp.ot50 ?? 3.2), 'number', `=+R1C9*${factor}`) });
     setRowCells(s1, 13, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(Number(tarifas.ot50 ?? 47404.08), 'currency', '=+R11C2*1.5') });
     setRowCells(s1, 14, { 0: c('IMPORTE HORAS 50%', 'highlight_label'), 1: c(Number(importes.ot50 ?? 151693.06), 'highlight_currency', '=+R13C2*R14C2') });
-    setRowCells(s1, 15, { 0: c('HORAS 100%', 'label'), 1: c(Number(horasImp.ot100 ?? 0.8), 'number', `=+R1C10*R9C2`) });
+    setRowCells(s1, 15, { 0: c('HORAS 100%', 'label'), 1: c(Number(horasImp.ot100 ?? 0.8), 'number', `=+R1C10*${factor}`) });
     setRowCells(s1, 16, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(Number(tarifas.ot100 ?? 63205.44), 'currency', '=+R11C2*2') });
     setRowCells(s1, 17, { 0: c('IMPORTE HORAS 100%', 'highlight_label'), 1: c(Number(importes.ot100 ?? 50564.35), 'highlight_currency', '=+R16C2*R17C2') });
-    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(Number(payload.viandas_count ?? 0), 'number') });
-    setRowCells(s1, 19, { 0: c('IMPORTE POR VIANDA', 'label'), 1: c(Number(payload.rate_vianda ?? 0), 'currency') });
-    setRowCells(s1, 20, { 0: c('IMPORTE VIANDAS', 'label'), 1: c(Number(importes.viandas ?? 0), 'currency', '=+R19C2*R20C2') });
-    setRowCells(s1, 21, { 0: c('TRANSPORTE - VIAJES', 'label'), 1: c(Number(payload.shuttles_count ?? 0), 'number') });
-    setRowCells(s1, 22, { 0: c('IMPORTE POR VIAJE', 'label'), 1: c(Number(payload.rate_shuttle ?? 35594.34), 'currency') });
-    setRowCells(s1, 23, { 0: c('TOTAL VIAJES', 'label'), 1: c(Number(importes.shuttles ?? 0), 'currency', '=+R22C2*R23C2') });
+    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(countViandaCoop, 'number') });
+    setRowCells(s1, 19, {
+      0: c('IMPORTE POR VIANDA', 'label'),
+      1: rateViandaCoop > 0 ? c(rateViandaCoop, 'currency') : c('', 'center'),
+    });
+    setRowCells(s1, 20, { 0: c('IMPORTE VIANDAS', 'label'), 1: c(totViandaCoop, 'currency') });
+    setRowCells(s1, 21, { 0: c('TRANSPORTE - VIAJES', 'label'), 1: c(countShuttlesCoop, 'number') });
+    setRowCells(s1, 22, {
+      0: c('IMPORTE POR VIAJE', 'label'),
+      1: countShuttlesCoop > 0 && rateShuttleCoop > 0 ? c(rateShuttleCoop, 'currency') : c('', 'center'),
+    });
+    setRowCells(s1, 23, { 0: c('TOTAL VIAJES', 'label'), 1: c(totShuttleCoop, 'currency', '=+R22C2*R23C2') });
     setRowCells(s1, 24, { 0: c('IMPORTE TOTAL', 'total_label'), 1: c(totalNeto, 'total_currency', '=+R12C2+R15C2+R18C2+R21C2+R24C2') });
-    setRowCells(s1, 25, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=+R25C2*0.21') });
+    setRowCells(s1, 25, { 0: c('IVA', 'label'), 1: c(iva, 'currency', '=+R25C2*0.21') });
     setRowCells(s1, 26, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency', '=+R25C2+R26C2') });
     setRowCells(s1, 28, { 3: c('NOTA: BONIFICACIONES - 2 APUNTADORES - REMISES Y VIANDAS', 'note') });
     setRowCells(s1, 29, { 0: c('TARIFAS - S/ACTA ACUERDO 17/11/25', 'note') });
+    const coopParitariaNote = (hasExplicitNotes ? notes.find((n) => n.toUpperCase().includes('PARITARIAS')) : undefined) || 'NOTA: FACTURA AJUSTADA POR ACUERDO POR PARITARIAS PARA JULIO - AGOSTO 2026';
+    setRowCells(s1, 31, { 0: c(coopParitariaNote, 'note') });
 
     // Turnos de Cooptacord en panel derecho (filas 2..)
     coopShifts.forEach((s, idx) => {
@@ -1895,7 +2317,7 @@ export function buildProformaWorkbook(
       setRowCells(s1, targetRow, {
         ...(s1[targetRow] ? {} : {}),
         3: c(s.position_name || `APUNTADOR      PF ${String((idx % 2) + 1).padStart(2, '0')}`, 'label'),
-        4: c(formattedDate, 'center'),
+        4: c(formattedDate, dateOrCenterStyle(formattedDate)),
         5: c(timeRange, 'center'),
         6: totalHs > 0 ? c(totalHs, 'number') : c('', 'center'),
         7: Number(s.regular_hours || 0) > 0 ? c(Number(s.regular_hours), 'number') : c('', 'center'),
@@ -1935,18 +2357,33 @@ export function buildProformaWorkbook(
           ];
 
     const lastDanchukExcelRow = Math.max(30, 2 + danchukShifts.length);
+    const dRegHs = Number(horas.reg ?? (isSeptDanchuk ? 24.0 : 28.0));
+    const dRegRate = Number(tarifas.reg ?? 31602.72);
+    const dOt50Hs = Number(horas.ot50 ?? 0.0);
+    const dOt50Rate = Number(tarifas.ot50 ?? 47404.08);
+    const dOt100Hs = Number(horas.ot100 ?? 0.0);
+    const dOt100Rate = Number(tarifas.ot100 ?? 63205.44);
+    const dViandasCount = Number(viandas.count ?? 0);
+    const dViandasRate = Number(viandas.rate ?? 6545.1804);
+    const dViandasBaseRate = viandas.base_rate !== undefined ? Number(viandas.base_rate) : (Math.abs(dViandasRate - 6545.1804) < 0.01 ? 5409.24 : null);
+    const dTripsZteTz = Number(transporte.zte_tz_trips ?? transporte.trips_zte_tz ?? 0);
+    const dRateZteTz = Number(transporte.zte_tz_rate ?? transporte.rate_zte_tz ?? 0);
+    const dTripsCmpTz = Number(transporte.cmp_tz_trips ?? transporte.trips ?? 4);
+    const dRateCmpTz = Number(transporte.cmp_tz_rate ?? transporte.rate ?? 37685.2756029876);
+    const dTotCmpTz = Number(transporte.cmp_tz_total ?? transporte.total ?? dTripsCmpTz * dRateCmpTz);
+    const dBonus = Number(payload.bonus_productividad ?? 0);
 
     // Totales en fila 0 (con las 7 fórmulas SUM de columnas I..O idénticas a la plantilla)
     setRowCells(s1, 0, {
       0: c('FACTURA ELECTRONICA', 'header'),
       1: c(invoiceNumber, 'subheader'),
-      8: c(Number(horas.reg ?? (isSeptDanchuk ? 24.0 : 28.0)), 'number', `=SUM(R3C9:R${lastDanchukExcelRow}C9)`),
-      9: c(Number(horas.ot50 ?? 0.0), 'number', `=SUM(R3C10:R${lastDanchukExcelRow}C10)`),
-      10: c(Number(horas.ot100 ?? 0.0), 'number', `=SUM(R3C11:R${lastDanchukExcelRow}C11)`),
+      8: c(dRegHs, 'number', `=SUM(R3C9:R${lastDanchukExcelRow}C9)`),
+      9: c(dOt50Hs, 'number', `=SUM(R3C10:R${lastDanchukExcelRow}C10)`),
+      10: c(dOt100Hs, 'number', `=SUM(R3C11:R${lastDanchukExcelRow}C11)`),
       11: c(0.0, 'number', `=SUM(R3C12:R${lastDanchukExcelRow}C12)`),
-      12: c(Number(transporte.trips ?? 4), 'number', `=SUM(R3C13:R${lastDanchukExcelRow}C13)`),
-      13: c(0.0, 'number', `=SUM(R3C14:R${lastDanchukExcelRow}C14)`),
-      14: c(Number(viandas.count ?? 0), 'number', `=SUM(R3C15:R${lastDanchukExcelRow}C15)`),
+      12: c(dTripsCmpTz, 'number', `=SUM(R3C13:R${lastDanchukExcelRow}C13)`),
+      13: c(dTripsZteTz, 'number', `=SUM(R3C14:R${lastDanchukExcelRow}C14)`),
+      14: c(dViandasCount, 'number', `=SUM(R3C15:R${lastDanchukExcelRow}C15)`),
     });
 
     setRowCells(s1, 1, {
@@ -1958,49 +2395,55 @@ export function buildProformaWorkbook(
       6: c('DESDE-HASTA', 'header'),
       7: c('HORAS', 'header'),
       8: c('Normales', 'header'),
-      9: c('0.5', 'header'),
-      10: c('1.0', 'header'),
+      9: c(0.5, 'header'),
+      10: c(1, 'header'),
       11: c('PLUS P.', 'header'),
       12: c('VIAJES CMP-TZ', 'header'),
       13: c('VIAJES ZTE-TZ', 'header'),
       14: c('VIANDAS', 'header'),
     });
 
-    setRowCells(s1, 2, { 0: c('FECHA VENCIMIENTO', 'label'), 1: c(formatDateExcel(dueDate), 'date') });
+    setRowCells(s1, 2, {
+      0: c('FECHA VENCIMIENTO', 'label'),
+      1: c(formatDateExcel(dueDate), 'date', dueDiffDays ? `=+R2C2+${dueDiffDays}` : undefined),
+    });
     setRowCells(s1, 3, { 0: c('CLIENTE', 'label'), 1: c(clientName || 'SERGIO DANCHUK', 'subheader') });
-    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c('TERMINAL ZARATE', 'label') });
+    setRowCells(s1, 4, { 0: c('LUGAR', 'label'), 1: c(payload.lugar || 'TERMINAL ZARATE', 'label') });
     setRowCells(s1, 5, { 0: c('FECHAS', 'label'), 1: c(operationDates, 'subheader') });
     setRowCells(s1, 6, { 0: c('SERVICIO', 'label'), 1: c('PLAZOLETA FISCAL', 'header') });
     setRowCells(s1, 7, { 1: c('CONTROL DAÑOS', 'subheader') });
-
-    const dRegHs = Number(horas.reg ?? (isSeptDanchuk ? 24.0 : 28.0));
-    const dRegRate = Number(tarifas.reg ?? 31602.72);
-    const dOt50Hs = Number(horas.ot50 ?? 0.0);
-    const dOt50Rate = Number(tarifas.ot50 ?? 47404.08);
-    const dOt100Hs = Number(horas.ot100 ?? 0.0);
-    const dOt100Rate = Number(tarifas.ot100 ?? 63205.44);
+    setRowCells(s1, 8, { 1: c(' ', 'label') });
 
     setRowCells(s1, 9, { 0: c('HORAS NORMALES APUNTADOR', 'label'), 1: c(dRegHs, 'number', '=+R1C9') });
     setRowCells(s1, 10, { 0: c('TARIFA PESOS / HS. NORMALES', 'label'), 1: c(dRegRate, 'currency') });
-    setRowCells(s1, 11, { 0: c('IMPORTE HORAS NORMALES', 'highlight_label'), 1: c(Math.round(dRegHs * dRegRate * 100) / 100, 'highlight_currency', '=+R11C2*R10C2') });
+    setRowCells(s1, 11, { 0: c('IMPORTE HORAS NORMALES', 'highlight_label'), 1: c(dRegHs * dRegRate, 'highlight_currency', '=+R11C2*R10C2') });
     setRowCells(s1, 12, { 0: c('HORAS 50%', 'label'), 1: c(dOt50Hs, 'number', '=+R1C10') });
     setRowCells(s1, 13, { 0: c('TARIFA PESOS / HS. 50%', 'label'), 1: c(dOt50Rate, 'currency', '=+R11C2*1.5') });
-    setRowCells(s1, 14, { 0: c('IMPORTE HORAS 50%', 'highlight_label'), 1: c(Math.round(dOt50Hs * dOt50Rate * 100) / 100, 'highlight_currency', '=+R13C2*R14C2') });
+    setRowCells(s1, 14, { 0: c('IMPORTE HORAS 50%', 'highlight_label'), 1: c(dOt50Hs * dOt50Rate, 'highlight_currency', '=+R13C2*R14C2') });
     setRowCells(s1, 15, { 0: c('HORAS 100%', 'label'), 1: c(dOt100Hs, 'number', '=+R1C11') });
     setRowCells(s1, 16, { 0: c('TARIFA PESOS / HS. 100%', 'label'), 1: c(dOt100Rate, 'currency', '=+R11C2*2') });
-    setRowCells(s1, 17, { 0: c('IMPORTE HORAS 100%', 'highlight_label'), 1: c(Math.round(dOt100Hs * dOt100Rate * 100) / 100, 'highlight_currency', '=+R16C2*R17C2') });
-    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(Number(viandas.count ?? 0), 'number', '=+R1C15') });
-    setRowCells(s1, 19, { 0: c('IMPORTE POR VIANDA', 'label'), 1: c(Number(viandas.rate ?? 6545.18), 'currency') });
+    setRowCells(s1, 17, { 0: c('IMPORTE HORAS 100%', 'highlight_label'), 1: c(dOt100Hs * dOt100Rate, 'highlight_currency', '=+R16C2*R17C2') });
+    setRowCells(s1, 18, { 0: c('VIANDAS', 'label'), 1: c(dViandasCount, 'number', '=+R1C15') });
+    setRowCells(s1, 19, {
+      0: c('IMPORTE POR VIANDA', 'label'),
+      1: c(dViandasRate, 'currency', dViandasBaseRate ? `=${dViandasBaseRate}*1.21` : undefined),
+    });
     setRowCells(s1, 20, { 0: c('IMPORTE VIANDAS', 'label'), 1: c(Number(viandas.total ?? 0), 'currency', '=+R19C2*R20C2') });
-    setRowCells(s1, 21, { 0: c('TRANSPORTE - VIAJES ZARATE-TZ', 'label'), 1: c(0, 'number', '=+R1C14') });
-    setRowCells(s1, 22, { 0: c('IMPORTE POR VIAJE ZARATE-TZ', 'label'), 1: c(0.0, 'currency') });
-    setRowCells(s1, 23, { 0: c('TOTAL VIAJES DELTA DOCK', 'label'), 1: c(0.0, 'currency', '=+R22C2*R23C2') });
-    setRowCells(s1, 24, { 0: c('TRANSPORTE - VIAJES CMP-TZ', 'label'), 1: c(Number(transporte.trips ?? 4), 'number', '=+R1C13') });
-    setRowCells(s1, 25, { 0: c('IMPORTE POR VIAJE CMP TZ', 'label'), 1: c(Number(transporte.rate ?? 37685.28), 'currency') });
-    setRowCells(s1, 26, { 0: c('TOTAL VIAJES TZ', 'label'), 1: c(Number(transporte.total ?? 150741.12), 'currency', '=+R25C2*R26C2') });
-    setRowCells(s1, 27, { 0: c('BONO PRODUCTIVIDAD', 'label'), 1: c(0.0, 'currency', '=+R1C12') });
-    setRowCells(s1, 28, { 0: c('IMPORTE TOTAL', 'total_label'), 1: c(totalNeto, 'total_currency', '=+R12C2+R15C2+R18C2+R21C2+R24C2+R27C2+R28C2') });
-    setRowCells(s1, 29, { 0: c('IVA (21%)', 'label'), 1: c(iva, 'currency', '=+R29C2*0.21') });
+    setRowCells(s1, 21, {
+      0: c('TRANSPORTE - VIAJES ZARATE-TZ', 'label'),
+      1: dTripsZteTz > 0 ? c(dTripsZteTz, 'number', '=+R1C14') : c('', 'center'),
+    });
+    setRowCells(s1, 22, { 0: c('IMPORTE POR VIAJE ZARATE-TZ', 'label'), 1: c(dRateZteTz, 'currency') });
+    setRowCells(s1, 23, { 0: c('TOTAL VIAJES DELTA DOCK', 'label'), 1: c(dTripsZteTz * dRateZteTz, 'currency', '=+R22C2*R23C2') });
+    setRowCells(s1, 24, { 0: c('TRANSPORTE - VIAJES CMP-TZ', 'label'), 1: c(dTripsCmpTz, 'number', '=+R1C13') });
+    setRowCells(s1, 25, { 0: c('IMPORTE POR VIAJE CMP TZ', 'label'), 1: c(dRateCmpTz, 'currency') });
+    setRowCells(s1, 26, { 0: c('TOTAL VIAJES TZ', 'label'), 1: c(dTotCmpTz, 'currency', '=+R25C2*R26C2') });
+    setRowCells(s1, 27, { 0: c('BONO PRODUCTIVIDAD', 'label'), 1: c(dBonus, 'currency', '=+R1C12') });
+    setRowCells(s1, 28, {
+      0: c('IMPORTE TOTAL', 'total_label'),
+      1: c(totalNeto, 'total_currency', dBonus > 0 ? '=+R12C2+R15C2+R18C2+R21C2+R24C2+R27C2+R28C2' : '=+R12C2+R15C2+R18C2+R21C2+R24C2+R27C2'),
+    });
+    setRowCells(s1, 29, { 0: c('IVA', 'label'), 1: c(iva, 'currency', '=+R29C2*0.21') });
     setRowCells(s1, 30, { 0: c('TOTAL FACTURA', 'total_label'), 1: c(totalFactura, 'total_currency', '=+R29C2+R30C2') });
 
     // Turnos de Sergio Danchuk en panel derecho (filas 2..)
@@ -2020,9 +2463,9 @@ export function buildProformaWorkbook(
 
       setRowCells(s1, targetRow, {
         ...(s1[targetRow] ? {} : {}),
-        3: c('TZ APUNTADOR', 'label'),
+        3: c(s.position_name || 'TZ APUNTADOR', 'label'),
         4: c(s.employee_name || 'ACOSTA JOAQUIN', 'label'),
-        5: c(formattedDate, 'center'),
+        5: c(formattedDate, dateOrCenterStyle(formattedDate)),
         6: c(timeRange, 'center'),
         7: realWorkedHs > 0 ? c(realWorkedHs, 'number') : c('', 'center'),
         8: Number(s.regular_hours || 0) > 0 ? c(Number(s.regular_hours), 'number') : c('', 'center'),
@@ -2036,9 +2479,17 @@ export function buildProformaWorkbook(
     });
   }
 
-  notes.forEach((n, idx) => {
-    setRowCells(s1, 31 + idx, { 0: c(n, 'note') });
-  });
+  if (proformaType !== 'shared_expo' && proformaType !== 'standard') {
+    notes.forEach((n, idx) => {
+      setRowCells(s1, 31 + idx, { 0: c(n, 'note') });
+    });
+  } else if (proformaType === 'standard' && ((source.notes && source.notes.length > 0) || (payload.notes && payload.notes.length > 0))) {
+    // Only emit explicit user/payload notes for standard if not the generic placeholder
+    const explicitStdNotes = notes.filter((n) => !n.includes('PARITARIAS PARA MAYO 2026'));
+    explicitStdNotes.forEach((n, idx) => {
+      setRowCells(s1, 31 + idx, { 0: c(n, 'note') });
+    });
+  }
 
   const safeDatesStd = operationDates.trim().replace(/[\/\\:*?"<>|]/g, '-');
   let filename = `MTS-CTYC SA - ${clientName} - ${safeDatesStd}.xls`;
@@ -2087,14 +2538,26 @@ export function generateProformaExcelXml(wb: ExcelWorkbookData): string {
           row.forEach((cell, cIdx) => {
             if (!cell) return;
             const isNum = typeof cell.value === 'number' && !Number.isNaN(cell.value);
-            const dataType = isNum ? 'Number' : 'String';
+            let dataType = isNum ? 'Number' : 'String';
+            let serializedVal = isNum ? String(cell.value) : escapeXml(String(cell.value));
             const styleId = cell.style || 'Default';
+            if (!isNum && styleId === 'date' && typeof cell.value === 'string') {
+              const trimmedDate = cell.value.trim();
+              const dmyMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmedDate);
+              if (dmyMatch) {
+                dataType = 'DateTime';
+                serializedVal = `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}T00:00:00.000`;
+              } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+                dataType = 'DateTime';
+                serializedVal = `${trimmedDate}T00:00:00.000`;
+              }
+            }
             const formulaAttr = cell.formula ? ` ss:Formula="${escapeXml(cell.formula)}"` : '';
             const spanAttr = cell.colSpan && cell.colSpan > 1 ? ` ss:MergeAcross="${cell.colSpan - 1}"` : '';
             const isEmptyVal = cell.value === '' || cell.value === null || cell.value === undefined;
             const dataTag = isEmptyVal
               ? ''
-              : `<Data ss:Type="${dataType}">${isNum ? String(cell.value) : escapeXml(String(cell.value))}</Data>`;
+              : `<Data ss:Type="${dataType}">${serializedVal}</Data>`;
             cellsXml += `<Cell ss:Index="${cIdx + 1}" ss:StyleID="${styleId}"${formulaAttr}${spanAttr}>${dataTag}</Cell>`;
           });
           return `<Row ss:Height="18">${cellsXml}</Row>`;

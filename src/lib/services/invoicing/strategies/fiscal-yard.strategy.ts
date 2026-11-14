@@ -8,7 +8,7 @@ import {
   FiscalYardPositionSummary,
   FiscalYardPayload 
 } from '../types';
-import { fetchClientRatesContext, formatDatesSpan } from '../helpers';
+import { fetchClientRatesContext, formatDatesSpan, normalizeMatchName } from '../helpers';
 import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '@/lib/services/daily-entries';
 
 export const fiscalYardStrategy: ProformaStrategy = {
@@ -20,8 +20,8 @@ export const fiscalYardStrategy: ProformaStrategy = {
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
     const { clientId, fromDate, toDate, discountPercentage: inputDiscount, notes: inputNotes, shuttleTripsManual } = context;
 
-    // 1. Fetch rates
-    const ratesCtx = await fetchClientRatesContext(clientId);
+    // 1. Fetch rates (date-aware)
+    const ratesCtx = await fetchClientRatesContext(clientId, toDate);
     const encargadoRates = ratesCtx.encargadoRates;
     const apuntadorRates = ratesCtx.apuntadorRates;
     const shuttleRate = ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ?? 35594.34;
@@ -34,10 +34,40 @@ export const fiscalYardStrategy: ProformaStrategy = {
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '01-15 SEPTIEMBRE 2026';
 
-    // 3. Separate standard yard shifts vs inspecciones especiales vs expo shifts
+    // 3. Filter out vessel/barge operations (e.g. CAP. JACKSON, GOODWOOD) so only Plazoleta Fiscal / Inspecciones / EXPO remain
+    const isVesselOrBargeShift = (s: ClientShiftRecordForBilling) => {
+      const loc = normalizeMatchName(s.location_name);
+      const ves = normalizeMatchName(s.vessel_name);
+      const combined = `${loc} ${ves}`.trim();
+      if (!combined) return false;
+      if (
+        combined.includes('PLAZOLETA') ||
+        combined.includes('INSPEC') ||
+        combined.includes('EXPO')
+      ) {
+        return false;
+      }
+      return true;
+    };
+
+    const validYardPeriodShifts = shifts
+      .filter((s: ClientShiftRecordForBilling) => !isVesselOrBargeShift(s))
+      .sort((a, b) => {
+        const d = (a.work_date || '').localeCompare(b.work_date || '');
+        if (d !== 0) return d;
+        return (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+      });
+
     const isInspecShift = (s: ClientShiftRecordForBilling) =>
-      (s.vessel_name || '').toLowerCase().includes('inspec') ||
-      (s.position_name || '').toLowerCase().includes('inspec');
+      normalizeMatchName(s.vessel_name).includes('INSPEC') ||
+      normalizeMatchName(s.location_name).includes('INSPEC') ||
+      normalizeMatchName(s.position_name).includes('INSPEC');
+
+    const isExplicitExpoShift = (s: ClientShiftRecordForBilling) =>
+      !isInspecShift(s) &&
+      (normalizeMatchName(s.location_name).includes('EXPO') ||
+        normalizeMatchName(s.vessel_name).includes('EXPO') ||
+        normalizeMatchName(s.operational_role).includes('EXPO'));
 
     // En Plazoleta Fiscal (CAT Argentina), contractualmente solo se abona 1 Encargado (slot ENCARGADO PF, asignado a Lucas Brites).
     // Diego Martinoli y Enzo Brites, a pesar de tener rango interno de Encargados en la empresa, operan y se facturan
@@ -47,9 +77,13 @@ export const fiscalYardStrategy: ProformaStrategy = {
       !s.employee_name.toLowerCase().includes('martinoli') &&
       !s.employee_name.toLowerCase().includes('enzo');
 
-    const expoShifts = shifts.filter((s: ClientShiftRecordForBilling) => s.is_export_day && !isInspecShift(s));
-    const inspecShifts = shifts.filter((s: ClientShiftRecordForBilling) => isInspecShift(s));
-    const yardShifts = shifts.filter((s: ClientShiftRecordForBilling) => !s.is_export_day && !isInspecShift(s));
+    // Note: is_export_day on Plazoleta Fiscal logs indicates EXPO activity ALSO occurred that day;
+    // PF keeps ALL yard staff shifts, while EXPO takes up to 2 Apuntadores (PF 01, PF 02) per export day.
+    const explicitExpoShifts = validYardPeriodShifts.filter(isExplicitExpoShift);
+    const inspecShifts = validYardPeriodShifts.filter(isInspecShift);
+    const yardShifts = validYardPeriodShifts.filter(
+      (s: ClientShiftRecordForBilling) => !isInspecShift(s) && !isExplicitExpoShift(s)
+    );
 
     const encargadoShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => isPrimaryYardEncargado(s));
     const apuntadorShifts = yardShifts.filter((s: ClientShiftRecordForBilling) => !isPrimaryYardEncargado(s));
@@ -221,15 +255,18 @@ export const fiscalYardStrategy: ProformaStrategy = {
       return a.slotPosition.localeCompare(b.slotPosition);
     });
 
-    // 6. Transporte (TTE)
-    const total_viajes_tte = shuttleTripsManual !== undefined 
-      ? shuttleTripsManual 
-      : (billingShifts.totalShuttles || 0);
+    // 6. Transporte (TTE) - strictly from yard/inspec/expo shifts (never leaking vessel/barge shuttles)
+    const loggedYardShuttles = Math.round(
+      validYardPeriodShifts.reduce((acc, s) => acc + Number(s.shuttles_count || 0), 0) * 100
+    ) / 100;
+    const total_viajes_tte = shuttleTripsManual !== undefined
+      ? shuttleTripsManual
+      : loggedYardShuttles;
     const subtotal_transporte = Math.round(total_viajes_tte * shuttleRate * 100) / 100;
 
     // Construir desglose diario de transporte (TTE)
     const dayTransportMap = new Map<string, { workDate: string; timeRange: string; staffCount: number; shuttles: number }>();
-    for (const s of shifts) {
+    for (const s of validYardPeriodShifts) {
       const date = s.work_date;
       const tr = formatRange(s.shift_start_time, s.shift_end_time);
       const key = `${date}_${tr}`;
@@ -263,6 +300,30 @@ export const fiscalYardStrategy: ProformaStrategy = {
     }
 
     // 7. Control EXPO (Factor 0.90 de coparticipación / asignación CAT)
+    let expoShifts: ClientShiftRecordForBilling[] = explicitExpoShifts;
+    if (expoShifts.length === 0) {
+      // On export days (is_export_day === true), CAT bills 90% of 2 dedicated Apuntadores (PF 01, PF 02)
+      const exportDaysMap = new Map<string, ClientShiftRecordForBilling[]>();
+      for (const s of apuntadorShifts) {
+        if (!s.is_export_day) continue;
+        if (!exportDaysMap.has(s.work_date)) exportDaysMap.set(s.work_date, []);
+        exportDaysMap.get(s.work_date)!.push(s);
+      }
+      const derivedExpo: ClientShiftRecordForBilling[] = [];
+      const sortedDates = Array.from(exportDaysMap.keys()).sort();
+      for (const d of sortedDates) {
+        const dayApuntadores = exportDaysMap.get(d)!;
+        // Order by assigned slot code (PF 01, PF 02, ...) so PF 01 & PF 02 are picked consistently
+        dayApuntadores.sort((a, b) => {
+          const slotA = employeeToSlotMap.get(a.employee_id || a.employee_name) || 'ZZ';
+          const slotB = employeeToSlotMap.get(b.employee_id || b.employee_name) || 'ZZ';
+          return slotA.localeCompare(slotB);
+        });
+        derivedExpo.push(...dayApuntadores.slice(0, 2));
+      }
+      expoShifts = derivedExpo;
+    }
+
     let expo_reg = 0;
     let expo_ot50 = 0;
     let expo_ot100 = 0;
@@ -272,7 +333,8 @@ export const fiscalYardStrategy: ProformaStrategy = {
       expo_ot100 += s.overtime_100_hours;
     }
 
-    const expo_factor = 0.90;
+    const expo_factor =
+      ratesCtx.serviceRatesMap.get('EXPO_PARTICIPATION')?.rate ?? 0.90;
     const expo_base_reg = Math.round(expo_reg * 100) / 100;
     const expo_base_ot50 = Math.round(expo_ot50 * 100) / 100;
     const expo_base_ot100 = Math.round(expo_ot100 * 100) / 100;
@@ -286,9 +348,12 @@ export const fiscalYardStrategy: ProformaStrategy = {
     const imp_expo_ot100 = Math.round(expo_fact_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
     const subtotal_expo = Math.round((imp_expo_reg + imp_expo_ot50 + imp_expo_ot100) * 100) / 100;
 
-    const expo_shift_rows: FiscalYardShiftRow[] = expoShifts.map((s, idx) => {
+    const expoDaySlotIdx = new Map<string, number>();
+    const expo_shift_rows: FiscalYardShiftRow[] = expoShifts.map((s) => {
       const tr = formatRange(s.shift_start_time, s.shift_end_time);
-      const slotPos = `APUNTADOR      PF ${String((idx % 2) + 1).padStart(2, '0')}`;
+      const dayIdx = expoDaySlotIdx.get(s.work_date) || 0;
+      expoDaySlotIdx.set(s.work_date, dayIdx + 1);
+      const slotPos = `APUNTADOR      PF ${String(dayIdx + 1).padStart(2, '0')}`;
       const tot = Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100;
       return {
         slotPosition: slotPos,
@@ -306,12 +371,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
       return a.slotPosition.localeCompare(b.slotPosition);
     });
 
-    const isOctober2026 =
-      (fromDate >= '2026-10-01' && toDate <= '2026-10-15') ||
-      operationDates.toUpperCase().includes('01-15 OCTUBRE') ||
-      operationDates.toUpperCase().includes('1-15 OCTUBRE');
-
-    // 7b. Inspecciones Especiales (Hoja 3 en el Excel de Octubre)
+    // 7b. Inspecciones Especiales (calculado dinámicamente desde los registros en BD)
     let inspec_reg = 0;
     let inspec_ot50 = 0;
     let inspec_ot100 = 0;
@@ -324,67 +384,35 @@ export const fiscalYardStrategy: ProformaStrategy = {
     inspec_ot50 = Math.round(inspec_ot50 * 100) / 100;
     inspec_ot100 = Math.round(inspec_ot100 * 100) / 100;
 
-    if (isOctober2026 && inspec_reg === 0) {
-      // Benchmark oficial de la plantilla de Octubre con Inspecciones Especiales
-      inspec_reg = 376.0;
-      inspec_ot50 = 80.0;
-      inspec_ot100 = 16.0;
-    }
-
     const imp_inspec_reg = Math.round(inspec_reg * apuntadorRates.REGULAR * 100) / 100;
     const imp_inspec_ot50 = Math.round(inspec_ot50 * apuntadorRates.OVERTIME_50 * 100) / 100;
     const imp_inspec_ot100 = Math.round(inspec_ot100 * apuntadorRates.OVERTIME_100 * 100) / 100;
-    const neto_inspec_sin_bonif = isOctober2026
-      ? 8421224.56
-      : Math.round((imp_inspec_reg + imp_inspec_ot50 + imp_inspec_ot100) * 100) / 100;
-    const bonif_inspec = isOctober2026
-      ? 252636.74
-      : Math.round(neto_inspec_sin_bonif * (discountPct / 100) * 100) / 100;
-    const subtotal_inspec_bonif = isOctober2026
-      ? 8168587.82
-      : Math.round((neto_inspec_sin_bonif - bonif_inspec) * 100) / 100;
+    const neto_inspec_sin_bonif = Math.round((imp_inspec_reg + imp_inspec_ot50 + imp_inspec_ot100) * 100) / 100;
+    const bonif_inspec = Math.round(neto_inspec_sin_bonif * (discountPct / 100) * 100) / 100;
+    const subtotal_inspec_bonif = Math.round((neto_inspec_sin_bonif - bonif_inspec) * 100) / 100;
 
-    // Ajustes de Plazoleta, Transporte y EXPO para el período oficial de Octubre 2026
-    const final_subtotal_plazoleta = isOctober2026 ? 18960949.64 : subtotal_plazoleta_bonif;
-    const final_subtotal_transporte = isOctober2026 ? 2064471.72 : subtotal_transporte;
-    const final_total_viajes = isOctober2026 ? 58 : total_viajes_tte;
-    const final_subtotal_expo = isOctober2026 ? 2922338.77 : subtotal_expo;
+    const final_subtotal_plazoleta = subtotal_plazoleta_bonif;
+    const final_subtotal_transporte = subtotal_transporte;
+    const final_total_viajes = total_viajes_tte;
+    const final_subtotal_expo = subtotal_expo;
 
-    const inspec_shift_rows: FiscalYardShiftRow[] =
-      inspecShifts.length > 0
-        ? inspecShifts.map((s) => ({
-            slotPosition: 'INSPEC ESPECIALES',
-            employeeName: s.employee_name,
-            workDate: s.work_date,
-            timeRange: s.shift_start_time && s.shift_end_time ? `${s.shift_start_time.slice(0, 5)}-${s.shift_end_time.slice(0, 5)}` : '07:00-17:00',
-            totalHours: Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100,
-            regularHours: s.regular_hours,
-            overtime50Hours: s.overtime_50_hours,
-            overtime100Hours: s.overtime_100_hours,
-          }))
-        : isOctober2026
-        ? [
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-02', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-03', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-04', timeRange: '0700-1700', totalHours: 40, regularHours: 24, overtime50Hours: 0, overtime100Hours: 16 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-06', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-07', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-08', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-09', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-10', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-13', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-14', timeRange: '0800-1700', totalHours: 36, regularHours: 32, overtime50Hours: 4, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-15', timeRange: '0800-1700', totalHours: 36, regularHours: 32, overtime50Hours: 4, overtime100Hours: 0 },
-            { slotPosition: 'INSPEC ESPECIALES', employeeName: 'EQUIPO DE INSPECCIONES', workDate: '2026-10-16', timeRange: '0700-1700', totalHours: 40, regularHours: 32, overtime50Hours: 8, overtime100Hours: 0 },
-          ]
-        : [];
+    const inspec_shift_rows: FiscalYardShiftRow[] = inspecShifts.map((s) => ({
+      slotPosition: 'INSPEC ESPECIALES',
+      employeeName: s.employee_name,
+      workDate: s.work_date,
+      timeRange: formatRange(s.shift_start_time, s.shift_end_time),
+      totalHours: Math.round((s.regular_hours + s.overtime_50_hours + s.overtime_100_hours) * 100) / 100,
+      regularHours: s.regular_hours,
+      overtime50Hours: s.overtime_50_hours,
+      overtime100Hours: s.overtime_100_hours,
+    }));
 
     // 8. Consolidado General
-    const total_neto = isOctober2026
-      ? 32116347.95
-      : Math.round((final_subtotal_plazoleta + subtotal_inspec_bonif + final_subtotal_transporte + final_subtotal_expo) * 100) / 100;
-    const total_iva = isOctober2026 ? 6744433.07 : Math.round(total_neto * 0.21 * 100) / 100;
-    const total_factura = isOctober2026 ? 38860781.02 : Math.round((total_neto + total_iva) * 100) / 100;
+    const total_neto = Math.round(
+      (final_subtotal_plazoleta + subtotal_inspec_bonif + final_subtotal_transporte + final_subtotal_expo) * 100
+    ) / 100;
+    const total_iva = Math.round(total_neto * 0.21 * 100) / 100;
+    const total_factura = Math.round((total_neto + total_iva) * 100) / 100;
 
     const items: ProformaCalculationItem[] = [
       {
@@ -422,7 +450,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
       });
     }
 
-    const shift_breakdown: CalculatedShiftAuditItem[] = shifts.map((shift: ClientShiftRecordForBilling) => {
+    const shift_breakdown: CalculatedShiftAuditItem[] = validYardPeriodShifts.map((shift: ClientShiftRecordForBilling) => {
       const isEnc = isPrimaryYardEncargado(shift);
       const r = isEnc ? encargadoRates : apuntadorRates;
       const sub =
@@ -514,9 +542,9 @@ export const fiscalYardStrategy: ProformaStrategy = {
       notes,
     };
 
-    const finalTotalRegular = Math.round((yard_enc_reg + yard_ap_reg + expo_fact_reg) * 100) / 100;
-    const finalTotalOt50 = Math.round((yard_enc_ot50 + yard_ap_ot50 + expo_fact_ot50) * 100) / 100;
-    const finalTotalOt100 = Math.round((yard_enc_ot100 + yard_ap_ot100 + expo_fact_ot100) * 100) / 100;
+    const finalTotalRegular = Math.round((yard_enc_reg + yard_ap_reg + inspec_reg + expo_fact_reg) * 100) / 100;
+    const finalTotalOt50 = Math.round((yard_enc_ot50 + yard_ap_ot50 + inspec_ot50 + expo_fact_ot50) * 100) / 100;
+    const finalTotalOt100 = Math.round((yard_enc_ot100 + yard_ap_ot100 + inspec_ot100 + expo_fact_ot100) * 100) / 100;
     const finalTotalHours = Math.round((finalTotalRegular + finalTotalOt50 + finalTotalOt100) * 100) / 100;
 
     return {
@@ -526,7 +554,7 @@ export const fiscalYardStrategy: ProformaStrategy = {
       to_date: toDate,
       operation_dates: operationDates,
       proforma_type: 'fiscal_yard',
-      total_shifts: shifts.length,
+      total_shifts: validYardPeriodShifts.length,
       unapproved_shifts_count: unapprovedCount,
       total_regular_hours: finalTotalRegular,
       total_overtime_50_hours: finalTotalOt50,

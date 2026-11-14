@@ -11,8 +11,8 @@ export const standardStrategy: ProformaStrategy = {
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
     const { clientId, fromDate, toDate, discountPercentage: inputDiscount, notes: inputNotes, shuttleTripsManual } = context;
 
-    // 1. Rates
-    const ratesCtx = await fetchClientRatesContext(clientId);
+    // 1. Rates (date-aware)
+    const ratesCtx = await fetchClientRatesContext(clientId, toDate);
     const apuntadorRates = ratesCtx.apuntadorRates;
 
     const rateRegular = apuntadorRates.REGULAR || 31602.72;
@@ -20,14 +20,21 @@ export const standardStrategy: ProformaStrategy = {
     const rate100 = apuntadorRates.OVERTIME_100 || 63205.44;
 
     const rateVianda = ratesCtx.serviceRatesMap.get('MEAL')?.rate ?? 6545.18;
-    const rateShuttleCmp = ratesCtx.serviceRatesMap.get('SHUTTLE_CMP_TZ')?.rate ?? 37685.28;
-    const rateShuttleGeneral = ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ?? rateShuttleCmp;
+    const rateShuttleCmp =
+      ratesCtx.serviceRatesMap.get('SHUTTLE_CMP_TZ')?.rate ??
+      ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ??
+      37685.28;
+    const rateShuttleGeneral = rateShuttleCmp;
 
     const discountPct = inputDiscount ?? 0;
 
-    // 2. Shifts
+    // 2. Shifts (ordered chronologically by work_date ASC)
     const billingShifts = await getStaffEntriesForClientAndPeriod(clientId, fromDate, toDate, { onlyApproved: true });
-    const shifts = billingShifts.records;
+    const shifts = [...billingShifts.records].sort((a, b) => {
+      const d = (a.work_date || '').localeCompare(b.work_date || '');
+      if (d !== 0) return d;
+      return (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+    });
     const unapprovedCount = billingShifts.unapprovedCount;
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '16-17 SEPTIEMBRE 2026';
@@ -46,12 +53,12 @@ export const standardStrategy: ProformaStrategy = {
       total_shuttles += s.shuttles_count;
     }
 
-    // Default to real 24 hs and 4 shuttles if zero currently in DB
-    const final_reg_hs = total_reg_hs || 24.0;
-    const final_ot50_hs = total_ot50_hs || 0.0;
-    const final_ot100_hs = total_ot100_hs || 0.0;
-    const final_viandas = total_viandas || 0;
-    const final_shuttles = shuttleTripsManual ?? (total_shuttles || 4);
+    // Only apply template fallback defaults when zero shifts exist in DB for this period
+    const final_reg_hs = shifts.length > 0 ? Math.round(total_reg_hs * 100) / 100 : 24.0;
+    const final_ot50_hs = shifts.length > 0 ? Math.round(total_ot50_hs * 100) / 100 : 0.0;
+    const final_ot100_hs = shifts.length > 0 ? Math.round(total_ot100_hs * 100) / 100 : 0.0;
+    const final_viandas = shifts.length > 0 ? total_viandas : 0;
+    const final_shuttles = shuttleTripsManual ?? (shifts.length > 0 ? total_shuttles : 4);
 
     const imp_reg = Math.round(final_reg_hs * rateRegular * 100) / 100;
     const imp_ot50 = Math.round(final_ot50_hs * rate50 * 100) / 100;
@@ -117,6 +124,8 @@ export const standardStrategy: ProformaStrategy = {
         shift.regular_hours * rateRegular +
         shift.overtime_50_hours * rate50 +
         shift.overtime_100_hours * rate100 +
+        shift.meal_allowance_count * rateVianda +
+        shift.shuttles_count * rateShuttleGeneral +
         shift.plus_delta_amount +
         shift.bonus_applied_amount;
       return {
@@ -139,9 +148,22 @@ export const standardStrategy: ProformaStrategy = {
       client_name: ratesCtx.clientName,
       horas: { reg: final_reg_hs, ot50: final_ot50_hs, ot100: final_ot100_hs },
       tarifas: { reg: rateRegular, ot50: rate50, ot100: rate100 },
+      importes: { reg: imp_reg, ot50: imp_ot50, ot100: imp_ot100 },
       viandas: { count: final_viandas, rate: rateVianda, total: imp_viandas },
-      transporte: { trips: final_shuttles, rate: rateShuttleGeneral, total: imp_shuttles },
+      transporte: {
+        trips: final_shuttles,
+        rate: rateShuttleGeneral,
+        total: imp_shuttles,
+        cmp_tz_trips: final_shuttles,
+        cmp_tz_rate: rateShuttleGeneral,
+        cmp_tz_total: imp_shuttles,
+        zte_tz_trips: 0,
+        zte_tz_rate: ratesCtx.serviceRatesMap.get('SHUTTLE_ZTE_TZ')?.rate ?? 0,
+        zte_tz_total: 0,
+      },
       totales: {
+        subtotal_horas: subtotal_horas_bonif,
+        bonificacion,
         total_neto,
         iva_21: total_iva,
         total_factura,

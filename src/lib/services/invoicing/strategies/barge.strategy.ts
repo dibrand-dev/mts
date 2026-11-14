@@ -3,8 +3,16 @@ import {
   ProformaCalculationContext,
   ProformaCalculationResult,
   ProformaCalculationItem,
+  CalculatedShiftAuditItem,
 } from '../types';
-import { fetchClientRatesContext, formatDatesSpan } from '../helpers';
+import {
+  fetchClientRatesContext,
+  fetchUnionBonusScale,
+  formatDatesSpan,
+  isMatchingOperationName,
+  normalizeMatchName,
+} from '../helpers';
+import { createClient } from '@/lib/supabase/client';
 import { getStaffEntriesForClientAndPeriod, ClientShiftRecordForBilling } from '@/lib/services/daily-entries';
 import {
   CAP_JACKSON_OPERATIVA_DEFAULT_ROWS,
@@ -93,52 +101,102 @@ export const bargeStrategy: ProformaStrategy = {
       notes: inputNotes,
     } = context;
 
-    // 1. Client and rates
-    const ratesCtx = await fetchClientRatesContext(clientId);
+    // 1. Client and rates (date-aware)
+    const ratesCtx = await fetchClientRatesContext(clientId, toDate);
     const encargadoRates = ratesCtx.encargadoRates;
     const apuntadorRates = ratesCtx.apuntadorRates;
     const shuttleRate = ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ?? 35594.34;
-    const plusScale = ratesCtx.serviceRatesMap.get('UNION_SCALE')?.rate ?? 88200.48;
-    const plusMarkup = 0.52;
+    const plusMarkup = ratesCtx.serviceRatesMap.get('PLUS_MARKUP')?.rate ?? 0.52;
 
     // 2. Fetch approved shifts strictly for period
     const billingShifts = await getStaffEntriesForClientAndPeriod(clientId, fromDate, toDate, { onlyApproved: true });
     const allPeriodShifts = billingShifts.records;
     const unapprovedCount = billingShifts.unapprovedCount;
 
-    const vesselName =
-      inputVessel?.trim() ||
-      billingShifts.vesselNames.find(
-        (n) =>
-          n.toUpperCase().includes('JACKSON') ||
-          n.toUpperCase().includes('INQUEBRANTABLE') ||
-          n.toUpperCase().includes('BARCAZA')
-      ) ||
-      'CAP JACKSON';
+    const isBargeKeyword = (name?: string | null) => {
+      const norm = normalizeMatchName(name);
+      return (
+        norm.includes('JACKSON') ||
+        norm.includes('INQUEBRANTABLE') ||
+        norm.includes('BARCAZA')
+      );
+    };
+
+    const discoveredBargeName =
+      allPeriodShifts
+        .map((s) => s.vessel_name || s.location_name)
+        .find((n) => isBargeKeyword(n)) ||
+      billingShifts.vesselNames.find((n) => isBargeKeyword(n));
+
+    const vesselName = inputVessel?.trim() || discoveredBargeName || 'CAP JACKSON';
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '14 OCTUBRE 2026';
-    const isJackson = vesselName.toUpperCase().includes('JACKSON');
+    const isJackson = normalizeMatchName(vesselName).includes('JACKSON');
     const isCustomDiscount = inputDiscount !== undefined;
     const discountPct = isCustomDiscount ? (inputDiscount || 0) : 0;
 
-    // 3. Filter strictly by vessel name to isolate from Goodwood or other vessels
-    const matchingVesselShifts = inputVessel?.trim()
-      ? allPeriodShifts.filter((s) => {
-          const logVessel = (s.vessel_name || '').toUpperCase().trim();
-          const targetVessel = vesselName.toUpperCase().trim();
-          return logVessel.includes(targetVessel) || targetVessel.includes(logVessel);
-        })
-      : allPeriodShifts.filter((s) => {
-          const logVessel = (s.vessel_name || '').toUpperCase().trim();
-          return (
-            logVessel.includes('JACKSON') ||
-            logVessel.includes('INQUEBRANTABLE') ||
-            logVessel.includes('BARCAZA')
-          );
-        });
+    // 3. Filter strictly by vessel_name OR location_name (never match empty strings!)
+    const matchingVesselShifts = (inputVessel?.trim()
+      ? allPeriodShifts.filter(
+          (s) =>
+            isMatchingOperationName(s.vessel_name, vesselName) ||
+            isMatchingOperationName(s.location_name, vesselName)
+        )
+      : allPeriodShifts.filter(
+          (s) => isBargeKeyword(s.vessel_name) || isBargeKeyword(s.location_name)
+        )
+    ).sort((a, b) => {
+      const dateCmp = (a.work_date || '').localeCompare(b.work_date || '');
+      if (dateCmp !== 0) return dateCmp;
+      return (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+    });
+
+    // 4. Compute vehicle volumes & union bonus scale dynamically for matched barge logs
+    let vehDischarged = 0;
+    let vehLoaded = 0;
+    let vehShifted = 0;
+    let totalVehicles = 0;
+
+    if (matchingVesselShifts.length > 0) {
+      const distinctLogIds = Array.from(
+        new Set(matchingVesselShifts.map((s) => s.daily_work_log_id).filter(Boolean))
+      );
+      if (distinctLogIds.length > 0) {
+        try {
+          const supabase = createClient() as any;
+          const { data: logsData } = await supabase
+            .from('daily_work_logs')
+            .select('id, vehicles_discharged, vehicles_loaded, vehicles_shifted, total_vehicles_handled')
+            .in('id', distinctLogIds);
+
+          for (const l of logsData || []) {
+            vehDischarged += Number(l.vehicles_discharged || 0);
+            vehLoaded += Number(l.vehicles_loaded || 0);
+            vehShifted += Number(l.vehicles_shifted || 0);
+            totalVehicles += Number(l.total_vehicles_handled || 0);
+          }
+        } catch {
+          // Ignore in mocked test environments
+        }
+      }
+      if (totalVehicles === 0 && billingShifts.totalVehiclesHandled > 0) {
+        totalVehicles = billingShifts.totalVehiclesHandled;
+        vehDischarged = billingShifts.totalVehiclesDischarged || totalVehicles;
+        vehLoaded = billingShifts.totalVehiclesLoaded || 0;
+        vehShifted = billingShifts.totalVehiclesShifted || 0;
+      }
+    } else {
+      totalVehicles = isJackson ? 355 : 220;
+      vehDischarged = totalVehicles;
+    }
+
+    const plusScale =
+      ratesCtx.serviceRatesMap.get('UNION_SCALE')?.rate ??
+      (await fetchUnionBonusScale(totalVehicles, toDate));
 
     let operativa_shift_rows: VesselOperativaShiftRow[] = [];
     let plus_shift_rows: VesselPlusShiftRow[] = [];
+    let shift_breakdown: CalculatedShiftAuditItem[] = [];
     let totalNeto = 0;
     let totalViajes = 0;
     let totalTransporte = 0;
@@ -162,18 +220,29 @@ export const bargeStrategy: ProformaStrategy = {
     let coefMonto = 0;
     const invoiceNumber = isJackson ? '1-537' : '1-520';
 
+    const enc_reg_rate = encargadoRates.REGULAR || 22362.87;
+    const enc_ot50_rate = encargadoRates.OVERTIME_50 || 29082.92;
+    const enc_ot100_rate = encargadoRates.OVERTIME_100 || 37743.22;
+    const ap_reg_rate = apuntadorRates.REGULAR || 16254.43;
+    const ap_ot50_rate = apuntadorRates.OVERTIME_50 || 22919.57;
+    const ap_ot100_rate = apuntadorRates.OVERTIME_100 || 29749.58;
+
     if (matchingVesselShifts.length > 0) {
       // Calculate from live shifts recorded in daily_work_logs
-      const isShiftEncargado = (s: ClientShiftRecordForBilling) =>
-        s.position_name.toLowerCase().includes('encargad') ||
-        (s.operational_role || '').trim().toUpperCase().includes('ENCARGAD');
+      // Only primary Encargado (not auxiliary Apuntadores whose base position is Encargado, e.g. Martinoli/Enzo)
+      const isShiftEncargado = (s: ClientShiftRecordForBilling) => {
+        const empLower = (s.employee_name || '').toLowerCase();
+        if (empLower.includes('martinoli') || empLower.includes('enzo')) {
+          return false;
+        }
+        return (
+          s.position_name.toLowerCase().includes('encargad') ||
+          (s.operational_role || '').trim().toUpperCase().includes('ENCARGAD')
+        );
+      };
 
       const encargadoShifts = matchingVesselShifts.filter(isShiftEncargado);
       const apuntadorShifts = matchingVesselShifts.filter((s) => !isShiftEncargado(s));
-
-      const enc_reg_rate = encargadoRates.REGULAR || 22362.87;
-      const enc_ot50_rate = encargadoRates.OVERTIME_50 || 29082.92;
-      const enc_ot100_rate = encargadoRates.OVERTIME_100 || 37743.22;
 
       for (const s of encargadoShifts) {
         enc_reg_hs += s.regular_hours;
@@ -184,10 +253,6 @@ export const bargeStrategy: ProformaStrategy = {
       enc_reg_amt = Math.round(enc_reg_hs * enc_reg_rate * 100) / 100;
       enc_ot50_amt = Math.round(enc_ot50_hs * enc_ot50_rate * 100) / 100;
       enc_ot100_amt = Math.round(enc_ot100_hs * enc_ot100_rate * 100) / 100;
-
-      const ap_reg_rate = apuntadorRates.REGULAR || 16254.43;
-      const ap_ot50_rate = apuntadorRates.OVERTIME_50 || 22919.57;
-      const ap_ot100_rate = apuntadorRates.OVERTIME_100 || 29749.58;
 
       for (const s of apuntadorShifts) {
         ap_reg_hs += s.regular_hours;
@@ -200,17 +265,19 @@ export const bargeStrategy: ProformaStrategy = {
       ap_ot100_amt = Math.round(ap_ot100_hs * ap_ot100_rate * 100) / 100;
 
       totalPersonalNormal =
-        enc_reg_amt + enc_ot50_amt + enc_ot100_amt + ap_reg_amt + ap_ot50_amt + ap_ot100_amt;
+        Math.round((enc_reg_amt + enc_ot50_amt + enc_ot100_amt + ap_reg_amt + ap_ot50_amt + ap_ot100_amt) * 100) / 100;
 
       totalTransporte = Math.round(totalViajes * shuttleRate * 100) / 100;
 
-      // Plus calculation
-      totalPlusBase = Math.round(matchingVesselShifts.length * plusScale * 100) / 100;
+      // Plus calculation (dynamic union scale or per-shift override)
       for (const s of matchingVesselShifts) {
+        const appliedScale = s.bonus_applied_amount > 0 ? s.bonus_applied_amount : plusScale;
         const hsEq = s.overtime_50_hours * 1.5 + s.overtime_100_hours * 2;
-        const incid = (plusScale / 192) * hsEq;
+        const incid = (appliedScale / 192) * hsEq;
+        totalPlusBase += appliedScale;
         totalIncidHe += incid;
       }
+      totalPlusBase = Math.round(totalPlusBase * 100) / 100;
       totalIncidHe = Math.round(totalIncidHe * 100) / 100;
       netoPlus = Math.round((totalPlusBase + totalIncidHe) * 100) / 100;
       coefMonto = Math.round(netoPlus * plusMarkup * 100) / 100;
@@ -242,10 +309,11 @@ export const bargeStrategy: ProformaStrategy = {
       plus_shift_rows = matchingVesselShifts.map((s) => {
         const isEnc = isShiftEncargado(s);
         const p = resolveBargeOperationalPost(s, isEnc);
+        const appliedScale = s.bonus_applied_amount > 0 ? s.bonus_applied_amount : plusScale;
         const ot50 = Number(s.overtime_50_hours || 0);
         const ot100 = Number(s.overtime_100_hours || 0);
         const hsEq = Math.round((ot50 * 1.5 + ot100 * 2) * 100) / 100;
-        const inc = Math.round(((plusScale / 192) * hsEq) * 100) / 100;
+        const inc = Math.round(((appliedScale / 192) * hsEq) * 100) / 100;
         return {
           categoria: isEnc ? 'ENCARGADO' : 'APUNTADOR',
           puesto: p,
@@ -256,10 +324,30 @@ export const bargeStrategy: ProformaStrategy = {
           normales: Number(s.regular_hours || 0),
           ot50,
           ot100,
-          plus: plusScale,
-          unitPlus: plusScale,
+          plus: appliedScale,
+          unitPlus: appliedScale,
           hsNormEq: hsEq,
           incidHe: inc,
+        };
+      });
+
+      shift_breakdown = matchingVesselShifts.map((s) => {
+        const isEnc = isShiftEncargado(s);
+        const r = isEnc ? encargadoRates : apuntadorRates;
+        const regAmt = Number(s.regular_hours || 0) * (r.REGULAR || 0);
+        const ot50Amt = Number(s.overtime_50_hours || 0) * (r.OVERTIME_50 || 0);
+        const ot100Amt = Number(s.overtime_100_hours || 0) * (r.OVERTIME_100 || 0);
+        const shuttleAmt = Number(s.shuttles_count || 0) * shuttleRate;
+        const appliedScale = s.bonus_applied_amount > 0 ? s.bonus_applied_amount : plusScale;
+        const hsEq = Number(s.overtime_50_hours || 0) * 1.5 + Number(s.overtime_100_hours || 0) * 2;
+        const plusWithMarkup = (appliedScale + (appliedScale / 192) * hsEq) * (1 + plusMarkup);
+        return {
+          ...s,
+          position_name: isEnc ? 'Encargado' : 'Apuntador',
+          regular_rate: r.REGULAR || 0,
+          overtime_50_rate: r.OVERTIME_50 || 0,
+          overtime_100_rate: r.OVERTIME_100 || 0,
+          calculated_subtotal: Math.round((regAmt + ot50Amt + ot100Amt + shuttleAmt + plusWithMarkup) * 100) / 100,
         };
       });
     } else {
@@ -269,7 +357,9 @@ export const bargeStrategy: ProformaStrategy = {
         operativa_shift_rows = CAP_JACKSON_OPERATIVA_DEFAULT_ROWS;
         plus_shift_rows = CAP_JACKSON_PLUS_DEFAULT_ROWS;
         enc_reg_hs = 8;
+        enc_reg_amt = Math.round(8 * enc_reg_rate * 100) / 100;
         ap_reg_hs = 56;
+        ap_reg_amt = Math.round(56 * ap_reg_rate * 100) / 100;
         totalViajes = 4;
         totalTransporte = Math.round(4 * shuttleRate * 100) / 100;
         totalPlusBase = 705603.84;
@@ -281,7 +371,9 @@ export const bargeStrategy: ProformaStrategy = {
         operativa_shift_rows = INQUEBRANTABLE_OPERATIVA_DEFAULT_ROWS;
         plus_shift_rows = INQUEBRANTABLE_PLUS_DEFAULT_ROWS;
         enc_reg_hs = 8;
+        enc_reg_amt = Math.round(8 * enc_reg_rate * 100) / 100;
         ap_reg_hs = 56;
+        ap_reg_amt = Math.round(56 * ap_reg_rate * 100) / 100;
         totalViajes = 4;
         totalTransporte = 142377.36;
         totalPlusBase = 705603.84;
@@ -305,8 +397,6 @@ export const bargeStrategy: ProformaStrategy = {
       },
     ];
 
-    const totalVehicles = isJackson ? 355 : 220;
-
     const payload = {
       proforma_type: 'barge',
       is_barge: true,
@@ -314,11 +404,20 @@ export const bargeStrategy: ProformaStrategy = {
       operation_dates: operationDates,
       client_name: ratesCtx.clientName,
       invoice_number: invoiceNumber,
+      total_vehicles: totalVehicles,
+      horas_encargado: { norm: enc_reg_hs, ot50: enc_ot50_hs, ot100: enc_ot100_hs },
+      tarifas_encargado: { REGULAR: enc_reg_rate, OVERTIME_50: enc_ot50_rate, OVERTIME_100: enc_ot100_rate },
+      importes_encargado: { reg: enc_reg_amt, ot50: enc_ot50_amt, ot100: enc_ot100_amt },
+      horas_apuntador: { norm: ap_reg_hs, ot50: ap_ot50_hs, ot100: ap_ot100_hs },
+      tarifas_apuntador: { REGULAR: ap_reg_rate, OVERTIME_50: ap_ot50_rate, OVERTIME_100: ap_ot100_rate },
+      importes_apuntador: { reg: ap_reg_amt, ot50: ap_ot50_amt, ot100: ap_ot100_amt },
+      importe_personal_normal: totalPersonalNormal,
+      transporte: { viajes: totalViajes, tarifa_viaje: shuttleRate, total_viajes: totalTransporte },
       tab1_resumen_general: {
         vehiculos: {
-          descargados: totalVehicles,
-          cargados: 0,
-          removidos: 0,
+          descargados: vehDischarged || totalVehicles,
+          cargados: vehLoaded,
+          removidos: vehShifted,
           total_controlados: totalVehicles,
         },
         consolidado: {
@@ -330,12 +429,12 @@ export const bargeStrategy: ProformaStrategy = {
           total_factura_final: finalTotal,
         },
         desglose: [
-          { concepto: 'HORAS NORMALES ENCARGADO', tarifa: `${enc_reg_hs || 8} hs`, importe: enc_reg_amt || 178902.96 },
-          { concepto: 'HORAS 50% ENCARGADO', tarifa: `${enc_ot50_hs || 0} hs`, importe: enc_ot50_amt || 0 },
-          { concepto: 'HORAS 100% ENCARGADO', tarifa: `${enc_ot100_hs || 0} hs`, importe: enc_ot100_amt || 0 },
-          { concepto: 'HORAS NORMALES APUNTADOR', tarifa: `${ap_reg_hs || 56} hs`, importe: ap_reg_amt || 910248.08 },
-          { concepto: 'HORAS 50% APUNTADOR', tarifa: `${ap_ot50_hs || 0} hs`, importe: ap_ot50_amt || 0 },
-          { concepto: 'HORAS 100% APUNTADOR', tarifa: `${ap_ot100_hs || 0} hs`, importe: ap_ot100_amt || 0 },
+          { concepto: 'HORAS NORMALES ENCARGADO', tarifa: `${enc_reg_hs} hs`, importe: enc_reg_amt },
+          { concepto: 'HORAS 50% ENCARGADO', tarifa: `${enc_ot50_hs} hs`, importe: enc_ot50_amt },
+          { concepto: 'HORAS 100% ENCARGADO', tarifa: `${enc_ot100_hs} hs`, importe: enc_ot100_amt },
+          { concepto: 'HORAS NORMALES APUNTADOR', tarifa: `${ap_reg_hs} hs`, importe: ap_reg_amt },
+          { concepto: 'HORAS 50% APUNTADOR', tarifa: `${ap_ot50_hs} hs`, importe: ap_ot50_amt },
+          { concepto: 'HORAS 100% APUNTADOR', tarifa: `${ap_ot100_hs} hs`, importe: ap_ot100_amt },
           { concepto: 'IMPORTE PERSONAL NORMAL', importe: totalPersonalNormal, is_total_row: true },
           { concepto: 'Total a facturar por Plus e Inc. Hs. Extras', importe: totalFacturarPlus, is_total_row: true },
           { concepto: `TRANSPORTE (${totalViajes} VIAJES)`, importe: totalTransporte },
@@ -381,7 +480,7 @@ export const bargeStrategy: ProformaStrategy = {
       tax_amount: iva,
       total: finalTotal,
       items,
-      shift_breakdown: [],
+      shift_breakdown,
       payload,
       notes: payload.notes,
       subtotal_operativa: finalNeto,

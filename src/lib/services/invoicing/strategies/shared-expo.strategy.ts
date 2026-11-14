@@ -11,8 +11,8 @@ export const sharedExpoStrategy: ProformaStrategy = {
   async calculate(context: ProformaCalculationContext): Promise<ProformaCalculationResult> {
     const { clientId, fromDate, toDate, coparticipationFactor: inputFactor, notes: inputNotes } = context;
 
-    // 1. Rates
-    const ratesCtx = await fetchClientRatesContext(clientId);
+    // 1. Rates (date-aware)
+    const ratesCtx = await fetchClientRatesContext(clientId, toDate);
     const configuredFactor = ratesCtx.serviceRatesMap.get('COPARTICIPATION_FACTOR')?.rate;
     const factor = inputFactor !== undefined ? inputFactor : configuredFactor ?? 0.10; // Default 10%
 
@@ -24,9 +24,13 @@ export const sharedExpoStrategy: ProformaStrategy = {
     const rateVianda = ratesCtx.serviceRatesMap.get('MEAL')?.rate ?? 0.0;
     const rateShuttle = ratesCtx.serviceRatesMap.get('SHUTTLE')?.rate ?? 35594.34;
 
-    // 2. Shifts
+    // 2. Shifts (ordered chronologically by work_date ASC)
     const billingShifts = await getStaffEntriesForClientAndPeriod(clientId, fromDate, toDate, { onlyApproved: true });
-    const shifts = billingShifts.records;
+    const shifts = [...billingShifts.records].sort((a, b) => {
+      const d = (a.work_date || '').localeCompare(b.work_date || '');
+      if (d !== 0) return d;
+      return (a.shift_start_time || '').localeCompare(b.shift_start_time || '');
+    });
     const unapprovedCount = billingShifts.unapprovedCount;
 
     const operationDates = formatDatesSpan(fromDate, toDate) || '01-15 SEPTIEMBRE 2026';
@@ -45,10 +49,10 @@ export const sharedExpoStrategy: ProformaStrategy = {
       shuttles_count += s.shuttles_count;
     }
 
-    // Default to real 176 hs reg / 38 hs ot50 if no shifts currently loaded for this period
-    const base_reg_hs = total_base_reg || 176.0;
-    const base_ot50_hs = total_base_ot50 || 38.0;
-    const base_ot100_hs = total_base_ot100 || 0.0;
+    // Only apply default template hours when zero shifts exist in DB for this period
+    const base_reg_hs = shifts.length > 0 ? Math.round(total_base_reg * 100) / 100 : 176.0;
+    const base_ot50_hs = shifts.length > 0 ? Math.round(total_base_ot50 * 100) / 100 : 38.0;
+    const base_ot100_hs = shifts.length > 0 ? Math.round(total_base_ot100 * 100) / 100 : 0.0;
 
     // Apply coparticipation factor
     const fact_reg_hs = Math.round(base_reg_hs * factor * 100) / 100; // 17.6
@@ -115,7 +119,9 @@ export const sharedExpoStrategy: ProformaStrategy = {
       const sub =
         shift.regular_hours * factor * regularRate +
         shift.overtime_50_hours * factor * ot50Rate +
-        shift.overtime_100_hours * factor * ot100Rate;
+        shift.overtime_100_hours * factor * ot100Rate +
+        shift.meal_allowance_count * rateVianda +
+        shift.shuttles_count * rateShuttle;
       return {
         ...shift,
         regular_rate: regularRate,
@@ -136,9 +142,14 @@ export const sharedExpoStrategy: ProformaStrategy = {
       operation_dates: operationDates,
       client_name: ratesCtx.clientName,
       factor_coparticipacion: factor,
+      coparticipation_factor: factor,
       horas_totales_base: { reg: base_reg_hs, ot50: base_ot50_hs, ot100: base_ot100_hs },
       horas_imputadas: { reg: fact_reg_hs, ot50: fact_ot50_hs, ot100: fact_ot100_hs },
       tarifas: { reg: regularRate, ot50: ot50Rate, ot100: ot100Rate },
+      viandas_count,
+      rate_vianda: rateVianda,
+      shuttles_count,
+      rate_shuttle: rateShuttle,
       importes: { reg: imp_reg, ot50: imp_ot50, ot100: imp_ot100, viandas: imp_viandas, shuttles: imp_shuttles },
       totales: {
         total_neto,
